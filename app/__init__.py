@@ -2,17 +2,18 @@ from flask import Flask
 # Remove direct imports of SQLAlchemy, Migrate, LoginManager
 from .config import Config
 from .models import User
-from .extensions import db, migrate, login_manager # Import from extensions
+from .extensions import db, migrate, login_manager, csrf # Added csrf import
 
 login_manager.login_view = 'auth.login' # type: ignore
 
-def create_app():
+def create_app(config_class=Config):
     app = Flask(__name__)
-    app.config.from_object(Config)
+    app.config.from_object(config_class)
 
     db.init_app(app)
     migrate.init_app(app, db) # db is now imported from extensions
     login_manager.init_app(app)
+    csrf.init_app(app) # Added csrf initialization
 
     @login_manager.user_loader
     def load_user(user_id):

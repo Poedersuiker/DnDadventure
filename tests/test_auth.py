@@ -88,5 +88,24 @@ class AuthTestCase(BaseTestCase):
         # Check for content specific to select_character page
         self.assertIn(b'Select Your Character', response.data)
 
+    def test_csrf_token_present_in_form(self):
+        # self.client should be available if inheriting from a base test class
+        # that sets up the Flask test client.
+        # Ensure the app context is pushed if necessary, or that client does this.
+        
+        # Temporarily enable CSRF protection for this test
+        original_csrf_enabled = self.app.config.get('WTF_CSRF_ENABLED', True) # Default to True if not set
+        self.app.config['WTF_CSRF_ENABLED'] = True
+        
+        try:
+            response = self.client.get('/test_csrf')
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(b'name="csrf_token"', response.data) # Flask-WTF generates a hidden input with name="csrf_token"
+            self.assertIn(b'id="csrf_token"', response.data)   # And id="csrf_token"
+            self.assertIn(b'type="hidden"', response.data)
+        finally:
+            # Restore original CSRF setting
+            self.app.config['WTF_CSRF_ENABLED'] = original_csrf_enabled
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

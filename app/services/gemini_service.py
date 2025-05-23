@@ -35,14 +35,9 @@ What happens next? Make sure your response is engaging and moves the story forwa
     return prompt
 
 def get_story_response(character, user_input, chat_history_objects=None):
-    try:
-        model = get_gemini_model()
-    except ValueError as e:
-        current_app.logger.error(f"Failed to get Gemini model: {e}")
-        return "The Dungeon Master is currently unavailable (API key not configured)."
-    except Exception as e: # Catch other potential errors from genai.configure or GenerativeModel
-        current_app.logger.error(f"Gemini initialization error: {e}")
-        return "The Dungeon Master is having some trouble preparing the story (Initialization Error)."
+    # Let exceptions like ValueError from get_gemini_model propagate to the route
+    # The route will then handle returning the appropriate HTTP error (e.g., 503)
+    model = get_gemini_model()
 
 
     # Simplified character details string for now
@@ -54,7 +49,7 @@ def get_story_response(character, user_input, chat_history_objects=None):
         # This part is a placeholder for when ChatMessage model is introduced
         # For now, this will likely remain empty as chat_history_objects isn't being passed
         simple_history_str = "\n".join([
-            f"{'Player' if turn.is_user_message else 'DM'}: {turn.message}" 
+            f"{'Player' if turn.entry_type == 'user_message' else 'DM'}: {turn.message}"
             for turn in chat_history_objects
         ])
 
@@ -62,26 +57,20 @@ def get_story_response(character, user_input, chat_history_objects=None):
     
     current_app.logger.info(f"Generated Gemini Prompt for {character.name}: {prompt[:200]}...") # Log a snippet
 
-    try:
-        # For gemini-pro, use generate_content
-        response = model.generate_content(prompt)
-        # Check if response.text is None or empty
-        if response.text:
-            return response.text
-        else:
-            # This case might occur if the response was blocked or had no content.
-            current_app.logger.warning(f"Gemini API returned empty response for prompt: {prompt[:200]}...")
-            # Check for parts and candidates for more detailed logging if needed
-            if response.parts:
-                 current_app.logger.warning(f"Gemini response parts: {response.parts}")
-            if response.candidates and response.candidates[0].finish_reason != 'STOP':
-                 current_app.logger.warning(f"Gemini finish reason: {response.candidates[0].finish_reason}")
-                 return "The Dungeon Master's words are lost in the ether... (Content filtered or empty)"
-            return "The Dungeon Master is silent... (No response text)."
-
-    except ValueError as ve: # Specific error for issues like blocked prompts
-        current_app.logger.error(f"Gemini API ValueError (e.g. prompt blocked): {ve}. Prompt: {prompt[:200]}...")
-        return "The Dungeon Master hesitates, finding the path ahead unclear... (Request blocked or invalid)"
-    except Exception as e:
-        current_app.logger.error(f"Gemini API error during generation: {e}. Prompt: {prompt[:200]}...")
-        return "The Dungeon Master seems to be pondering deeply... (Error communicating with Gemini)"
+    # For gemini-pro, use generate_content
+    response = model.generate_content(prompt) # Allow exceptions to propagate
+    # Check if response.text is None or empty
+    if response.text:
+        return response.text
+    else:
+        # This case might occur if the response was blocked or had no content.
+        current_app.logger.warning(f"Gemini API returned empty response for prompt: {prompt[:200]}...")
+        # Check for parts and candidates for more detailed logging if needed
+        if response.parts:
+                current_app.logger.warning(f"Gemini response parts: {response.parts}")
+        if response.candidates and response.candidates[0].finish_reason != 'STOP':
+                current_app.logger.warning(f"Gemini finish reason: {response.candidates[0].finish_reason}")
+                # Raise an exception that can be caught by the route to return a 500 or similar
+                raise Exception("Gemini content filtered or empty") 
+        # If no text and not filtered, it's an unusual empty response.
+        raise Exception("Gemini returned no response text.")

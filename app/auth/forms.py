@@ -1,7 +1,11 @@
-from flask_wtf import FlaskForm
+from flask_wtf import FlaskForm # Keep this import
 from wtforms import StringField, PasswordField, BooleanField, SubmitField
 from wtforms.validators import DataRequired, Email, EqualTo, ValidationError
 from app.models import User
+
+# New simple form for CSRF testing
+class CSRFTestForm(FlaskForm):
+    pass
 
 class LoginForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])

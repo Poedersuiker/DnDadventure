@@ -174,7 +174,7 @@ async function sendMessage() {
             headers: {
                 'Content-Type': 'application/json',
                 // Include CSRF token if you have CSRF protection enabled globally
-                // 'X-CSRFToken': '{{ csrf_token() }}' // Example if using Flask-WTF CSRF
+                'X-CSRFToken': '{{ csrf_token() }}' // Example if using Flask-WTF CSRF
             },
             body: JSON.stringify({ message: userMessage })
         });
@@ -342,7 +342,7 @@ async function performCharacterAction(payload) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                // 'X-CSRFToken': '{{ csrf_token() }}' // If CSRF is used
+                'X-CSRFToken': '{{ csrf_token() }}' // If CSRF is used
             },
             body: JSON.stringify(payload)
         });

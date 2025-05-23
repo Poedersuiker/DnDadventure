@@ -10,5 +10,5 @@ class Config:
 class TestConfig(Config):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:' # In-memory SQLite database for tests
-    WTF_CSRF_ENABLED = False # Disable CSRF for simpler form testing
+    WTF_CSRF_ENABLED = True # Enable CSRF for all tests
     GEMINI_API_KEY = 'test_api_key' # Ensure a dummy key for tests if service is called
