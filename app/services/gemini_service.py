@@ -13,7 +13,7 @@ def get_gemini_model():
     genai.configure(api_key=api_key)
     # For this task, we'll use 'gemini-pro' as specified.
     # Ensure this model is available and suitable for your use case.
-    model = genai.GenerativeModel('gemini-pro')
+    model = genai.GenerativeModel('gemini-2.0-flash')
     return model
 
 def generate_story_prompt(character_name, character_details, user_input, chat_history_str=None):
