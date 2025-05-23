@@ -1,0 +1,228 @@
+/* General body styling */
+body {
+    font-family: Arial, sans-serif;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+    background-color: #f4f4f4;
+    color: #333;
+}
+
+/* Navigation bar styling */
+nav {
+    background: #333;
+    color: #fff;
+    padding: 1rem 0;
+    text-align: center;
+}
+nav a {
+    color: #fff;
+    margin: 0 1rem;
+    text-decoration: none;
+}
+nav a:hover {
+    text-decoration: underline;
+}
+
+/* Main container styling */
+.container { /* A class you might use in base.html or other templates */
+    width: 80%;
+    margin: auto;
+    overflow: hidden;
+    padding: 0 2rem;
+}
+
+/* Page content block */
+.content-block { /* A class you might use for main content areas */
+    background: #fff;
+    padding: 1.5rem;
+    margin-top: 1rem;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+
+/* Basic Tab Styling from adventure.html - can be enhanced here */
+.tab-container {
+    width: 100%;
+    margin-top: 20px;
+    background-color: #fff;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+.tab-nav {
+    overflow: hidden;
+    border-bottom: 1px solid #ccc;
+}
+.tab-nav button {
+    background-color: inherit;
+    float: left;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    padding: 14px 16px;
+    transition: 0.3s;
+    font-size: 17px;
+    border-radius: 5px 5px 0 0; /* Rounded corners for top of tabs */
+}
+.tab-nav button:hover {
+    background-color: #ddd;
+}
+.tab-nav button.active {
+    background-color: #ccc;
+    border-bottom: 2px solid #333; /* Highlight active tab */
+}
+.tab-content {
+    display: none;
+    padding: 20px;
+    border-top: none;
+}
+.tab-content.active {
+    display: block;
+}
+
+/* Character Sheet Specific Styling */
+.char-sheet-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); /* Responsive columns */
+    gap: 15px; /* Spacing between grid items */
+    margin-bottom: 15px;
+}
+.char-sheet-grid div {
+    background-color: #f9f9f9;
+    border: 1px solid #eee;
+    padding: 15px;
+    border-radius: 4px;
+}
+.char-sheet-grid div strong {
+    display: block;
+    margin-bottom: 5px;
+    color: #555;
+}
+
+/* Adventure Log/Chat Styling */
+#conversation-history {
+    height: 350px; /* Increased height */
+    border: 1px solid #ccc;
+    overflow-y: auto; /* Changed to auto for better scrollbar handling */
+    padding: 15px;
+    margin-bottom: 15px;
+    background-color: #fff;
+    border-radius: 4px;
+}
+#conversation-history p {
+    margin-bottom: 10px;
+}
+#user-action-input {
+    width: calc(100% - 100px); /* Adjust width considering the button */
+    padding: 12px;
+    margin-right: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+#AdventureLog button { /* Style for the send button */
+    padding: 12px 20px;
+    background-color: #5cb85c;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+#AdventureLog button:hover {
+    background-color: #4cae4c;
+}
+
+/* Forms styling (general for login, register, create character) */
+form {
+    margin-top: 1rem;
+}
+form p {
+    margin-bottom: 1rem;
+}
+form label {
+    display: block;
+    margin-bottom: .3rem;
+}
+form input[type="text"],
+form input[type="password"],
+form input[type="email"],
+form textarea { /* Added textarea for multi-line inputs like inventory/notes */
+    width: 100%;
+    padding: .5rem;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    box-sizing: border-box; /* So padding doesn't increase width */
+}
+form input[type="submit"] {
+    display: block;
+    width: auto;
+    color: #fff;
+    background: #337ab7;
+    border: none;
+    padding: .7rem 1.5rem;
+    cursor: pointer;
+    border-radius: 3px;
+}
+form input[type="submit"]:hover {
+    background: #286090;
+}
+form .error { /* For validation errors */
+    color: red;
+    font-size: 0.9em;
+}
+
+/* Flashed messages */
+ul.flashes { /* Assuming you might wrap flashed messages in <ul class="flashes"> */
+    list-style: none;
+    padding: 0;
+}
+ul.flashes li {
+    padding: .7rem 1.5rem;
+    margin-bottom: 1rem;
+    border: 1px solid transparent;
+    border-radius: 4px;
+}
+ul.flashes li.success { /* Example class for success messages */
+    color: #3c763d;
+    background-color: #dff0d8;
+    border-color: #d6e9c6;
+}
+ul.flashes li.error { /* Example class for error messages */
+    color: #a94442;
+    background-color: #f2dede;
+    border-color: #ebccd1;
+}
+
+/* Buttons for actions in character sheet */
+.actions-placeholder button, .actions-placeholder select {
+    margin-right: 10px;
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    border: 1px solid #ccc;
+    background-color: #e7e7e7;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.actions-placeholder button:hover, .actions-placeholder select:hover {
+    background-color: #ddd;
+}
+
+/* Error page styling */
+.error-page {
+    text-align: center;
+    padding: 40px 20px;
+}
+.error-page h1 {
+    font-size: 2.5em;
+    color: #d9534f; /* Reddish color for errors */
+}
+.error-page p {
+    font-size: 1.2em;
+}
+.error-page a {
+    color: #337ab7;
+    text-decoration: none;
+}
+.error-page a:hover {
+    text-decoration: underline;
+}
