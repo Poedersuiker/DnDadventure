@@ -1,0 +1,479 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    /* Basic Tab Styling */
+    .tab-container {
+        width: 100%;
+        margin-top: 20px;
+    }
+    .tab-nav {
+        overflow: hidden;
+        border-bottom: 1px solid #ccc;
+    }
+    .tab-nav button {
+        background-color: inherit;
+        float: left;
+        border: none;
+        outline: none;
+        cursor: pointer;
+        padding: 14px 16px;
+        transition: 0.3s;
+        font-size: 17px;
+    }
+    .tab-nav button:hover {
+        background-color: #ddd;
+    }
+    .tab-nav button.active {
+        background-color: #ccc;
+    }
+    .tab-content {
+        display: none;
+        padding: 20px;
+        border-top: none;
+    }
+    .tab-content.active {
+        display: block;
+    }
+    .char-sheet-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 10px;
+    }
+    .char-sheet-grid div {
+        border: 1px solid #eee;
+        padding: 10px;
+    }
+    .actions-placeholder button, .actions-placeholder select {
+        margin-right: 5px;
+        margin-bottom: 5px;
+    }
+</style>
+
+<h1>Adventure with {{ character.name }}</h1>
+
+<div class="tab-container">
+    <div class="tab-nav">
+        <button class="tab-button active" onclick="openTab(event, 'AdventureLog')">Adventure Log</button>
+        <button class="tab-button" onclick="openTab(event, 'CharacterSheet')">Character Sheet</button>
+    </div>
+
+    <div id="AdventureLog" class="tab-content active">
+        <h2>Story / Chat</h2>
+        <div id="conversation-history" style="height: 300px; border: 1px solid #ccc; overflow-y: scroll; padding:10px; margin-bottom:10px;">
+            <p><em>The adventure begins...</em></p>
+            <!-- Conversation history will appear here -->
+        </div>
+        <input type="text" id="user-action-input" placeholder="What do you do?" style="width: 80%; padding: 10px;">
+        <button onclick="sendMessage()">Send</button> {# Placeholder #}
+    </div>
+
+    <div id="CharacterSheet" class="tab-content">
+        <h2>{{ character.name }} - Character Sheet</h2>
+        <div class="char-sheet-grid">
+            <div><strong>Name:</strong> {{ character.name }}</div>
+            <div><strong>Race:</strong> {{ character.race }}</div>
+            <div><strong>Class:</strong> {{ character.character_class }}</div>
+            <div><strong>Level:</strong> {{ character.level }}</div>
+            <div><strong>Alignment:</strong> {{ character.alignment or 'N/A' }}</div>
+            <div><strong>Background:</strong> {{ character.background or 'N/A' }}</div>
+            <div><strong>Experience Points:</strong> {{ character.experience_points }}</div>
+        </div>
+        <hr>
+        <h3>Combat Stats</h3>
+        <div class="char-sheet-grid">
+            <div><strong>HP:</strong> {{ character.hp }} / {{ character.max_hp }}</div>
+            <div><strong>Armor Class:</strong> {{ character.armor_class }}</div>
+            <div><strong>Proficiency Bonus:</strong> +{{ character.proficiency_bonus }}</div>
+        </div>
+        <hr>
+        <h3>Ability Scores</h3>
+        <div class="char-sheet-grid">
+            <div><strong>Strength:</strong> {{ character.strength }}</div>
+            <div><strong>Dexterity:</strong> {{ character.dexterity }}</div>
+            <div><strong>Constitution:</strong> {{ character.constitution }}</div>
+            <div><strong>Intelligence:</strong> {{ character.intelligence }}</div>
+            <div><strong>Wisdom:</strong> {{ character.wisdom }}</div>
+            <div><strong>Charisma:</strong> {{ character.charisma }}</div>
+        </div>
+        <hr>
+        <h3>Inventory</h3>
+        <p>{{ character.inventory or 'Empty' }}</p>
+        <hr>
+        <h3>Notes</h3>
+        <p>{{ character.notes or 'No notes' }}</p>
+        <hr>
+        <h3>Actions (Placeholders)</h3>
+        <div class="actions-placeholder">
+            <button>Roll Initiative</button>
+            <button>Attack Roll</button>
+            <select name="saving_throw_ability">
+                <option value="strength">Strength Save</option>
+                <option value="dexterity">Dexterity Save</option>
+                <option value="constitution">Constitution Save</option>
+                <option value="intelligence">Intelligence Save</option>
+                <option value="wisdom">Wisdom Save</option>
+                <option value="charisma">Charisma Save</option>
+            </select>
+            <button>Saving Throw</button>
+            <select name="skill_check_ability">
+                <option value="strength">Strength Check</option>
+                <option value="dexterity">Dexterity Check</option>
+                <option value="constitution">Constitution Check</option>
+                <option value="intelligence">Intelligence Check</option>
+                <option value="wisdom">Wisdom Check</option>
+                <option value="charisma">Charisma Check</option>
+            </select>
+            <button>Skill Check</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function openTab(evt, tabName) {
+    var i, tabcontent, tabbuttons;
+    tabcontent = document.getElementsByClassName("tab-content");
+    for (i = 0; i < tabcontent.length; i++) {
+        tabcontent[i].style.display = "none";
+    }
+    tabbuttons = document.getElementsByClassName("tab-button");
+    for (i = 0; i < tabbuttons.length; i++) {
+        tabbuttons[i].className = tabbuttons[i].className.replace(" active", "");
+    }
+    document.getElementById(tabName).style.display = "block";
+    evt.currentTarget.className += " active";
+}
+
+const characterId = {{ character.id }}; // Get character ID from Flask
+
+async function sendMessage() {
+    var input = document.getElementById("user-action-input");
+    var history = document.getElementById("conversation-history");
+    var userMessage = input.value.trim();
+
+    if (userMessage === "") {
+        return; // Don't send empty messages
+    }
+
+    // Display user's message
+    var userP = document.createElement("p");
+    userP.innerHTML = "<strong>You:</strong> " + userMessage;
+    history.appendChild(userP);
+    input.value = ""; // Clear input field
+    history.scrollTop = history.scrollHeight;
+
+    // Display thinking message
+    var thinkingP = document.createElement("p");
+    thinkingP.innerHTML = "<em>DM is thinking...</em>";
+    history.appendChild(thinkingP);
+    history.scrollTop = history.scrollHeight;
+
+    try {
+        const response = await fetch(`/character/adventure/${characterId}/chat`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                // Include CSRF token if you have CSRF protection enabled globally
+                // 'X-CSRFToken': '{{ csrf_token() }}' // Example if using Flask-WTF CSRF
+            },
+            body: JSON.stringify({ message: userMessage })
+        });
+
+        history.removeChild(thinkingP); // Remove thinking message
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => null); // Try to parse error JSON
+            let errorMessage = `Error: ${response.status} ${response.statusText}`;
+            if (errorData && errorData.reply) {
+                errorMessage = errorData.reply; // Use server's error message if available
+            } else if (errorData && errorData.error) {
+                 errorMessage = errorData.error;
+            }
+            displayError(errorMessage);
+            return;
+        }
+
+        const data = await response.json();
+        var geminiP = document.createElement("p");
+        geminiP.innerHTML = "<strong>DM:</strong> " + (data.reply || "The DM is silent.");
+        history.appendChild(geminiP);
+
+    } catch (error) {
+        history.removeChild(thinkingP); // Remove thinking message
+        console.error('Fetch error:', error);
+        displayError("Failed to connect to the Dungeon Master. Check your connection or try again later.");
+    } finally {
+        history.scrollTop = history.scrollHeight; // Scroll to bottom
+    }
+}
+
+function displayError(message) {
+    var history = document.getElementById("conversation-history");
+    var errorP = document.createElement("p");
+    errorP.innerHTML = "<strong style='color: red;'>Error:</strong> " + message;
+    history.appendChild(errorP);
+    history.scrollTop = history.scrollHeight;
+}
+
+// Allow sending message with Enter key
+document.getElementById("user-action-input").addEventListener("keypress", function(event) {
+    if (event.key === "Enter") {
+        event.preventDefault(); // Prevent default form submission if it were in a form
+        sendMessage();
+    }
+});
+
+// Initial message to kick things off (optional, can be user-initiated)
+window.onload = function() {
+    var history = document.getElementById("conversation-history");
+    var initialP = document.createElement("p");
+    initialP.innerHTML = "<em>The adventure begins... Type 'start adventure' or describe your first action.</em>";
+    // Display initial message only if no history is loaded from DB
+    if (!document.querySelector("#conversation-history .log-entry")) {
+        var initialP = document.createElement("p");
+        initialP.classList.add("system-message"); // Add class for styling
+        initialP.innerHTML = "<em>The adventure begins... Type 'start adventure' or describe your first action.</em>";
+        history.appendChild(initialP);
+    }
+    history.scrollTop = history.scrollHeight;
+};
+
+function formatLogEntry(entry) {
+    let html = `<p class="log-entry ${entry.entry_type}" data-entry-id="${entry.id}">`;
+    let actorPrefix = "";
+
+    if (entry.actor_name) {
+        actorPrefix = `<strong>${entry.actor_name}:</strong> `;
+    } else if (entry.entry_type === 'gemini_response') {
+        actorPrefix = `<strong>DM:</strong> `;
+    } else if (entry.entry_type === 'user_message') {
+        actorPrefix = `<strong>You:</strong> `;
+    }
+
+
+    html += actorPrefix + entry.message;
+    if (entry.roll_details && entry.entry_type === 'action_roll') {
+        try {
+            const details = JSON.parse(entry.roll_details_json || entry.roll_details); // Handle both direct JSON and stringified
+            html += ` <small>(Roll: ${details.total_with_modifier} | Details: ${details.description} -> ${JSON.stringify(details.rolls)})</small>`;
+        } catch (e) {
+            console.warn("Could not parse roll_details JSON:", entry.roll_details_json || entry.roll_details);
+        }
+    }
+    html += `</p>`;
+    return html;
+}
+
+
+// --- Character Sheet Actions ---
+document.addEventListener('DOMContentLoaded', () => {
+    const actionButtonsContainer = document.querySelector('.actions-placeholder');
+    if (!actionButtonsContainer) return;
+
+    actionButtonsContainer.addEventListener('click', async function(event) {
+        const target = event.target;
+        let actionType = '';
+        let payload = {
+            action_type: '',
+            stat_name: '', // For skill checks and saving throws
+            skill_name: '', // Display name for skill
+            dice_type: 0,  // For damage rolls
+            num_dice: 0,   // For damage rolls
+            modifier_override: null // Optional: to directly set a modifier from frontend input
+        };
+
+        // Determine action from button/select
+        if (target.id === 'roll-initiative') {
+            payload.action_type = 'skill_check'; // Initiative is a Dexterity check
+            payload.stat_name = 'dexterity';
+            payload.skill_name = 'Initiative';
+        } else if (target.id === 'roll-attack') {
+            payload.action_type = 'attack';
+            // For simplicity, attack modifier is handled by backend based on character.strength
+            // Could add input field for custom modifier if needed:
+            // payload.modifier_override = parseInt(document.getElementById('attack-modifier-input').value) || 0;
+        } else if (target.id === 'roll-saving-throw') {
+            const selectedStat = document.getElementById('saving-throw-ability-select').value;
+            if (!selectedStat) { alert('Please select a stat for the saving throw.'); return; }
+            payload.action_type = 'saving_throw';
+            payload.stat_name = selectedStat;
+        } else if (target.id === 'roll-skill-check') {
+            const selectedSkillStat = document.getElementById('skill-check-ability-select').value;
+            const skillDisplayNameInput = document.getElementById('skill-check-name-input').value;
+            if (!selectedSkillStat) { alert('Please select an ability for the skill check.'); return; }
+            payload.action_type = 'skill_check';
+            payload.stat_name = selectedSkillStat;
+            payload.skill_name = skillDisplayNameInput || selectedSkillStat.charAt(0).toUpperCase() + selectedSkillStat.slice(1) + " Check";
+        } else if (target.id === 'roll-damage') {
+            try {
+                payload.dice_type = parseInt(document.getElementById('damage-dice-type-input').value);
+                payload.num_dice = parseInt(document.getElementById('damage-num-dice-input').value);
+                const damageStatModifier = document.getElementById('damage-modifier-stat-select').value;
+                // Backend will calculate modifier if stat is provided, or use 0 if 'none'
+                payload.stat_name = damageStatModifier === 'none' ? '' : damageStatModifier;
+                payload.action_type = 'damage';
+
+                if (isNaN(payload.dice_type) || payload.dice_type <= 0 || isNaN(payload.num_dice) || payload.num_dice <= 0) {
+                    alert('Please enter valid numbers for dice type and number of dice for damage roll.');
+                    return;
+                }
+            } catch (e) {
+                alert('Invalid input for damage roll.'); return;
+            }
+        } else {
+            return; // Not a recognized action button
+        }
+        
+        await performCharacterAction(payload);
+    });
+});
+
+async function performCharacterAction(payload) {
+    var history = document.getElementById("conversation-history");
+    
+    // Display "Rolling..." message in chat log
+    var rollingP = document.createElement("p");
+    rollingP.innerHTML = `<em>${character.name} is performing an action: ${payload.skill_name || payload.action_type}...</em>`;
+    history.appendChild(rollingP);
+    history.scrollTop = history.scrollHeight;
+
+    try {
+        const response = await fetch(`/character/adventure/${characterId}/roll_action`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                // 'X-CSRFToken': '{{ csrf_token() }}' // If CSRF is used
+            },
+            body: JSON.stringify(payload)
+        });
+
+        history.removeChild(rollingP); // Remove "Rolling..." message
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: "Unknown error occurred" }));
+            displayError(errorData.error || `Action failed: ${response.statusText}`);
+            return;
+        }
+
+        const data = await response.json();
+        var actionResultP = document.createElement("p");
+        actionResultP.innerHTML = "<strong>Action:</strong> " + (data.message || "Action performed.");
+        if (data.roll_details) {
+            actionResultP.innerHTML += ` <small>(Details: ${JSON.stringify(data.roll_details.rolls)} -> Total: ${data.roll_details.total_with_modifier})</small>`;
+        }
+        history.appendChild(actionResultP);
+
+    } catch (error) {
+        history.removeChild(rollingP); // Remove "Rolling..." message
+        console.error('Action Fetch error:', error);
+        displayError("Failed to perform action. Check connection or try again.");
+    } finally {
+        history.scrollTop = history.scrollHeight; // Scroll to bottom
+    }
+}
+
+// Helper to add IDs to action buttons for easier selection
+document.addEventListener('DOMContentLoaded', () => {
+    const actionsDiv = document.querySelector('.actions-placeholder');
+    if (actionsDiv) {
+        // It's better to assign IDs directly in HTML, but as a fallback:
+        const buttons = actionsDiv.getElementsByTagName('button');
+        if (buttons[0]) buttons[0].id = buttons[0].id || 'roll-initiative';
+        if (buttons[1]) buttons[1].id = buttons[1].id || 'roll-attack';
+        if (buttons[2]) buttons[2].id = buttons[2].id || 'roll-saving-throw'; // Assuming third button is for saving throw
+        if (buttons[3]) buttons[3].id = buttons[3].id || 'roll-skill-check';  // Assuming fourth button is for skill check
+        
+        const selects = actionsDiv.getElementsByTagName('select');
+        if (selects[0]) selects[0].id = selects[0].id || 'saving-throw-ability-select';
+        if (selects[1]) selects[1].id = selects[1].id || 'skill-check-ability-select';
+
+        // Add input fields for skill check name and damage dice, if not already present
+        if (!document.getElementById('skill-check-name-input')) {
+            const skillNameInput = document.createElement('input');
+            skillNameInput.type = 'text';
+            skillNameInput.id = 'skill-check-name-input';
+            skillNameInput.placeholder = 'Skill Name (e.g. Acrobatics)';
+            // Find the skill check button and insert before it or its select
+            if (selects[1]) selects[1].parentNode.insertBefore(skillNameInput, selects[1].nextSibling.nextSibling); // Bit fragile
+        }
+
+        if (!document.getElementById('roll-damage')) { // Add damage roll button & inputs if not present
+            const damageButton = document.createElement('button');
+            damageButton.id = 'roll-damage';
+            damageButton.textContent = 'Roll Damage';
+            
+            const numDiceInput = document.createElement('input');
+            numDiceInput.type = 'number';
+            numDiceInput.id = 'damage-num-dice-input';
+            numDiceInput.value = '1';
+            numDiceInput.style.width = '50px';
+            
+            const dSpan = document.createElement('span');
+            dSpan.textContent = ' d ';
+            
+            const diceTypeInput = document.createElement('input');
+            diceTypeInput.type = 'number';
+            diceTypeInput.id = 'damage-dice-type-input';
+            diceTypeInput.value = '6';
+            diceTypeInput.style.width = '50px';
+
+            const modSpan = document.createElement('span');
+            modSpan.textContent = ' + Mod: ';
+            const modSelect = document.createElement('select');
+            modSelect.id = 'damage-modifier-stat-select';
+            ['none', 'strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'].forEach(stat => {
+                const opt = document.createElement('option');
+                opt.value = stat;
+                opt.textContent = stat.charAt(0).toUpperCase() + stat.slice(1);
+                modSelect.appendChild(opt);
+            });
+
+            const damageDiv = document.createElement('div');
+            damageDiv.style.marginTop = '10px';
+            damageDiv.appendChild(damageButton);
+            damageDiv.appendChild(numDiceInput);
+            damageDiv.appendChild(dSpan);
+            damageDiv.appendChild(diceTypeInput);
+            damageDiv.appendChild(modSpan);
+            damageDiv.appendChild(modSelect);
+            actionsDiv.appendChild(damageDiv);
+        }
+    }
+
+    // Load existing log entries
+    const historyContainer = document.getElementById("conversation-history");
+    {% if log_entries %}
+        {% for entry in log_entries %}
+            const entryData = {
+                id: {{ entry.id }},
+                entry_type: "{{ entry.entry_type }}",
+                message: {{ entry.message | tojson | safe }}, // Use tojson for proper escaping
+                actor_name: "{{ entry.actor_name or '' }}",
+                roll_details_json: {{ entry.roll_details | tojson | safe if entry.roll_details else 'null' }}
+            };
+            historyContainer.innerHTML += formatLogEntry(entryData);
+        {% endfor %}
+        historyContainer.scrollTop = historyContainer.scrollHeight; // Scroll to bottom after loading
+    {% endif %}
+
+});
+</script>
+<style>
+    .log-entry.user_message {
+        text-align: left; /* Or right, depending on preference */
+        color: blue; /* Example styling */
+    }
+    .log-entry.gemini_response {
+        color: green; /* Example styling */
+    }
+    .log-entry.action_roll {
+        color: purple; /* Example styling */
+        font-style: italic;
+    }
+    .log-entry.system-message {
+        color: #555;
+        font-style: italic;
+        text-align: center;
+    }
+</style>
+{% endblock %}

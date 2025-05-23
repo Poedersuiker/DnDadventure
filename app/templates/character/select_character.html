@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h1>Select Your Character</h1>
+    {% if characters %}
+        <ul>
+            {% for character in characters %}
+                <li>
+                    <strong>{{ character.name }}</strong> - {{ character.race }} {{ character.character_class }} (Level {{ character.level }})
+                    <a href="{{ url_for('character.adventure', character_id=character.id) }}">Select</a>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>You have no characters yet. <a href="{{ url_for('character.create_character') }}">Create one now!</a></p>
+    {% endif %}
+    <p><a href="{{ url_for('character.create_character') }}">Create a New Character</a></p>
+{% endblock %}
