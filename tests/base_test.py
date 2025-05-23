@@ -1,4 +1,5 @@
 import unittest
+from bs4 import BeautifulSoup # Added BeautifulSoup
 from app import create_app, db
 from app.models import User, Character # Import your models
 from app.config import TestConfig # Corrected import path
@@ -24,9 +25,18 @@ class BaseTestCase(unittest.TestCase):
 
     # Helper method for login
     def login(self, username, password):
+        # Get the login page to extract CSRF token
+        response = self.client.get('/auth/login')
+        self.assertEqual(response.status_code, 200, "Failed to get login page")
+        soup = BeautifulSoup(response.data, 'html.parser')
+        csrf_token_tag = soup.find('input', {'name': 'csrf_token'})
+        self.assertIsNotNone(csrf_token_tag, "CSRF token not found on login page")
+        csrf_token = csrf_token_tag['value']
+
         return self.client.post('/auth/login', data=dict(
             username=username,
-            password=password
+            password=password,
+            csrf_token=csrf_token # Add CSRF token to form data
         ), follow_redirects=True)
 
     # Helper method for logout

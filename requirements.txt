@@ -6,3 +6,4 @@ Flask-Login
 Werkzeug
 google-generativeai
 email_validator
+BeautifulSoup4

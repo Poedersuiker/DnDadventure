@@ -1,6 +1,7 @@
-from flask import render_template, redirect, url_for
+from flask import render_template, redirect, url_for, flash # Added flash import
 from flask_login import login_required, current_user
 from app.main import bp
+from app.auth.forms import CSRFTestForm # Added CSRFTestForm import
 
 @bp.route('/')
 @bp.route('/index') # Keep /index for now, can be removed later if not needed
@@ -26,3 +27,11 @@ def dashboard():
     # Or it could be a new dashboard specific to logged-in users
     # For now, let's assume it renders the old main/index.html content
     return render_template('main/index.html', title='Dashboard')
+
+@bp.route('/test_csrf', methods=['GET', 'POST'])
+def test_csrf():
+    form = CSRFTestForm()
+    if form.validate_on_submit():
+        flash('CSRF form submitted successfully (test).')
+        return redirect(url_for('main.index'))
+    return render_template('main/test_csrf_form.html', form=form, title='Test CSRF')
