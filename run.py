@@ -1,4 +1,14 @@
+import argparse
+import os
 from app import create_app
+
+parser = argparse.ArgumentParser(description='Run the Flask app with configurable host and Google API Key.')
+parser.add_argument('--host', default='127.0.0.1', help='The host IP address to run the app on.')
+parser.add_argument('--google_api_key', help='Your Google API Key for Gemini.')
+args = parser.parse_args()
+
+if args.google_api_key:
+    os.environ['GEMINI_API_KEY'] = args.google_api_key
 
 app = create_app()
 
@@ -17,4 +27,4 @@ def test():
     sys.exit(1)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host=args.host, debug=True)
