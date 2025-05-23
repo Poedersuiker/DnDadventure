@@ -1,5 +1,6 @@
 import google.generativeai as genai
 from flask import current_app
+import markdown2
 
 def get_gemini_model():
     api_key = current_app.config.get('GEMINI_API_KEY')
@@ -61,7 +62,9 @@ def get_story_response(character, user_input, chat_history_objects=None):
     response = model.generate_content(prompt) # Allow exceptions to propagate
     # Check if response.text is None or empty
     if response.text:
-        return response.text
+        # Convert Markdown to HTML
+        html_output = markdown2.markdown(response.text)
+        return html_output
     else:
         # This case might occur if the response was blocked or had no content.
         current_app.logger.warning(f"Gemini API returned empty response for prompt: {prompt[:200]}...")

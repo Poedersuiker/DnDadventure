@@ -8,7 +8,46 @@ class CharacterTestCase(BaseTestCase):
     def setUp(self):
         super().setUp()
         # Login the default test user for character tests
-        self.login('testuser', 'password123')
+        self.login_response = self.login('testuser', 'password123') # Store login response if needed
+        self.test_user = User.query.filter_by(username='testuser').first() # Fetch the user object
+
+        # Create a standard character for this user for route testing
+        # Ensure XP_THRESHOLDS and CLASS_DATA_MODEL are available if not already imported
+        from app.models import XP_THRESHOLDS, CLASS_DATA_MODEL
+
+        self.character = Character(
+            name='Test Character for Rolls',
+            race='Human',
+            character_class='Fighter',
+            level=3, # Some level to have proficiency bonus > 2
+            strength=16, dexterity=14, constitution=15,
+            intelligence=10, wisdom=12, charisma=8,
+            owner=self.test_user,
+            experience_points=XP_THRESHOLDS[2] # XP for level 3 (index 2 for level 3)
+        )
+        # Set initial HP based on class and con for level 1
+        class_info = CLASS_DATA_MODEL.get(self.character.character_class, CLASS_DATA_MODEL["Default"])
+        con_modifier = self.character.get_modifier_for_ability('constitution')
+        
+        # Calculate HP for Level 1
+        current_max_hp = class_info["hit_dice_type"] + con_modifier
+        
+        # Simulate leveling up to current level (e.g., 3) for HP and hit dice
+        if self.character.level > 1:
+            for i in range(1, self.character.level):
+                hp_increase = class_info["avg_hp_gain_per_level"] + con_modifier
+                current_max_hp += hp_increase
+        
+        self.character.max_hp = current_max_hp
+        self.character.current_hp = self.character.max_hp # Full HP at current level
+        self.character.hit_dice_type = class_info["hit_dice_type"]
+        self.character.hit_dice_max = self.character.level 
+        self.character.hit_dice_current = self.character.level
+
+
+        db.session.add(self.character)
+        db.session.commit()
+
 
     def test_character_creation_page_loads(self):
         response = self.client.get('/character/create_character')
@@ -99,6 +138,134 @@ class CharacterTestCase(BaseTestCase):
         # Let's check the final landing page content
         self.assertIn(b'Create New Character', response.data)
 
+    # --- Dice Rolling Route Tests ---
+    def test_roll_initiative_route(self):
+        from app.models import AdventureLogEntry # Import here or at top of file
+        self.assertIsNotNone(self.character, "Test character not created in setUp")
+        with self.client: # Ensure client is used in a context for session handling
+            response = self.client.post(f'/character/adventure/{self.character.id}/roll_initiative')
+            self.assertEqual(response.status_code, 200)
+            json_response = response.get_json()
+            self.assertIn('message', json_response)
+            self.assertIn('roll_details', json_response)
+            self.assertIn('Initiative', json_response['message'])
+            
+            # Verify log entry
+            log_entry = AdventureLogEntry.query.filter_by(character_id=self.character.id, entry_type="action_roll").order_by(AdventureLogEntry.id.desc()).first()
+            self.assertIsNotNone(log_entry)
+            self.assertIn("Initiative", log_entry.message)
+            self.assertIn(str(json_response['roll_details']['total_with_modifier']), log_entry.message)
+
+    def test_roll_ability_check_route(self):
+        from app.models import AdventureLogEntry
+        self.assertIsNotNone(self.character, "Test character not created in setUp")
+        with self.client:
+            response = self.client.post(f'/character/adventure/{self.character.id}/roll_ability_check/strength')
+            self.assertEqual(response.status_code, 200)
+            json_response = response.get_json()
+            self.assertIn('message', json_response)
+            self.assertIn('Strength Check', json_response['message'])
+            log_entry = AdventureLogEntry.query.filter_by(character_id=self.character.id, entry_type="action_roll").order_by(AdventureLogEntry.id.desc()).first()
+            self.assertIsNotNone(log_entry)
+            self.assertIn("Strength Check", log_entry.message)
+
+            # Test invalid ability
+            response_invalid = self.client.post(f'/character/adventure/{self.character.id}/roll_ability_check/invalidstat')
+            self.assertEqual(response_invalid.status_code, 400)
+            self.assertIn('Invalid ability name', response_invalid.get_json()['error'])
+
+    def test_roll_saving_throw_route(self):
+        from app.models import AdventureLogEntry
+        self.assertIsNotNone(self.character, "Test character not created in setUp")
+        with self.client:
+            response = self.client.post(f'/character/adventure/{self.character.id}/roll_saving_throw/dexterity')
+            self.assertEqual(response.status_code, 200)
+            json_response = response.get_json()
+            self.assertIn('message', json_response)
+            self.assertIn('Dexterity Save', json_response['message'])
+            log_entry = AdventureLogEntry.query.filter_by(character_id=self.character.id, entry_type="action_roll").order_by(AdventureLogEntry.id.desc()).first()
+            self.assertIsNotNone(log_entry)
+            self.assertIn("Dexterity Save", log_entry.message)
+
+            # Test invalid ability
+            response_invalid = self.client.post(f'/character/adventure/{self.character.id}/roll_saving_throw/invalidstat')
+            self.assertEqual(response_invalid.status_code, 400)
+            self.assertIn('Invalid ability name', response_invalid.get_json()['error'])
+        
+    def test_roll_skill_check_specific_route(self):
+        from app.models import AdventureLogEntry
+        self.assertIsNotNone(self.character, "Test character not created in setUp")
+        with self.client:
+            # Test a valid skill. Ensure 'athletics' is a key in character._skill_to_ability_map or handled by get_skill_bonus
+            # The route expects the skill attribute name (e.g. 'athletics') and the base ability ('strength')
+            response = self.client.post(f'/character/adventure/{self.character.id}/roll_skill_check/athletics/strength')
+            self.assertEqual(response.status_code, 200)
+            json_response = response.get_json()
+            self.assertIn('message', json_response)
+            self.assertIn('Athletics check', json_response['message']) 
+            log_entry = AdventureLogEntry.query.filter_by(character_id=self.character.id, entry_type="action_roll").order_by(AdventureLogEntry.id.desc()).first()
+            self.assertIsNotNone(log_entry)
+            self.assertIn("Athletics check", log_entry.message)
+
+            # Test invalid skill (assuming model's get_skill_bonus would raise ValueError, leading to 400 in route)
+            response_invalid = self.client.post(f'/character/adventure/{self.character.id}/roll_skill_check/invalid_skill_name/strength')
+            self.assertEqual(response_invalid.status_code, 400) 
+            self.assertIn('Invalid skill', response_invalid.get_json()['error'])
+
+    def test_roll_attack_generic_route(self):
+        from app.models import AdventureLogEntry
+        self.assertIsNotNone(self.character, "Test character not created in setUp")
+        with self.client:
+            response = self.client.post(f'/character/adventure/{self.character.id}/roll_attack')
+            self.assertEqual(response.status_code, 200)
+            json_response = response.get_json()
+            self.assertIn('message', json_response)
+            self.assertIn('attacks!', json_response['message'])
+            log_entry = AdventureLogEntry.query.filter_by(character_id=self.character.id, entry_type="action_roll").order_by(AdventureLogEntry.id.desc()).first()
+            self.assertIsNotNone(log_entry)
+            self.assertIn("attacks!", log_entry.message)
+
+    def test_roll_damage_generic_route(self):
+        from app.models import AdventureLogEntry
+        self.assertIsNotNone(self.character, "Test character not created in setUp")
+        with self.client:
+            # Valid damage roll
+            payload = {'num_dice': 2, 'dice_type': 8, 'modifier_stat': 'strength'}
+            response = self.client.post(f'/character/adventure/{self.character.id}/roll_damage', json=payload)
+            self.assertEqual(response.status_code, 200)
+            json_response = response.get_json()
+            self.assertIn('message', json_response)
+            self.assertIn('deals damage!', json_response['message'])
+            log_entry = AdventureLogEntry.query.filter_by(character_id=self.character.id, entry_type="action_roll").order_by(AdventureLogEntry.id.desc()).first()
+            self.assertIsNotNone(log_entry)
+            self.assertIn("deals damage!", log_entry.message)
+            self.assertTrue(int(json_response['roll_details']['modifier']) == self.character.get_modifier_for_ability('strength'))
+
+
+            # Valid damage roll with 'none' modifier
+            payload_none_mod = {'num_dice': 1, 'dice_type': 4, 'modifier_stat': 'none'}
+            response_none_mod = self.client.post(f'/character/adventure/{self.character.id}/roll_damage', json=payload_none_mod)
+            self.assertEqual(response_none_mod.status_code, 200)
+            json_response_none_mod = response_none_mod.get_json()
+            self.assertIn('message', json_response_none_mod)
+            self.assertEqual(json_response_none_mod['roll_details']['modifier'], 0)
+
+
+            # Test invalid payload - missing fields
+            response_invalid = self.client.post(f'/character/adventure/{self.character.id}/roll_damage', json={'num_dice': 1})
+            self.assertEqual(response_invalid.status_code, 400)
+            self.assertIn('positive integers', response_invalid.get_json()['error'])
+
+            # Test invalid payload - non-integer
+            response_invalid = self.client.post(f'/character/adventure/{self.character.id}/roll_damage', json={'num_dice': 'abc', 'dice_type': 6, 'modifier_stat': 'strength'})
+            self.assertEqual(response_invalid.status_code, 400)
+            self.assertIn('positive integers', response_invalid.get_json()['error'])
+            
+            # Test invalid modifier_stat
+            payload_invalid_stat = {'num_dice': 1, 'dice_type': 6, 'modifier_stat': 'invalid_ability'}
+            response_invalid_stat = self.client.post(f'/character/adventure/{self.character.id}/roll_damage', json=payload_invalid_stat)
+            self.assertEqual(response_invalid_stat.status_code, 400)
+            self.assertIn('Invalid modifier_stat', response_invalid_stat.get_json()['error'])
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
