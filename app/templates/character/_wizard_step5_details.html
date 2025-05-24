@@ -1,0 +1,44 @@
+{# Step 5: Background, Alignment & Basic Details - Uses BackgroundAlignmentForm passed as 'form' #}
+<fieldset>
+    <legend>Step 5: Background & Alignment</legend>
+    
+    {% if form %}
+        <p>
+            {{ form.alignment.label(class="form-label") }}<br>
+            {{ form.alignment(class="form-select") }}<br>
+            {% for error in form.alignment.errors %}
+                <span style="color: red;">[{{ error }}]</span><br>
+            {% endfor %}
+        </p>
+        <p>
+            {{ form.background.label(class="form-label") }}<br>
+            {{ form.background(class="form-input", size=40) }}<br>
+            {% for error in form.background.errors %}
+                <span style="color: red;">[{{ error }}]</span><br>
+            {% endfor %}
+        </p>
+    {% else %}
+        <p>Error: Background & Alignment form not available.</p>
+        {# Fallback for manual input if form object is not passed #}
+        <label for="alignment_fallback">Alignment:</label><br>
+        <input type="text" id="alignment_fallback" name="alignment" value="{{ character_data.get('alignment', '') }}" required size="30"><br>
+        <label for="background_fallback">Background:</label><br>
+        <input type="text" id="background_fallback" name="background" value="{{ character_data.get('background', '') }}" required size="30">
+    {% endif %}
+
+    <div style="margin-top: 20px;">
+        <p><a href="https://roll20.net/compendium/dnd5e/Alignment" target="_blank">Learn about Alignments on Roll20</a></p>
+        <p><a href="https://roll20.net/compendium/dnd5e/Backgrounds" target="_blank">Explore Backgrounds on Roll20</a></p>
+    </div>
+    
+    {# Display general flashed messages if not specific to a field or if form has issues #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                {% if category == 'error' and not (form.alignment.errors or form.background.errors) %} {# Show general errors if not field-specific #}
+                    <p style="color: red;">{{ message }}</p>
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</fieldset>

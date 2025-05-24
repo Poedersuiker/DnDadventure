@@ -1,0 +1,34 @@
+{# Step 3: Character Class - Uses ClassSelectionForm passed as 'form' #}
+<fieldset>
+    <legend>Step 3: Choose Your Character's Class</legend>
+    
+    {% if form %}
+        <p>
+            {{ form.character_class.label(class="form-label") }}<br>
+            {{ form.character_class(class="form-select") }}<br> {# Assuming you might add classes for styling #}
+            {% for error in form.character_class.errors %}
+                <span style="color: red;">[{{ error }}]</span><br>
+            {% endfor %}
+        </p>
+    {% else %}
+        <p>Error: Class selection form not available.</p>
+        {# Fallback to simple input if form is not passed, though route should always pass it for step 3 GET #}
+        <label for="class_fallback">Class (Fallback):</label><br>
+        <input type="text" id="class_fallback" name="character_class" value="{{ character_data.get('character_class', '') }}" required size="30">
+    {% endif %}
+
+    <p style="margin-top: 15px;">
+        <a href="https://roll20.net/compendium/dnd5e/Classes%20List" target="_blank">Learn more about Classes on Roll20</a>
+    </p>
+    
+    {# Display general flashed messages if not specific to a field or if form has issues #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                {% if category == 'error' and not form.character_class.errors %} {# Show general errors if not field-specific #}
+                    <p style="color: red;">{{ message }}</p>
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</fieldset>

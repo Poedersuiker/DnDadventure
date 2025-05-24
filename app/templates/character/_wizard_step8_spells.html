@@ -1,0 +1,76 @@
+{# Step 8: Spells - Uses SpellSelectionForm passed as 'form' #}
+{# Context should include: form, selection_rules, spell_data_for_class #}
+<fieldset>
+    <legend>Step 8: Select Spells</legend>
+
+    {% if form and selection_rules and spell_data_for_class %}
+        <p>
+            Your class ({{ character_data.get('character_class', 'Unknown Class') }}) can select the following spells at 1st level:
+        </p>
+        <ul>
+            <li>Choose <strong>{{ selection_rules.cantrips_to_select }}</strong> cantrip(s).</li>
+            <li>Choose <strong>{{ selection_rules.level1_to_select }}</strong> 1st-level spell(s).</li>
+        </ul>
+
+        <div style="margin-top: 15px;">
+            {{ form.selected_cantrips.label(class="form-label") }}
+            {% if form.selected_cantrips.errors %}
+                {% for error in form.selected_cantrips.errors %}<span style="color: red;">[{{ error }}]</span>{% endfor %}
+            {% endif %}
+            <div class="checkbox-group" style="margin-top: 5px; padding: 10px; border: 1px solid #eee; max-height: 200px; overflow-y: auto;">
+                {% for subfield in form.selected_cantrips %}
+                    <div>
+                        {{ subfield }} {{ subfield.label.text }}
+                        {% set spell_name_only = subfield.label.text.split(' (')[0] %}
+                        {% for spell_obj in spell_data_for_class.cantrips %}
+                            {% if spell_obj.name == spell_name_only %}
+                                (<a href="https://roll20.net/compendium/dnd5e/Spells:{{ spell_obj.roll20_stub }}" target="_blank">Roll20</a>)
+                                {% break %}
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div style="margin-top: 15px;">
+            {{ form.selected_level1_spells.label(class="form-label") }}
+            {% if form.selected_level1_spells.errors %}
+                {% for error in form.selected_level1_spells.errors %}<span style="color: red;">[{{ error }}]</span>{% endfor %}
+            {% endif %}
+            <div class="checkbox-group" style="margin-top: 5px; padding: 10px; border: 1px solid #eee; max-height: 200px; overflow-y: auto;">
+                {% for subfield in form.selected_level1_spells %}
+                    <div>
+                        {{ subfield }} {{ subfield.label.text }}
+                        {% set spell_name_only = subfield.label.text.split(' (')[0] %}
+                        {% for spell_obj in spell_data_for_class.level1 %}
+                            {% if spell_obj.name == spell_name_only %}
+                                (<a href="https://roll20.net/compendium/dnd5e/Spells:{{ spell_obj.roll20_stub }}" target="_blank">Roll20</a>)
+                                {% break %}
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+    {% else %}
+        {# This part should ideally not be reached if route logic correctly skips non-spellcasters #}
+        <p>Spell selection is not available for your class at this level, or the necessary data is missing.</p>
+    {% endif %}
+
+    <p style="margin-top: 20px;">
+        <a href="https://roll20.net/compendium/dnd5e/Spells%20List" target="_blank">View Full Spells List on Roll20</a>
+    </p>
+
+    {# Display general flashed messages (e.g., for count validation errors) #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <ul class="flashes">
+            {% for category, message in messages %}
+                <li class="{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+        {% endif %}
+    {% endwith %}
+</fieldset>

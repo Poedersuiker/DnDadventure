@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Create New Character - Step {{ current_step }} of {{ total_steps }}</h1>
+
+<form action="{{ url_for('character.create_character_wizard', step=current_step) }}" method="post" novalidate>
+    {{ csrf_token_field() if csrf_token_field else '' }} {# Assuming you have a macro for CSRF or will add later #}
+
+    {% if current_step == 1 %}
+        {% include 'character/_wizard_step1_name.html' %}
+    {% elif current_step == 2 %}
+        {% include 'character/_wizard_step2_race.html' %}
+    {% elif current_step == 3 %}
+        {% include 'character/_wizard_step3_class.html' %}
+    {% elif current_step == 4 %}
+        {% include 'character/_wizard_step4_abilities.html' %}
+    {% elif current_step == 5 %}
+        {% include 'character/_wizard_step5_details.html' %}
+    {% elif current_step == 6 %}
+        {% include 'character/_wizard_step6_skills.html' %}
+    {% elif current_step == 7 %}
+        {% include 'character/_wizard_step7_equipment.html' %}
+    {% elif current_step == 8 %}
+        {% include 'character/_wizard_step8_spells.html' %}
+    {% elif current_step == 9 %}
+        {% include 'character/_wizard_step9_review.html' %}
+    {# Add more steps here with elif current_step == X #}
+    {% else %}
+        <p>Step {{ current_step }} content not defined yet.</p>
+        {% if current_step > total_steps and character_data %}
+            <h2>Review Your Character:</h2>
+            <ul>
+                {% for key, value in character_data.items() %}
+                <li><strong>{{ key|capitalize }}:</strong> {{ value }}</li>
+                {% endfor %}
+            </ul>
+            <p>Character creation complete! (Saving logic not yet implemented)</p>
+        {% endif %}
+    {% endif %}
+
+    <div style="margin-top: 20px;">
+        {% if current_step > 1 %}
+            <button type="submit" name="action" value="previous_step" formaction="{{ url_for('character.create_character_wizard', step=current_step-1) }}" formmethod="get">Previous</button>
+        {% endif %}
+        
+        {% if current_step < total_steps %} {# total_steps is now 9 #}
+            <button type="submit" name="action" value="next_step">Next Step &rarr;</button>
+        {% elif current_step == total_steps %} {# This is step 9 #}
+             <button type="submit" name="action" value="next_step">Finish Character & Save</button>
+        {% else %}
+            {# This case might be for a step beyond total_steps, e.g. if total_steps was not properly updated #}
+            <p><a href="{{ url_for('character.select_character') }}">View Characters</a></p>
+        {% endif %}
+    </div>
+</form>
+
+<hr style="margin-top: 30px;">
+<p><a href="{{ url_for('character.clear_character_creation_session') }}">Clear All Progress & Start Over</a></p>
+
+{% endblock %}
