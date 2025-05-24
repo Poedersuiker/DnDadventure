@@ -4,7 +4,7 @@
 <h1>Create New Character - Step {{ current_step }} of {{ total_steps }}</h1>
 
 <form action="{{ url_for('character.create_character_wizard', step=current_step) }}" method="post" novalidate>
-    {{ csrf_token_field() if csrf_token_field else '' }} {# Assuming you have a macro for CSRF or will add later #}
+    {{ csrf_token() }} 
 
     {% if current_step == 1 %}
         {% include 'character/_wizard_step1_name.html' %}
