@@ -257,6 +257,7 @@ function openTab(evt, tabName) {
 }
 
 const characterId = {{ character.id }}; // Get character ID from Flask
+const characterName = {{ character.name | tojson }}; // Get character name for JS
 
 async function sendMessage() {
     var input = document.getElementById("user-action-input");
@@ -286,7 +287,7 @@ async function sendMessage() {
             headers: {
                 'Content-Type': 'application/json',
                 // Include CSRF token if you have CSRF protection enabled globally
-                'X-CSRFToken': '{{ csrf_token() }}' // Example if using Flask-WTF CSRF
+                'X-CSRFToken': '{{ csrf_token() | default("", true) }}' // Example if using Flask-WTF CSRF
             },
             body: JSON.stringify({ message: userMessage })
         });
@@ -464,7 +465,7 @@ document.addEventListener('DOMContentLoaded', () => {
 async function performCharacterAction(payload) {
     var history = document.getElementById("conversation-history");
     var rollingP = document.createElement("p");
-    rollingP.innerHTML = `<em>${character.name} is performing an action: ${payload.skill_name || payload.action_type}...</em>`;
+    rollingP.innerHTML = `<em>${characterName} is performing an action: ${payload.skill_name || payload.action_type}...</em>`;
     history.appendChild(rollingP);
     history.scrollTop = history.scrollHeight;
 
@@ -473,7 +474,7 @@ async function performCharacterAction(payload) {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRFToken': '{{ csrf_token() }}' // Make sure this token is available
+            'X-CSRFToken': '{{ csrf_token() | default("", true) }}' // Make sure this token is available
         }
     };
 
