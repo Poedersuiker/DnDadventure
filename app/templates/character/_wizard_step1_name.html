@@ -1,0 +1,18 @@
+{# Step 1: Character Name #}
+<fieldset>
+    <legend>Step 1: Name Your Character</legend>
+    <p>
+        <label for="character_name">Character Name:</label><br>
+        <input type="text" id="character_name" name="character_name" 
+               value="{{ character_data.get('name', '') }}" 
+               required 
+               size="30">
+    </p>
+    {% with messages = get_flashed_messages(category_filter=["error"]) %}
+        {% if messages %}
+            {% for message in messages %}
+                <p style="color: red;">{{ message }}</p>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</fieldset>

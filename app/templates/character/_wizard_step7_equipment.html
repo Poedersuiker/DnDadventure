@@ -1,0 +1,36 @@
+{# Step 7: Equipment - Uses EquipmentForm passed as 'form' #}
+<fieldset>
+    <legend>Step 7: Character Equipment</legend>
+
+    <p>Describe your character's starting equipment. You can consult the Player's Handbook for typical starting packages based on your class and background.</p>
+    
+    {% if form %}
+        <p>
+            {{ form.inventory.label(class="form-label") }}<br>
+            {{ form.inventory(class="form-textarea", rows=10, style="width: 90%;") }}<br> {# Added style for width #}
+            {% for error in form.inventory.errors %}
+                <span style="color: red;">[{{ error }}]</span><br>
+            {% endfor %}
+        </p>
+    {% else %}
+        <p>Error: Equipment form not available.</p>
+        {# Fallback for manual input if form object is not passed #}
+        <label for="inventory_fallback">Equipment and Inventory:</label><br>
+        <textarea id="inventory_fallback" name="inventory" rows="10" style="width: 90%;">{{ character_data.get('inventory', '') }}</textarea>
+    {% endif %}
+
+    <p style="margin-top: 20px;">
+        <a href="https://roll20.net/compendium/dnd5e/Equipment" target="_blank">Learn about Equipment on Roll20</a>
+    </p>
+    
+    {# Display general flashed messages if not specific to a field or if form has issues #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                {% if category == 'error' and not form.inventory.errors %} {# Show general errors if not field-specific #}
+                    <p style="color: red;">{{ message }}</p>
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</fieldset>

@@ -12,7 +12,7 @@ def index():
             return redirect(url_for('character.select_character'))
         else:
             # No characters, redirect to creation or show a message
-            return redirect(url_for('character.create_character')) # Or a different page
+            return redirect(url_for('character.create_character_wizard')) # Updated to point to the new wizard
     # User is not logged in, show public page or redirect to login
     # For now, let's redirect to login as an example
     return redirect(url_for('auth.login'))

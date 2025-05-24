@@ -132,6 +132,94 @@ nav a:hover {
     background-color: #4cae4c;
 }
 
+/* Character Sheet Specific - Extended */
+.char-sheet-section {
+    margin-bottom: 20px; /* Space below each section */
+    padding: 15px;
+    background-color: #ffffff; /* Light background for sections */
+    border: 1px solid #e0e0e0; /* Subtle border for sections */
+    border-radius: 5px;
+}
+
+.char-sheet-section h3 { /* Style for subheadings within sections */
+    margin-top: 0;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+    color: #333;
+}
+
+.ability-score-box {
+    background-color: #f9f9f9;
+    border: 1px solid #ccc;
+    padding: 10px;
+    border-radius: 5px;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.ability-score-box h4 {
+    margin-top: 0;
+    margin-bottom: 5px;
+    font-size: 1em;
+    color: #555;
+}
+
+.ability-score-box .score {
+    font-size: 2em; /* Prominent score */
+    font-weight: bold;
+    color: #333;
+    margin: 5px 0;
+}
+
+.ability-score-box .modifier {
+    font-size: 1.2em; /* Smaller modifier */
+    color: #666;
+    margin-top: 0;
+}
+
+.char-sheet-list {
+    list-style-type: none; /* Remove default bullet points */
+    padding-left: 0; /* Remove default padding */
+    margin-top: 0;
+}
+
+.char-sheet-list li {
+    padding: 6px 0; /* Vertical padding for list items */
+    border-bottom: 1px solid #f0f0f0; /* Separator for list items */
+}
+.char-sheet-list li:last-child {
+    border-bottom: none; /* No border for the last item */
+}
+
+/* skills-grid specifically for the UL element containing skill list items */
+.skills-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); /* Responsive 2-3 columns */
+    gap: 5px 15px; /* Row and column gap */
+    padding-left: 0;
+    list-style-type: none;
+}
+.skills-grid li {
+    background-color: #fdfdfd;
+    padding: 8px;
+    border-radius: 3px;
+    border: 1px solid #efefef;
+}
+
+/* Ensure pre tags wrap text within character sheet sections */
+.char-sheet-section pre {
+    white-space: pre-wrap; /* Allow text wrapping */
+    word-wrap: break-word; /* Break long words if necessary */
+    background-color: #f9f9f9;
+    padding: 10px;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    max-height: 200px; /* Optional: limit height and add scroll */
+    overflow-y: auto;   /* Optional: for scrollable pre */
+}
+
+
 /* Forms styling (general for login, register, create character) */
 form {
     margin-top: 1rem;

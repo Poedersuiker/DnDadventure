@@ -1,0 +1,82 @@
+{# Step 6: Skills & Proficiencies - Uses SkillsProficienciesForm passed as 'form' #}
+{# 'class_info' should also be passed in the context #}
+<fieldset>
+    <legend>Step 6: Skills & Proficiencies</legend>
+
+    {% if character_data.character_class and class_info %}
+        <h3>Proficiencies for {{ character_data.character_class }}</h3>
+        
+        <h4>Saving Throws</h4>
+        <p>Your class grants proficiency in the following saving throws: 
+            <strong>
+            {% if class_info.saves %}
+                {{ class_info.saves|map('capitalize')|join(', ') }}
+            {% else %}
+                None specified for this class.
+            {% endif %}
+            </strong>
+        </p>
+        <p><small><em>(These will be automatically applied to your character.)</em></small></p>
+
+        <hr>
+        <h4>Skill Proficiencies</h4>
+        <p>
+            Your class ({{ character_data.character_class }}) allows you to choose 
+            <strong>{{ class_info.skills_count }}</strong> skill(s).
+        </p>
+        {% if class_info.skills_options == "any" %}
+            <p>You can choose any {{ class_info.skills_count }} from the list below.</p>
+        {% elif class_info.skills_options %}
+            <p>Choose from the following list: 
+                <em>
+                {% set display_skills = [] %}
+                {% for skill_key in class_info.skills_options %}
+                    {# Attempt to find the display name from ALL_SKILLS based on the short key #}
+                    {% for prof_key, display_name in ALL_SKILLS_FOR_TEMPLATE if prof_key == "prof_" + skill_key %}
+                        {% set _ = display_skills.append(display_name.split(' (')[0]) %}
+                    {% endfor %}
+                {% endfor %}
+                {{ display_skills|join(', ') if display_skills else "Specific list not available, choose any." }}
+                </em>
+            </p>
+        {% else %}
+            <p>This class does not grant additional skill choices beyond defaults (if any).</p>
+        {% endif %}
+        
+        {% if form %}
+            <div class="char-sheet-grid skills-grid" style="grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); margin-top:15px;">
+                {# ALL_SKILLS_FOR_TEMPLATE should be passed to the template if used here, or iterate form fields #}
+                {# Iterating form fields is more direct if their order is acceptable #}
+                {% for field in form if field.type == 'BooleanField' %}
+                    <div class="skill-choice">
+                        {{ field(class="form-checkbox") }} 
+                        {{ field.label }}
+                        {% for error in field.errors %}
+                            <span style="color: red;">[{{ error }}]</span>
+                        {% endfor %}
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p>Error: Skills selection form not available.</p>
+        {% endif %}
+        
+    {% else %}
+        <p>Class information not found. Please complete previous steps.</p>
+    {% endif %}
+
+    <p style="margin-top: 20px;">
+        <a href="https://roll20.net/compendium/dnd5e/Skills" target="_blank">Learn more about Skills on Roll20</a>
+    </p>
+
+    {# Display general flashed messages, especially for custom validation errors from the route #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <ul class="flashes">
+            {% for category, message in messages %}
+                <li class="{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+        {% endif %}
+    {% endwith %}
+</fieldset>

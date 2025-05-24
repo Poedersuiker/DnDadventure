@@ -113,6 +113,7 @@ class Character(db.Model): # type: ignore
 
     inventory = db.Column(db.Text) # Can store JSON or delimited text
     proficiencies_armor_weapons_tools = db.Column(db.Text) # For armor, weapon, and tool proficiencies
+    spells_known = db.Column(db.Text, nullable=True) # For spells known by the character
     notes = db.Column(db.Text)
     adventure_log = db.relationship('AdventureLogEntry', backref='character_owner', lazy='dynamic', order_by='AdventureLogEntry.timestamp.asc()') # type: ignore
 
