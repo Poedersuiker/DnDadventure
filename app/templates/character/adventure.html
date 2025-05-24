@@ -1,245 +1,26 @@
 {% extends "base.html" %}
 
 {% block content %}
-<style>
-    /* Basic Tab Styling */
-    .tab-container {
-        width: 100%;
-        margin-top: 20px;
-    }
-    .tab-nav {
-        overflow: hidden;
-        border-bottom: 1px solid #ccc;
-    }
-    .tab-nav button {
-        background-color: inherit;
-        float: left;
-        border: none;
-        outline: none;
-        cursor: pointer;
-        padding: 14px 16px;
-        transition: 0.3s;
-        font-size: 17px;
-    }
-    .tab-nav button:hover {
-        background-color: #ddd;
-    }
-    .tab-nav button.active {
-        background-color: #ccc;
-    }
-    .tab-content {
-        display: none;
-        padding: 20px;
-        border-top: none;
-    }
-    .tab-content.active {
-        display: block;
-    }
-    .char-sheet-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 10px;
-    }
-    .char-sheet-grid div {
-        border: 1px solid #eee;
-        padding: 10px;
-    }
-    .actions-placeholder button, .actions-placeholder select {
-        margin-right: 5px;
-        margin-bottom: 5px;
-    }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/adventure.css') }}">
 
-<h1>Adventure with {{ character.name }}</h1>
+<h1>Adventure with {{ character.name if character else 'Test Character' }}</h1>
 
 <div class="tab-container">
     <div class="tab-nav">
-        <button class="tab-button active" onclick="openTab(event, 'AdventureLog')">Adventure Log</button>
-        <button class="tab-button" onclick="openTab(event, 'CharacterSheet')">Character Sheet</button>
+        <button class="tab-button active" id="tab-adventure-log">Adventure Log</button>
+        <button class="tab-button" id="tab-character-sheet">Character Sheet</button>
     </div>
 
     <div id="AdventureLog" class="tab-content active">
-        <h2>Story / Chat</h2>
-        <div id="conversation-history" style="height: 300px; border: 1px solid #ccc; overflow-y: scroll; padding:10px; margin-bottom:10px;">
-            <p><em>The adventure begins...</em></p>
-            <!-- Conversation history will appear here -->
-        </div>
-        <input type="text" id="user-action-input" placeholder="What do you do?" style="width: 80%; padding: 10px;">
-        <button onclick="sendMessage()">Send</button> {# Placeholder #}
+        <h2>Story / Chat (Simplified)</h2>
+        <p>Adventure log content will appear here.</p>
     </div>
 
     <div id="CharacterSheet" class="tab-content">
-        <h2>{{ character.name }} - Character Sheet</h2>
-        <div class="char-sheet-grid">
-            <div><strong>Name:</strong> {{ character.name }}</div>
-            <div><strong>Race:</strong> {{ character.race }}</div>
-            <div><strong>Class:</strong> {{ character.character_class }}</div>
-            <div><strong>Level:</strong> {{ character.level }}</div>
-            <div>
-                <strong>Experience Points:</strong> {{ character.experience_points }} / 
-                {% if character.level < 20 %}
-                    {{ xp_for_next_level }}
-                {% else %}
-                    Max Level
-                {% endif %}
-            </div>
-            <div><strong>Alignment:</strong> {{ character.alignment or 'N/A' }}</div>
-            <div><strong>Background:</strong> {{ character.background or 'N/A' }}</div>
-        </div>
-        {% if character.level < 20 %}
-        <div>
-            {% if can_level_up %}
-            <form action="{{ url_for('character.level_up_character', character_id=character.id) }}" method="post" style="margin-top: 10px;">
-                {# Assuming CSRF is handled globally or not strictly required for this internal tool path #}
-                {# If using Flask-WTF globally, you'd need: {{ form.csrf_token }} if a form object is passed #}
-                {# For a simple button, if CSRF is needed, it might be configured via headers or a hidden input #}
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
-                <button type="submit" class="level-up-button">Level Up!</button>
-                <p><small>Congratulations! You have enough XP to advance to Level {{ character.level + 1 }}.</small></p>
-            </form>
-            {% else %}
-            <p style="margin-top: 10px;"><small>XP until next level ({{ character.level + 1 }}): {{ xp_for_next_level - character.experience_points }}</small></p>
-            {% endif %}
-        </div>
-        {% endif %}
-        <hr>
-        <h3>Combat Stats</h3>
-        <div class="char-sheet-grid">
-            <div><strong>HP:</strong> {{ character.current_hp }} / {{ character.max_hp }} {% if character.temporary_hp > 0 %}(+{{ character.temporary_hp }} Temp HP){% endif %}</div>
-            <div><strong>Armor Class:</strong> {{ character.armor_class }}</div>
-            <div class="rollable-stat" data-rollable="true" data-roll-type="skill_check" data-stat-name="dexterity" data-skill-name="Initiative" title="Roll Initiative">
-                <strong>Initiative:</strong> {{ '%+d' | format(character.initiative_bonus) }}
-            </div>
-            <div><strong>Speed:</strong> {{ character.speed }} ft.</div>
-            <div><strong>Proficiency Bonus:</strong> {{ '%+d' | format(character.get_proficiency_bonus()) }}</div>
-            <div><strong>Hit Dice:</strong> {{ character.hit_dice_current }}d{{ character.hit_dice_type }} / {{ character.hit_dice_max }}d{{ character.hit_dice_type }}</div>
-            <div><strong>Death Saves:</strong> Successes: {{ character.death_saves_successes }}/3, Failures: {{ character.death_saves_failures }}/3</div>
-        </div>
-        <hr>
-        <h3>Ability Scores</h3>
-        <div class="char-sheet-grid">
-            {% for ability_name_full in ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] %}
-            <div class="rollable-stat" data-rollable="true" data-roll-type="ability_check" data-stat-name="{{ ability_name_full }}" data-skill-name="{{ ability_name_full.capitalize() }} Check" title="Roll {{ ability_name_full.capitalize() }} Check">
-                <strong>{{ ability_name_full[:3].upper() }}:</strong> {{ getattr(character, ability_name_full) }} ({{ '%+d' | format(character.get_modifier_for_ability(ability_name_full)) }})
-            </div>
-            {% endfor %}
-        </div>
-        <hr>
-        <h3>Saving Throws</h3>
-        <div class="char-sheet-grid">
-            {% for ability_name_full in ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] %}
-            <div class="rollable-stat" data-rollable="true" data-roll-type="saving_throw" data-stat-name="{{ ability_name_full }}" data-skill-name="{{ ability_name_full.capitalize() }} Save" title="Roll {{ ability_name_full.capitalize() }} Save">
-                <strong>{{ ability_name_full.capitalize() }}:</strong> 
-                {{ '%+d' | format(character.get_saving_throw_bonus(ability_name_full)) }}
-                {% if getattr(character, 'prof_' + ability_name_full + '_save') %}
-                    <span class="proficient-indicator" title="Proficient">(P)</span>
-                {% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        <hr>
-        <h3>Skills</h3>
-        <div class="char-sheet-grid skills-grid"> 
-            {% set skills_data = {
-                'Athletics': {'ability': 'strength', 'attr': 'athletics'},
-                'Acrobatics': {'ability': 'dexterity', 'attr': 'acrobatics'}, 
-                'Sleight of Hand': {'ability': 'dexterity', 'attr': 'sleight_of_hand'}, 
-                'Stealth': {'ability': 'dexterity', 'attr': 'stealth'},
-                'Arcana': {'ability': 'intelligence', 'attr': 'arcana'}, 
-                'History': {'ability': 'intelligence', 'attr': 'history'}, 
-                'Investigation': {'ability': 'intelligence', 'attr': 'investigation'}, 
-                'Nature': {'ability': 'intelligence', 'attr': 'nature'}, 
-                'Religion': {'ability': 'intelligence', 'attr': 'religion'},
-                'Animal Handling': {'ability': 'wisdom', 'attr': 'animal_handling'}, 
-                'Insight': {'ability': 'wisdom', 'attr': 'insight'}, 
-                'Medicine': {'ability': 'wisdom', 'attr': 'medicine'}, 
-                'Perception': {'ability': 'wisdom', 'attr': 'perception'}, 
-                'Survival': {'ability': 'wisdom', 'attr': 'survival'},
-                'Deception': {'ability': 'charisma', 'attr': 'deception'}, 
-                'Intimidation': {'ability': 'charisma', 'attr': 'intimidation'}, 
-                'Performance': {'ability': 'charisma', 'attr': 'performance'}, 
-                'Persuasion': {'ability': 'charisma', 'attr': 'persuasion'}
-            } %}
-            {% for skill_name_display, skill_info in skills_data.items() %}
-            <div class="rollable-stat" data-rollable="true" data-roll-type="skill_check" data-stat-name="{{ skill_info.attr }}" data-skill-name="{{ skill_name_display }}" title="Roll {{ skill_name_display }}">
-                <strong>{{ skill_name_display }}</strong> ({{ skill_info.ability[:3].upper() }}):
-                {{ '%+d' | format(character.get_skill_bonus(skill_info.attr)) }}
-                {% if getattr(character, 'prof_' + skill_info.attr) %}
-                    <span class="proficient-indicator" title="Proficient">(P)</span>
-                {% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        <hr>
-        <h3>Other Information</h3>
-        <div class="char-sheet-grid">
-            <div><strong>Passive Perception:</strong> {{ character.get_passive_perception() }}</div>
-        </div>
-        <div>
-            <strong>Armor, Weapon, & Tool Proficiencies:</strong>
-            <p style="white-space: pre-wrap;">{{ character.proficiencies_armor_weapons_tools or 'None listed' }}</p>
-        </div>
-        <hr>
-        <h3>Inventory</h3>
-        <p style="white-space: pre-wrap;">{{ character.inventory or 'Empty' }}</p>
-        <hr>
-        <h3>Notes</h3>
-        <p style="white-space: pre-wrap;">{{ character.notes or 'No notes' }}</p>
-        <hr>
-        <h3>Actions</h3>
-        <div class="actions-placeholder">
-            <button id="roll-attack" data-rollable="true" data-roll-type="attack" data-skill-name="Attack" title="Make an attack roll">Attack Roll</button> 
-            
-            <div style="margin-top: 10px; border: 1px solid #ddd; padding: 10px; border-radius: 5px;">
-                <h4>Damage Roll:</h4>
-                <input type="number" id="damage-num-dice-input" value="1" style="width: 50px;" title="Number of dice">
-                <span> d </span>
-                <input type="number" id="damage-dice-type-input" value="6" style="width: 50px;" title="Type of dice (e.g., 6 for d6)">
-                <span> + Mod: </span>
-                <select id="damage-modifier-stat-select" title="Ability score modifier for damage">
-                    <option value="none">None</option>
-                    <option value="strength">Strength</option>
-                    <option value="dexterity">Dexterity</option>
-                </select>
-                <button id="roll-damage" data-rollable="true" data-roll-type="damage" data-skill-name="Damage" title="Roll damage with specified dice and modifier">Roll Damage</button>
-            </div>
-        </div>
+        <h2>Character Sheet (Simplified)</h2>
+        <p>Character sheet content will appear here.</p>
     </div>
 </div>
-<style>
-    .proficient-indicator {
-        color: #38a169; /* A green color */
-        font-weight: bold;
-        cursor: default; 
-    }
-    .actions-placeholder div { 
-        margin-bottom: 5px;
-    }
-    .rollable-stat { 
-        cursor: pointer;
-        border-radius: 4px;
-        transition: background-color 0.2s ease-in-out;
-    }
-    .rollable-stat:hover {
-        background-color: #f0f0f0; 
-    }
-    .level-up-button {
-        background-color: #4CAF50; /* Green */
-        border: none;
-        color: white;
-        padding: 10px 20px;
-        text-align: center;
-        text-decoration: none;
-        display: inline-block;
-        font-size: 16px;
-        margin: 4px 2px;
-        cursor: pointer;
-        border-radius: 5px;
-    }
-    .level-up-button:hover {
-        background-color: #45a049;
-    }
-</style>
 
 <script>
 function openTab(evt, tabName) {
@@ -248,299 +29,49 @@ function openTab(evt, tabName) {
     for (i = 0; i < tabcontent.length; i++) {
         tabcontent[i].style.display = "none";
     }
-    tabbuttons = document.getElementsByClassName("tab-button");
+    tabbuttons = document.getElementsByClassName("tab-button"); // Ensure this class matches buttons
     for (i = 0; i < tabbuttons.length; i++) {
         tabbuttons[i].className = tabbuttons[i].className.replace(" active", "");
     }
-    document.getElementById(tabName).style.display = "block";
-    evt.currentTarget.className += " active";
-}
-
-const characterId = {{ character.id }}; // Get character ID from Flask
-
-async function sendMessage() {
-    var input = document.getElementById("user-action-input");
-    var history = document.getElementById("conversation-history");
-    var userMessage = input.value.trim();
-
-    if (userMessage === "") {
-        return; // Don't send empty messages
+    
+    var selectedTabContent = document.getElementById(tabName);
+    if (selectedTabContent) {
+        selectedTabContent.style.display = "block";
+    } else {
+        console.error("Tab content not found for tabName:", tabName);
     }
 
-    // Display user's message
-    var userP = document.createElement("p");
-    userP.innerHTML = "<strong>You:</strong> " + userMessage;
-    history.appendChild(userP);
-    input.value = ""; // Clear input field
-    history.scrollTop = history.scrollHeight;
-
-    // Display thinking message
-    var thinkingP = document.createElement("p");
-    thinkingP.innerHTML = "<em>DM is thinking...</em>";
-    history.appendChild(thinkingP);
-    history.scrollTop = history.scrollHeight;
-
-    try {
-        const response = await fetch(`/character/adventure/${characterId}/chat`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                // Include CSRF token if you have CSRF protection enabled globally
-                'X-CSRFToken': '{{ csrf_token() }}' // Example if using Flask-WTF CSRF
-            },
-            body: JSON.stringify({ message: userMessage })
-        });
-
-        history.removeChild(thinkingP); // Remove thinking message
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => null); // Try to parse error JSON
-            let errorMessage = `Error: ${response.status} ${response.statusText}`;
-            if (errorData && errorData.reply) {
-                errorMessage = errorData.reply; // Use server's error message if available
-            } else if (errorData && errorData.error) {
-                 errorMessage = errorData.error;
-            }
-            displayError(errorMessage);
-            return;
-        }
-
-        const data = await response.json();
-        var geminiP = document.createElement("p");
-        geminiP.innerHTML = "<strong>DM:</strong> " + (data.reply || "The DM is silent.");
-        history.appendChild(geminiP);
-
-    } catch (error) {
-        history.removeChild(thinkingP); // Remove thinking message
-        console.error('Fetch error:', error);
-        displayError("Failed to connect to the Dungeon Master. Check your connection or try again later.");
-    } finally {
-        history.scrollTop = history.scrollHeight; // Scroll to bottom
+    // Ensure 'evt.currentTarget' is valid; if called directly, it might not be.
+    if (evt && evt.currentTarget) {
+        evt.currentTarget.className += " active";
+    } else {
+        // If called without an event (e.g. manually setting default tab), find the button by id/data-attribute
+        // For this simplified version, we'll assume direct clicks.
+        // Or, find the button that corresponds to tabName and make it active.
+        // Example: document.querySelector(`button[onclick*="${tabName}"]`).classList.add('active');
     }
 }
 
-function displayError(message) {
-    var history = document.getElementById("conversation-history");
-    var errorP = document.createElement("p");
-    errorP.innerHTML = "<strong style='color: red;'>Error:</strong> " + message;
-    history.appendChild(errorP);
-    history.scrollTop = history.scrollHeight;
-}
-
-// Allow sending message with Enter key
-document.getElementById("user-action-input").addEventListener("keypress", function(event) {
-    if (event.key === "Enter") {
-        event.preventDefault(); // Prevent default form submission if it were in a form
-        sendMessage();
-    }
-});
-
-// Initial message to kick things off (optional, can be user-initiated)
-window.onload = function() {
-    var history = document.getElementById("conversation-history");
-    var initialP = document.createElement("p");
-    initialP.innerHTML = "<em>The adventure begins... Type 'start adventure' or describe your first action.</em>";
-    // Display initial message only if no history is loaded from DB
-    if (!document.querySelector("#conversation-history .log-entry")) {
-        var initialP = document.createElement("p");
-        initialP.classList.add("system-message"); // Add class for styling
-        initialP.innerHTML = "<em>The adventure begins... Type 'start adventure' or describe your first action.</em>";
-        history.appendChild(initialP);
-    }
-    history.scrollTop = history.scrollHeight;
-};
-
-function formatLogEntry(entry) {
-    let html = `<p class="log-entry ${entry.entry_type}" data-entry-id="${entry.id}">`;
-    let actorPrefix = "";
-
-    if (entry.actor_name) {
-        actorPrefix = `<strong>${entry.actor_name}:</strong> `;
-    } else if (entry.entry_type === 'gemini_response') {
-        actorPrefix = `<strong>DM:</strong> `;
-    } else if (entry.entry_type === 'user_message') {
-        actorPrefix = `<strong>You:</strong> `;
-    }
-
-
-    html += actorPrefix + entry.message;
-    if (entry.roll_details && entry.entry_type === 'action_roll') {
-        try {
-            const details = JSON.parse(entry.roll_details_json || entry.roll_details); // Handle both direct JSON and stringified
-            html += ` <small>(Roll: ${details.total_with_modifier} | Details: ${details.description} -> ${JSON.stringify(details.rolls)})</small>`;
-        } catch (e) {
-            console.warn("Could not parse roll_details JSON:", entry.roll_details_json || entry.roll_details);
-        }
-    }
-    html += `</p>`;
-    return html;
-}
-
-
-// --- Character Sheet Actions ---
 document.addEventListener('DOMContentLoaded', () => {
-    const characterSheetContainer = document.getElementById('CharacterSheet');
-    if (!characterSheetContainer) {
-        console.warn("CharacterSheet container not found for event listener setup.");
-        return;
+    console.log('Simplified adventure.html script loaded.');
+
+    const advLogButton = document.getElementById('tab-adventure-log');
+    const charSheetButton = document.getElementById('tab-character-sheet');
+
+    if (advLogButton) {
+        advLogButton.onclick = function(event) { openTab(event, 'AdventureLog'); };
+    } else {
+        console.error("Adventure Log tab button not found");
     }
 
-    characterSheetContainer.addEventListener('click', async function(event) {
-        let target = event.target;
-        // Traverse up if the click was on a child element (e.g., <strong> inside the div)
-        while (target != null && !target.matches('[data-rollable="true"]')) {
-            if (target === characterSheetContainer) { // Stop if we reach the container itself
-                target = null;
-                break;
-            }
-            target = target.parentElement;
-        }
-
-        if (!target || !target.dataset.rollable) {
-            return; // Click was not on a rollable element or its child
-        }
-
-        const rollType = target.dataset.rollType;
-        let payload = {
-            action_type: rollType,
-            stat_name: target.dataset.statName || '', 
-            skill_name: target.dataset.skillName || '', 
-            dice_type: 0,
-            num_dice: 0,
-        };
-        
-        // Ensure skill_name is set for display purposes, default if necessary
-        if (!payload.skill_name) {
-            if (rollType === 'ability_check') {
-                payload.skill_name = (payload.stat_name.charAt(0).toUpperCase() + payload.stat_name.slice(1) || "Ability") + " Check";
-            } else if (rollType === 'saving_throw') {
-                payload.skill_name = (payload.stat_name.charAt(0).toUpperCase() + payload.stat_name.slice(1) || "Save") + " Saving Throw";
-            } else if (rollType === 'skill_check') {
-                 // For skill checks, stat_name IS the skill identifier (e.g. "athletics")
-                 // skill_name should be the display name (e.g. "Athletics")
-                 // This should be correctly set by data-skill-name, but as a fallback:
-                payload.skill_name = (payload.stat_name.charAt(0).toUpperCase() + payload.stat_name.slice(1) || "Skill Check");
-            } else {
-                payload.skill_name = rollType.charAt(0).toUpperCase() + rollType.slice(1); // Default for attack/damage
-            }
-        }
-
-
-        if (rollType === 'damage') {
-            try {
-                payload.dice_type = parseInt(document.getElementById('damage-dice-type-input').value);
-                payload.num_dice = parseInt(document.getElementById('damage-num-dice-input').value);
-                const damageStatModifier = document.getElementById('damage-modifier-stat-select').value;
-                payload.stat_name = damageStatModifier === 'none' ? '' : damageStatModifier; 
-
-                if (isNaN(payload.dice_type) || payload.dice_type <= 0 || 
-                    isNaN(payload.num_dice) || payload.num_dice <= 0) {
-                    alert('Please enter valid numbers for dice type and number of dice for damage roll.');
-                    return;
-                }
-            } catch (e) {
-                alert('Invalid input for damage roll: ' + e.message); 
-                return;
-            }
-        } else if (rollType === 'ability_check' || rollType === 'saving_throw' || rollType === 'skill_check') {
-            // For skill_check, stat_name from data-stat-name IS the skill identifier (e.g. "athletics", "stealth")
-            // For ability_check and saving_throw, stat_name is the ability (e.g. "strength")
-            if (!payload.stat_name) {
-                console.error("Stat name (ability or skill identifier) missing for roll type: " + rollType, target.dataset);
-                alert("Error: Stat name or skill identifier is missing for this roll.");
-                return;
-            }
-        } else if (rollType !== 'attack') { // Attack roll doesn't need further client-side validation on stat_name here
-            console.warn("Unknown or unhandled roll type for detailed validation: ", rollType);
-            // If it's not one of the above and not 'attack', it might be an issue.
-            // However, we allow it to proceed to backend for now.
-        }
-        
-        await performCharacterAction(payload);
-    });
-});
-
-async function performCharacterAction(payload) {
-    var history = document.getElementById("conversation-history");
-    
-    // Display "Rolling..." message in chat log
-    var rollingP = document.createElement("p");
-    rollingP.innerHTML = `<em>${character.name} is performing an action: ${payload.skill_name || payload.action_type}...</em>`;
-    history.appendChild(rollingP);
-    history.scrollTop = history.scrollHeight;
-
-    try {
-        const response = await fetch(`/character/adventure/${characterId}/roll_action`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token() }}' // If CSRF is used
-            },
-            body: JSON.stringify(payload)
-        });
-
-        history.removeChild(rollingP); // Remove "Rolling..." message
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: "Unknown error occurred" }));
-            displayError(errorData.error || `Action failed: ${response.statusText}`);
-            return;
-        }
-
-        const data = await response.json();
-        var actionResultP = document.createElement("p");
-        actionResultP.innerHTML = "<strong>Action:</strong> " + (data.message || "Action performed.");
-        if (data.roll_details) {
-            actionResultP.innerHTML += ` <small>(Details: ${JSON.stringify(data.roll_details.rolls)} -> Total: ${data.roll_details.total_with_modifier})</small>`;
-        }
-        history.appendChild(actionResultP);
-
-    } catch (error) {
-        history.removeChild(rollingP); // Remove "Rolling..." message
-        console.error('Action Fetch error:', error);
-        displayError("Failed to perform action. Check connection or try again.");
-    } finally {
-        history.scrollTop = history.scrollHeight; // Scroll to bottom
+    if (charSheetButton) {
+        charSheetButton.onclick = function(event) { openTab(event, 'CharacterSheet'); };
+    } else {
+        console.error("Character Sheet tab button not found");
     }
-}
 
-    // This helper function to add IDs is no longer needed as elements are directly identified
-    // or handled by the main event listener on CharacterSheet.
-    
-    // Load existing log entries
-    const historyContainer = document.getElementById("conversation-history");
-    {% if log_entries %}
-        {% for entry in log_entries %}
-            const entryData = {
-                id: {{ entry.id }},
-                entry_type: "{{ entry.entry_type }}",
-                message: {{ entry.message | tojson | safe }}, // Use tojson for proper escaping
-                actor_name: "{{ entry.actor_name or '' }}",
-                roll_details_json: {{ entry.roll_details | tojson | safe if entry.roll_details else 'null' }}
-            };
-            historyContainer.innerHTML += formatLogEntry(entryData);
-        {% endfor %}
-        historyContainer.scrollTop = historyContainer.scrollHeight; // Scroll to bottom after loading
-    {% endif %}
-
+    // Optionally, open the first tab by default if not handled by CSS 'active' class alone
+    // openTab(null, 'AdventureLog'); // Call without event if needed, ensure openTab handles null event
 });
 </script>
-<style>
-    .log-entry.user_message {
-        text-align: left; /* Or right, depending on preference */
-        color: blue; /* Example styling */
-    }
-    .log-entry.gemini_response {
-        color: green; /* Example styling */
-    }
-    .log-entry.action_roll {
-        color: purple; /* Example styling */
-        font-style: italic;
-    }
-    .log-entry.system-message {
-        color: #555;
-        font-style: italic;
-        text-align: center;
-    }
-</style>
 {% endblock %}

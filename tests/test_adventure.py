@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from bs4 import BeautifulSoup 
+import json # Added import for json
 from tests.base_test import BaseTestCase
 from app.models import User, Character, AdventureLogEntry
 from app import db
@@ -84,102 +85,122 @@ class AdventureTestCase(BaseTestCase):
             roll_dice(sides=6, num_dice=0)
 
     # --- Test Character Action Rolls (Endpoint) ---
-    def test_roll_action_skill_check_dexterity(self):
+    def test_roll_skill_check_acrobatics_dexterity(self): # Renamed for clarity
         csrf_token = self._get_csrf_token()
-        payload = {'action_type': 'skill_check', 'stat_name': 'dexterity', 'skill_name': 'Acrobatics'}
+        # Payload for new specific endpoint might be empty if all info is in URL
         response = self.client.post(
-            f'/character/adventure/{self.character_id}/roll_action', 
-            json=payload,
+            f'/character/adventure/{self.character_id}/roll_skill_check/acrobatics/dexterity', 
+            json={}, # Empty payload
             headers={'X-CSRFToken': csrf_token}
         )
         self.assertEqual(response.status_code, 200)
         json_data = response.get_json()
         self.assertIn('message', json_data)
         self.assertIn('roll_details', json_data)
-        self.assertIn(f'{self.character.name} attempts a Acrobatic', json_data['message'])
-        # Dexterity mod for 15 is +2
-        expected_modifier = self.character.get_modifier_for_ability('dexterity') # Should be +2
+        # Message format from _log_and_respond: "{name} attempts a {action} check: {total} ({desc})"
+        self.assertIn(f'{self.character.name} attempts a Acrobatics check:', json_data['message'])
+        expected_modifier = self.character.get_skill_bonus('acrobatics') # Uses combined skill bonus
         self.assertEqual(json_data['roll_details']['modifier'], expected_modifier)
         
-        log_entry = AdventureLogEntry.query.filter_by(character_id=self.character_id, entry_type="action_roll").first()
+        log_entry = AdventureLogEntry.query.filter_by(character_id=self.character_id, entry_type="action_roll").order_by(AdventureLogEntry.id.desc()).first()
         self.assertIsNotNone(log_entry)
-        self.assertIn('Acrobatics', log_entry.message)
-        self.assertIn(str(expected_modifier), log_entry.roll_details) # Modifier should be in the details
+        self.assertIn('Acrobatics check', log_entry.message) # Check action name in log
+        roll_details_json = json.loads(log_entry.roll_details)
+        self.assertEqual(roll_details_json['modifier'], expected_modifier)
 
-    def test_roll_action_attack_roll(self):
+
+    def test_roll_attack_roll_endpoint(self): # Renamed for clarity
         csrf_token = self._get_csrf_token()
-        # Default attack uses strength (14 -> +2 mod)
-        expected_modifier = self.character.get_modifier_for_ability('strength') # Should be +2
+        # Default attack: Str (14 -> +2 mod) + Prof (L1 -> +2) = +4
+        expected_modifier = self.character.get_modifier_for_ability('strength') + self.character.get_proficiency_bonus()
         response = self.client.post(
-            f'/character/adventure/{self.character_id}/roll_action', 
-            json={'action_type': 'attack'},
+            f'/character/adventure/{self.character_id}/roll_attack', 
+            json={}, # Empty payload for this specific route
             headers={'X-CSRFToken': csrf_token}
         )
         self.assertEqual(response.status_code, 200)
         json_data = response.get_json()
-        self.assertIn(f'{self.character.name} attacks!', json_data['message'])
+        # Message format: "{name} attacks! Roll: {total} ({desc})"
+        self.assertIn(f'{self.character.name} attacks! Roll:', json_data['message'])
         self.assertEqual(json_data['roll_details']['modifier'], expected_modifier)
-        log_entry = AdventureLogEntry.query.filter_by(character_id=self.character_id, entry_type="action_roll").first()
+        log_entry = AdventureLogEntry.query.filter_by(character_id=self.character_id, entry_type="action_roll").order_by(AdventureLogEntry.id.desc()).first()
         self.assertIsNotNone(log_entry)
         self.assertIn('attacks!', log_entry.message)
+        roll_details_json = json.loads(log_entry.roll_details)
+        self.assertEqual(roll_details_json['modifier'], expected_modifier)
 
-    def test_roll_action_saving_throw_constitution(self):
+    def test_roll_saving_throw_constitution_endpoint(self): # Renamed for clarity
         csrf_token = self._get_csrf_token()
-        expected_modifier = self.character.get_modifier_for_ability('constitution') # 13 -> +1
-        payload = {'action_type': 'saving_throw', 'stat_name': 'constitution'}
+        # Constitution Save: Con (13 -> +1 mod). Ranger L1 not proficient in CON saves.
+        # Ranger saves: Strength, Dexterity.
+        # So, modifier should be just Con_mod.
+        expected_modifier = self.character.get_saving_throw_bonus('constitution') 
         response = self.client.post(
-            f'/character/adventure/{self.character_id}/roll_action', 
-            json=payload,
+            f'/character/adventure/{self.character_id}/roll_saving_throw/constitution', 
+            json={}, # Empty payload
             headers={'X-CSRFToken': csrf_token}
         )
         self.assertEqual(response.status_code, 200)
         json_data = response.get_json()
-        self.assertIn(f'{self.character.name} makes a Constitution saving throw!', json_data['message'])
+        # Message format: "{name} makes a {action}: {total} ({desc})"
+        self.assertIn(f'{self.character.name} makes a Constitution Save:', json_data['message'])
         self.assertEqual(json_data['roll_details']['modifier'], expected_modifier)
-        log_entry = AdventureLogEntry.query.filter_by(character_id=self.character_id, entry_type="action_roll").first()
+        log_entry = AdventureLogEntry.query.filter_by(character_id=self.character_id, entry_type="action_roll").order_by(AdventureLogEntry.id.desc()).first()
         self.assertIsNotNone(log_entry)
-        self.assertIn('Constitution saving throw', log_entry.message)
+        self.assertIn('Constitution Save', log_entry.message)
+        roll_details_json = json.loads(log_entry.roll_details)
+        self.assertEqual(roll_details_json['modifier'], expected_modifier)
 
-    def test_roll_action_damage_roll(self):
+
+    def test_roll_damage_roll_endpoint(self): # Renamed for clarity
         csrf_token = self._get_csrf_token()
-        # 2d8+StrMod (Str 14 -> +2)
+        # Payload for damage: num_dice, dice_type, modifier_stat
+        # Test with 2d8 + STR mod (Strength 14 -> +2)
         expected_modifier = self.character.get_modifier_for_ability('strength')
-        payload = {'action_type': 'damage', 'dice_type': 8, 'num_dice': 2, 'modifier': expected_modifier}
+        payload = {'num_dice': 2, 'dice_type': 8, 'modifier_stat': 'strength'}
         response = self.client.post(
-            f'/character/adventure/{self.character_id}/roll_action', 
+            f'/character/adventure/{self.character_id}/roll_damage', 
             json=payload,
             headers={'X-CSRFToken': csrf_token}
         )
         self.assertEqual(response.status_code, 200)
         json_data = response.get_json()
-        self.assertIn(f'{self.character.name} deals damage!', json_data['message'])
+        # Message format: "{name} deals damage! Roll: {total} ({desc})"
+        self.assertIn(f'{self.character.name} deals damage! Roll:', json_data['message'])
         self.assertEqual(json_data['roll_details']['modifier'], expected_modifier)
-        self.assertIn('2d8', json_data['roll_details']['description'])
-        log_entry = AdventureLogEntry.query.filter_by(character_id=self.character_id, entry_type="action_roll").first()
+        self.assertIn('2d8', json_data['roll_details']['description']) # Should include bonus like 2d8+2
+        self.assertIn(f"+{expected_modifier}" if expected_modifier > 0 else str(expected_modifier), json_data['roll_details']['description'])
+        
+        log_entry = AdventureLogEntry.query.filter_by(character_id=self.character_id, entry_type="action_roll").order_by(AdventureLogEntry.id.desc()).first()
         self.assertIsNotNone(log_entry)
         self.assertIn('deals damage!', log_entry.message)
+        roll_details_json = json.loads(log_entry.roll_details)
+        self.assertEqual(roll_details_json['modifier'], expected_modifier)
 
-    def test_roll_action_invalid_action_type(self):
-        csrf_token = self._get_csrf_token()
-        response = self.client.post(
-            f'/character/adventure/{self.character_id}/roll_action', 
-            json={'action_type': 'fly_to_the_moon'},
-            headers={'X-CSRFToken': csrf_token}
-        )
-        self.assertEqual(response.status_code, 400)
-        json_data = response.get_json()
-        self.assertIn('Invalid action_type', json_data['error'])
+    # These tests might be obsolete or need to target new specific validation if applicable.
+    # For example, trying to roll a skill_check with an invalid skill_name or ability_name
+    # against the new specific endpoints.
+    # def test_roll_action_invalid_action_type(self):
+    #     csrf_token = self._get_csrf_token()
+    #     response = self.client.post(
+    #         f'/character/adventure/{self.character_id}/roll_action', 
+    #         json={'action_type': 'fly_to_the_moon'},
+    #         headers={'X-CSRFToken': csrf_token}
+    #     )
+    #     self.assertEqual(response.status_code, 400) # This old endpoint would be 404 now
+    #     json_data = response.get_json()
+    #     self.assertIn('Invalid action_type', json_data['error'])
 
-    def test_roll_action_skill_check_missing_stat_name(self):
-        csrf_token = self._get_csrf_token()
-        response = self.client.post(
-            f'/character/adventure/{self.character_id}/roll_action', 
-            json={'action_type': 'skill_check'},
-            headers={'X-CSRFToken': csrf_token}
-        )
-        self.assertEqual(response.status_code, 400)
-        json_data = response.get_json()
-        self.assertIn('Missing stat_name for skill_check', json_data['error'])
+    # def test_roll_action_skill_check_missing_stat_name(self):
+    #     csrf_token = self._get_csrf_token()
+    #     response = self.client.post(
+    #         f'/character/adventure/{self.character_id}/roll_action', 
+    #         json={'action_type': 'skill_check'}, # This would be missing ability and skill from URL
+    #         headers={'X-CSRFToken': csrf_token}
+    #     )
+    #     self.assertEqual(response.status_code, 400) # This old endpoint would be 404 now
+    #     json_data = response.get_json()
+    #     self.assertIn('Missing stat_name for skill_check', json_data['error'])
 
     # --- Test Chat Functionality (Mocking Gemini) ---
     @patch('app.services.gemini_service.get_gemini_model')
@@ -259,13 +280,10 @@ class AdventureTestCase(BaseTestCase):
             headers={'X-CSRFToken': csrf_token}
         )
         
-        # 2. Perform a roll action
-        # Need a new token if the session changes or if tokens are single-use (though typically not for Flask-WTF session tokens)
-        # For simplicity here, we'll assume the same token is valid for subsequent requests in the same test method context.
-        # If this test were to fail due to CSRF on the second post, we'd re-fetch the token.
+        # 2. Perform a roll action (using a new specific endpoint)
         self.client.post(
-            f'/character/adventure/{self.character_id}/roll_action', 
-            json={'action_type': 'skill_check', 'stat_name': 'wisdom', 'skill_name': 'Perception'},
+            f'/character/adventure/{self.character_id}/roll_skill_check/perception/wisdom', 
+            json={}, # Empty payload
             headers={'X-CSRFToken': csrf_token} 
         )
 
@@ -277,7 +295,7 @@ class AdventureTestCase(BaseTestCase):
         response_text = response.get_data(as_text=True)
         self.assertIn('First message from user', response_text)
         self.assertIn('Mocked DM response based on: You are a Dungeon Master', response_text) # From Gemini mock
-        self.assertIn(f'{self.character.name} attempts a Perception check.', response_text) # From action roll
+        self.assertIn(f'{self.character.name} attempts a Perception check:', response_text) # Message from new roll
 
         # Check the number of log entries in HTML (basic check for presence)
         # This depends on how formatLogEntry structures them.

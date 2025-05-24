@@ -130,6 +130,8 @@ class Character(db.Model): # type: ignore
     def get_modifier_for_ability(self, ability_name: str) -> int:
         """Calculates the modifier for a given ability score name e.g. 'strength'."""
         score = getattr(self, ability_name.lower(), 10) # Defaults to 10 if attr not found
+        if score is None: # Explicitly handle if the attribute exists but is None
+            score = 10
         return self.get_ability_modifier_value(score)
 
     # Proficiency Bonus

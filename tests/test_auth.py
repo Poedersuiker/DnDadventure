@@ -1,8 +1,19 @@
 from tests.base_test import BaseTestCase
 from app.models import User
 from app import db
+from bs4 import BeautifulSoup # For CSRF token parsing
 
 class AuthTestCase(BaseTestCase):
+
+    def _get_csrf_token(self, path='/auth/register'):
+        """Helper method to get a CSRF token from a form page."""
+        response = self.client.get(path)
+        self.assertEqual(response.status_code, 200, f"Failed to get {path} for CSRF")
+        soup = BeautifulSoup(response.data, 'html.parser')
+        csrf_token_tag = soup.find('input', {'name': 'csrf_token'})
+        self.assertIsNotNone(csrf_token_tag, f"CSRF token not found on {path}")
+        self.assertIn('value', csrf_token_tag.attrs, "CSRF token input has no value attribute")
+        return csrf_token_tag['value']
 
     def test_registration_page_loads(self):
         response = self.client.get('/auth/register')
@@ -10,11 +21,13 @@ class AuthTestCase(BaseTestCase):
         self.assertIn(b'Register', response.data)
 
     def test_successful_registration(self):
+        csrf_token = self._get_csrf_token()
         response = self.client.post('/auth/register', data=dict(
             username='newuser',
             email='new@example.com',
             password='password123',
-            password2='password123'
+            password2='password123',
+            csrf_token=csrf_token
         ), follow_redirects=True)
         self.assertEqual(response.status_code, 200) # Should redirect to login
         self.assertIn(b'Sign In', response.data) # Now on login page
@@ -23,21 +36,25 @@ class AuthTestCase(BaseTestCase):
         self.assertEqual(user.email, 'new@example.com')
 
     def test_registration_existing_username(self):
+        csrf_token = self._get_csrf_token()
         response = self.client.post('/auth/register', data=dict(
             username='testuser', # Existing user from BaseTestCase setUp
             email='new2@example.com',
             password='password123',
-            password2='password123'
+            password2='password123',
+            csrf_token=csrf_token
         ), follow_redirects=True)
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Please use a different username.', response.data)
 
     def test_registration_existing_email(self):
+        csrf_token = self._get_csrf_token()
         response = self.client.post('/auth/register', data=dict(
             username='anotheruser',
             email='test@example.com', # Existing email from BaseTestCase setUp
             password='password123',
-            password2='password123'
+            password2='password123',
+            csrf_token=csrf_token
         ), follow_redirects=True)
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Please use a different email address.', response.data)

@@ -77,9 +77,13 @@ def create_character():
         # Skill proficiencies will be handled later (e.g., based on class & background choices)
         # For now, they default to False as per the model.
 
-        # 1. Extract race and class from form
-        race_name = form.race.data
-        class_name = form.character_class.data.capitalize() # Ensure consistent capitalization for fetching and display
+        # Save the first character instance, which has all attributes correctly set.
+        db.session.add(character)
+        db.session.commit()
+
+        # 1. Extract race and class from the created character for fetching summaries
+        race_name = character.race # Use character's race
+        class_name = character.character_class # Use character's class
 
         # 2. Fetch info from Roll20 for this race/class
         current_app.logger.info(f"Fetching summary for Race: {race_name}")
@@ -87,36 +91,8 @@ def create_character():
         current_app.logger.info(f"Fetching summary for Class: {class_name}")
         class_summary = fetch_roll20_summary(class_name, "Class")
         
-        # 3. Then create the Character object, add to DB, commit.
-        # Note: Character object creation was already here, just moving fetch before it.
-        # The actual character object doesn't store these summaries, so this order is for logical flow.
-        # If summaries were part of the model, this order would be critical.
-        
-        # Re-fetch class_info for character creation based on capitalized class_name
-        class_info = CLASS_DATA.get(class_name, CLASS_DATA["Default"])
-
-        character = Character(
-            name=form.name.data,
-            race=race_name, 
-            character_class=class_name,
-            level=1, 
-            owner=current_user,
-            # Default ability scores are set in model
-        )
-        character.hit_dice_type = class_info["hit_dice"]
-        con_modifier = character.get_modifier_for_ability('constitution')
-        character.max_hp = class_info["hit_dice"] + con_modifier
-        character.current_hp = character.max_hp
-        character.hit_dice_max = character.level
-        character.hit_dice_current = character.level
-        for ability_save in class_info["saves"]:
-            setattr(character, f"prof_{ability_save}_save", True)
-        character.speed = 30
-
-        db.session.add(character)
-        db.session.commit()
-
-        # 4. Flash a message containing the fetched summary for race/class.
+        # 3. Flash a message containing the fetched summary for race/class.
+        # The character object is already created and committed.
         flash(f'Character {character.name} ({character.race} {character.character_class}) created successfully!', 'success')
         if race_summary:
             flash(f"About {race_name}: {race_summary}", 'info')
@@ -253,7 +229,8 @@ def adventure(character_id):
                            character=character, log_entries=log_entries,
                            xp_thresholds=XP_THRESHOLDS, # Pass thresholds to template
                            can_level_up=can_level_up_status,
-                           xp_for_next_level=xp_for_next_level)
+                           xp_for_next_level=xp_for_next_level,
+                           getattr=getattr) # Add getattr to context
 
 @bp.route('/character/<int:character_id>/level-up', methods=['POST'])
 @login_required

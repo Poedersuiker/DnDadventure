@@ -1,9 +1,22 @@
 import unittest
+from bs4 import BeautifulSoup # For CSRF token parsing
 from tests.base_test import BaseTestCase
 from app.models import User, Character
 from app import db
 
 class CharacterTestCase(BaseTestCase):
+
+    def _get_csrf_token(self):
+        """Helper method to get a CSRF token from a form page."""
+        # Ensure user is logged in to access pages with CSRF tokens
+        # Using create_character page as it's behind login and has a form
+        response = self.client.get('/character/create_character')
+        self.assertEqual(response.status_code, 200, "Failed to get /character/create_character for CSRF")
+        soup = BeautifulSoup(response.data, 'html.parser')
+        csrf_token_tag = soup.find('input', {'name': 'csrf_token'})
+        self.assertIsNotNone(csrf_token_tag, "CSRF token not found on /character/create_character")
+        self.assertIn('value', csrf_token_tag.attrs, "CSRF token input has no value attribute")
+        return csrf_token_tag['value']
 
     def setUp(self):
         super().setUp()
@@ -56,27 +69,31 @@ class CharacterTestCase(BaseTestCase):
 
     def test_successful_character_creation(self):
         initial_char_count = Character.query.filter_by(user_id=self.test_user.id).count()
+        csrf_token = self._get_csrf_token() # Fetch CSRF token
         response = self.client.post('/character/create_character', data=dict(
-            name='Gandalf',
-            race='Wizard', # Intentionally using 'Wizard' for race to see if it passes
-            character_class='Istari'
+            name='GandalfTheTester', # Changed name slightly to avoid potential clashes if test reruns
+            race='Human', # Using a standard valid choice
+            character_class='Fighter', # Using a standard valid choice
+            csrf_token=csrf_token # Add CSRF token to form data
         ), follow_redirects=True)
         self.assertEqual(response.status_code, 200)
         # Should redirect to character selection page
-        self.assertIn(b'Select Your Character', response.data)
+        self.assertIn(b'Select Your Character', response.data) # Check for redirect to selection page
         
         new_char_count = Character.query.filter_by(user_id=self.test_user.id).count()
         self.assertEqual(new_char_count, initial_char_count + 1)
         
-        character = Character.query.filter_by(name='Gandalf').first()
+        character = Character.query.filter_by(name='GandalfTheTester').first()
         self.assertIsNotNone(character)
         self.assertEqual(character.owner, self.test_user)
-        self.assertIn(b'Gandalf', response.data) # Check if new character is listed
+        self.assertIn(b'GandalfTheTester', response.data) # Check if new character is listed
 
     def test_character_creation_missing_name(self):
+        csrf_token = self._get_csrf_token() # Fetch CSRF token
         response = self.client.post('/character/create_character', data=dict(
             race='Hobbit',
-            character_class='Burglar'
+            character_class='Burglar',
+            csrf_token=csrf_token # Add CSRF token to form data
         ), follow_redirects=True)
         self.assertEqual(response.status_code, 200) # Stays on creation page
         self.assertIn(b'Create New Character', response.data)
@@ -143,7 +160,12 @@ class CharacterTestCase(BaseTestCase):
         from app.models import AdventureLogEntry # Import here or at top of file
         self.assertIsNotNone(self.character, "Test character not created in setUp")
         with self.client: # Ensure client is used in a context for session handling
-            response = self.client.post(f'/character/adventure/{self.character.id}/roll_initiative')
+            csrf_token = self._get_csrf_token()
+            response = self.client.post(
+                f'/character/adventure/{self.character.id}/roll_initiative',
+                headers={'X-CSRFToken': csrf_token},
+                json={} # Send empty JSON payload
+            )
             self.assertEqual(response.status_code, 200)
             json_response = response.get_json()
             self.assertIn('message', json_response)
@@ -160,7 +182,12 @@ class CharacterTestCase(BaseTestCase):
         from app.models import AdventureLogEntry
         self.assertIsNotNone(self.character, "Test character not created in setUp")
         with self.client:
-            response = self.client.post(f'/character/adventure/{self.character.id}/roll_ability_check/strength')
+            csrf_token = self._get_csrf_token()
+            response = self.client.post(
+                f'/character/adventure/{self.character.id}/roll_ability_check/strength',
+                headers={'X-CSRFToken': csrf_token},
+                json={}
+            )
             self.assertEqual(response.status_code, 200)
             json_response = response.get_json()
             self.assertIn('message', json_response)
@@ -170,7 +197,14 @@ class CharacterTestCase(BaseTestCase):
             self.assertIn("Strength Check", log_entry.message)
 
             # Test invalid ability
-            response_invalid = self.client.post(f'/character/adventure/{self.character.id}/roll_ability_check/invalidstat')
+            # For invalid ability, CSRF token might not be strictly necessary if it fails before CSRF check,
+            # but good practice to include it for POST requests.
+            csrf_token_invalid = self._get_csrf_token() # Re-fetch if needed, or assume same token is fine
+            response_invalid = self.client.post(
+                f'/character/adventure/{self.character.id}/roll_ability_check/invalidstat',
+                headers={'X-CSRFToken': csrf_token_invalid},
+                json={}
+            )
             self.assertEqual(response_invalid.status_code, 400)
             self.assertIn('Invalid ability name', response_invalid.get_json()['error'])
 
@@ -178,7 +212,12 @@ class CharacterTestCase(BaseTestCase):
         from app.models import AdventureLogEntry
         self.assertIsNotNone(self.character, "Test character not created in setUp")
         with self.client:
-            response = self.client.post(f'/character/adventure/{self.character.id}/roll_saving_throw/dexterity')
+            csrf_token = self._get_csrf_token()
+            response = self.client.post(
+                f'/character/adventure/{self.character.id}/roll_saving_throw/dexterity',
+                headers={'X-CSRFToken': csrf_token},
+                json={}
+            )
             self.assertEqual(response.status_code, 200)
             json_response = response.get_json()
             self.assertIn('message', json_response)
@@ -188,17 +227,26 @@ class CharacterTestCase(BaseTestCase):
             self.assertIn("Dexterity Save", log_entry.message)
 
             # Test invalid ability
-            response_invalid = self.client.post(f'/character/adventure/{self.character.id}/roll_saving_throw/invalidstat')
+            csrf_token_invalid = self._get_csrf_token()
+            response_invalid = self.client.post(
+                f'/character/adventure/{self.character.id}/roll_saving_throw/invalidstat',
+                headers={'X-CSRFToken': csrf_token_invalid},
+                json={}
+            )
             self.assertEqual(response_invalid.status_code, 400)
-            self.assertIn('Invalid ability name', response_invalid.get_json()['error'])
+            self.assertIn('Invalid ability name for saving throw', response_invalid.get_json()['error']) # Message updated in route
         
     def test_roll_skill_check_specific_route(self):
         from app.models import AdventureLogEntry
         self.assertIsNotNone(self.character, "Test character not created in setUp")
         with self.client:
-            # Test a valid skill. Ensure 'athletics' is a key in character._skill_to_ability_map or handled by get_skill_bonus
-            # The route expects the skill attribute name (e.g. 'athletics') and the base ability ('strength')
-            response = self.client.post(f'/character/adventure/{self.character.id}/roll_skill_check/athletics/strength')
+            csrf_token = self._get_csrf_token()
+            # Test a valid skill.
+            response = self.client.post(
+                f'/character/adventure/{self.character.id}/roll_skill_check/athletics/strength',
+                headers={'X-CSRFToken': csrf_token},
+                json={}
+            )
             self.assertEqual(response.status_code, 200)
             json_response = response.get_json()
             self.assertIn('message', json_response)
@@ -207,8 +255,13 @@ class CharacterTestCase(BaseTestCase):
             self.assertIsNotNone(log_entry)
             self.assertIn("Athletics check", log_entry.message)
 
-            # Test invalid skill (assuming model's get_skill_bonus would raise ValueError, leading to 400 in route)
-            response_invalid = self.client.post(f'/character/adventure/{self.character.id}/roll_skill_check/invalid_skill_name/strength')
+            # Test invalid skill
+            csrf_token_invalid = self._get_csrf_token()
+            response_invalid = self.client.post(
+                f'/character/adventure/{self.character.id}/roll_skill_check/invalid_skill_name/strength',
+                headers={'X-CSRFToken': csrf_token_invalid},
+                json={}
+            )
             self.assertEqual(response_invalid.status_code, 400) 
             self.assertIn('Invalid skill', response_invalid.get_json()['error'])
 
@@ -216,7 +269,12 @@ class CharacterTestCase(BaseTestCase):
         from app.models import AdventureLogEntry
         self.assertIsNotNone(self.character, "Test character not created in setUp")
         with self.client:
-            response = self.client.post(f'/character/adventure/{self.character.id}/roll_attack')
+            csrf_token = self._get_csrf_token()
+            response = self.client.post(
+                f'/character/adventure/{self.character.id}/roll_attack',
+                headers={'X-CSRFToken': csrf_token},
+                json={}
+            )
             self.assertEqual(response.status_code, 200)
             json_response = response.get_json()
             self.assertIn('message', json_response)
@@ -229,9 +287,14 @@ class CharacterTestCase(BaseTestCase):
         from app.models import AdventureLogEntry
         self.assertIsNotNone(self.character, "Test character not created in setUp")
         with self.client:
+            csrf_token = self._get_csrf_token()
             # Valid damage roll
             payload = {'num_dice': 2, 'dice_type': 8, 'modifier_stat': 'strength'}
-            response = self.client.post(f'/character/adventure/{self.character.id}/roll_damage', json=payload)
+            response = self.client.post(
+                f'/character/adventure/{self.character.id}/roll_damage',
+                headers={'X-CSRFToken': csrf_token},
+                json=payload
+            )
             self.assertEqual(response.status_code, 200)
             json_response = response.get_json()
             self.assertIn('message', json_response)
@@ -243,8 +306,13 @@ class CharacterTestCase(BaseTestCase):
 
 
             # Valid damage roll with 'none' modifier
+            csrf_token_none_mod = self._get_csrf_token()
             payload_none_mod = {'num_dice': 1, 'dice_type': 4, 'modifier_stat': 'none'}
-            response_none_mod = self.client.post(f'/character/adventure/{self.character.id}/roll_damage', json=payload_none_mod)
+            response_none_mod = self.client.post(
+                f'/character/adventure/{self.character.id}/roll_damage',
+                headers={'X-CSRFToken': csrf_token_none_mod},
+                json=payload_none_mod
+            )
             self.assertEqual(response_none_mod.status_code, 200)
             json_response_none_mod = response_none_mod.get_json()
             self.assertIn('message', json_response_none_mod)
@@ -252,18 +320,33 @@ class CharacterTestCase(BaseTestCase):
 
 
             # Test invalid payload - missing fields
-            response_invalid = self.client.post(f'/character/adventure/{self.character.id}/roll_damage', json={'num_dice': 1})
+            csrf_token_invalid_payload = self._get_csrf_token()
+            response_invalid = self.client.post(
+                f'/character/adventure/{self.character.id}/roll_damage',
+                headers={'X-CSRFToken': csrf_token_invalid_payload},
+                json={'num_dice': 1} # Missing dice_type
+            )
             self.assertEqual(response_invalid.status_code, 400)
             self.assertIn('positive integers', response_invalid.get_json()['error'])
 
             # Test invalid payload - non-integer
-            response_invalid = self.client.post(f'/character/adventure/{self.character.id}/roll_damage', json={'num_dice': 'abc', 'dice_type': 6, 'modifier_stat': 'strength'})
-            self.assertEqual(response_invalid.status_code, 400)
-            self.assertIn('positive integers', response_invalid.get_json()['error'])
+            csrf_token_non_int = self._get_csrf_token()
+            response_invalid_non_int = self.client.post(
+                f'/character/adventure/{self.character.id}/roll_damage',
+                headers={'X-CSRFToken': csrf_token_non_int},
+                json={'num_dice': 'abc', 'dice_type': 6, 'modifier_stat': 'strength'}
+            )
+            self.assertEqual(response_invalid_non_int.status_code, 400)
+            self.assertIn('positive integers', response_invalid_non_int.get_json()['error'])
             
             # Test invalid modifier_stat
+            csrf_token_invalid_stat = self._get_csrf_token()
             payload_invalid_stat = {'num_dice': 1, 'dice_type': 6, 'modifier_stat': 'invalid_ability'}
-            response_invalid_stat = self.client.post(f'/character/adventure/{self.character.id}/roll_damage', json=payload_invalid_stat)
+            response_invalid_stat = self.client.post(
+                f'/character/adventure/{self.character.id}/roll_damage',
+                headers={'X-CSRFToken': csrf_token_invalid_stat},
+                json=payload_invalid_stat
+            )
             self.assertEqual(response_invalid_stat.status_code, 400)
             self.assertIn('Invalid modifier_stat', response_invalid_stat.get_json()['error'])
 
