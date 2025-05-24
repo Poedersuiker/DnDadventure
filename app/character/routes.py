@@ -34,84 +34,12 @@ CLASS_DATA = {
     "Default": {"hit_dice": 8, "saves": [], "skills_options": [], "skills_count": 0}
 }
 
-@bp.route('/create_character', methods=['GET', 'POST'])
+@bp.route('/create_character', methods=['GET', 'POST']) # Keeping methods for now
 @login_required
-def create_character():
-    form = CharacterCreationForm()
-    if form.validate_on_submit():
-        # Get class chosen by user
-        char_class_name = form.character_class.data.capitalize() # Ensure consistent capitalization
-        class_info = CLASS_DATA.get(char_class_name, CLASS_DATA["Default"])
-
-        # Create character with basic info first to allow ability score calculations
-        # For now, ability scores default to 10 in the model, so modifier is 0
-        # In the future, these would be set by the form.
-        character = Character(
-            name=form.name.data,
-            race=form.race.data, # Race might influence speed or other stats in the future
-            character_class=char_class_name,
-            level=1, # Start at level 1
-            owner=current_user,
-            strength=form.strength.data,
-            dexterity=form.dexterity.data,
-            constitution=form.constitution.data,
-            intelligence=form.intelligence.data,
-            wisdom=form.wisdom.data,
-            charisma=form.charisma.data,
-            spells_known=form.spells_known.data
-        )
-
-        # Set Hit Dice Type
-        character.hit_dice_type = class_info["hit_dice"]
-        
-        # Calculate Max HP: Hit Die size + Constitution modifier
-        # Model's get_modifier_for_ability('constitution') will use the default 10 (mod 0) for now
-        con_modifier = character.get_modifier_for_ability('constitution')
-        character.max_hp = class_info["hit_dice"] + con_modifier
-        character.current_hp = character.max_hp # Initialize current_hp
-
-        # Set Hit Dice counts
-        character.hit_dice_max = character.level # Level 1, so 1
-        character.hit_dice_current = character.level # Level 1, so 1
-
-        # Set Saving Throw Proficiencies
-        for ability_save in class_info["saves"]:
-            setattr(character, f"prof_{ability_save}_save", True)
-            
-        # Set default speed (Race might modify this later)
-        character.speed = 30 # Default speed
-
-        # Skill proficiencies will be handled later (e.g., based on class & background choices)
-        # For now, they default to False as per the model.
-
-        # Save the first character instance, which has all attributes correctly set.
-        db.session.add(character)
-        db.session.commit()
-
-        # 1. Extract race and class from the created character for fetching summaries
-        race_name = character.race # Use character's race
-        class_name = character.character_class # Use character's class
-
-        # 2. Fetch info from Roll20 for this race/class
-        current_app.logger.info(f"Fetching summary for Race: {race_name}")
-        race_summary = fetch_roll20_summary(race_name, "Race")
-        current_app.logger.info(f"Fetching summary for Class: {class_name}")
-        class_summary = fetch_roll20_summary(class_name, "Class")
-        
-        # 3. Flash a message containing the fetched summary for race/class.
-        # The character object is already created and committed.
-        flash(f'Character {character.name} ({character.race} {character.character_class}) created successfully!', 'success')
-        if race_summary:
-            flash(f"About {race_name}: {race_summary}", 'info')
-        else:
-            flash(f"Could not fetch summary for {race_name}.", 'warning')
-        if class_summary:
-            flash(f"About {class_name}: {class_summary}", 'info')
-        else:
-            flash(f"Could not fetch summary for {class_name}.", 'warning')
-            
-        return redirect(url_for('character.select_character')) # Redirect to character selection
-    return render_template('character/create_character.html', title='Create Character', form=form)
+def create_character(): # This is the old function
+    # All old logic removed
+    # redirect and url_for are already imported from flask at the top of the file.
+    return redirect(url_for('character.create_character_wizard')) # Redirect to step 1 of the new wizard
 
 def format_name_for_roll20_url(name: str) -> str:
     """Formats a name for Roll20 URL fragment IDs.

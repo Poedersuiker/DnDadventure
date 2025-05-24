@@ -12,7 +12,7 @@
             {% endfor %}
         </ul>
     {% else %}
-        <p>You have no characters yet. <a href="{{ url_for('character.create_character') }}">Create one now!</a></p>
+        <p>You have no characters yet. <a href="{{ url_for('character.create_character_wizard') }}">Create one now!</a></p> {# This one #}
     {% endif %}
-    <p><a href="{{ url_for('character.create_character') }}">Create a New Character</a></p>
+    <p><a href="{{ url_for('character.create_character_wizard') }}">Create a New Character</a></p> {# And this one #}
 {% endblock %}
