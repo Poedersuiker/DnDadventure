@@ -45,13 +45,13 @@ def create_character():
             character_class=char_class_name,
             level=1, # Start at level 1
             owner=current_user,
-            # Default ability scores are set in model, will be used by get_modifier_for_ability
-            # strength=form.strength.data, # Future: get from form
-            # dexterity=form.dexterity.data, # Future: get from form
-            # constitution=form.constitution.data, # Future: get from form
-            # intelligence=form.intelligence.data, # Future: get from form
-            # wisdom=form.wisdom.data, # Future: get from form
-            # charisma=form.charisma.data, # Future: get from form
+            strength=form.strength.data,
+            dexterity=form.dexterity.data,
+            constitution=form.constitution.data,
+            intelligence=form.intelligence.data,
+            wisdom=form.wisdom.data,
+            charisma=form.charisma.data,
+            spells_known=form.spells_known.data
         )
 
         # Set Hit Dice Type

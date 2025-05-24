@@ -1,7 +1,7 @@
 import unittest
 from bs4 import BeautifulSoup # For CSRF token parsing
 from tests.base_test import BaseTestCase
-from app.models import User, Character
+from app.models import User, Character, CLASS_DATA_MODEL # Added CLASS_DATA_MODEL
 from app import db
 
 class CharacterTestCase(BaseTestCase):
@@ -36,7 +36,8 @@ class CharacterTestCase(BaseTestCase):
             strength=16, dexterity=14, constitution=15,
             intelligence=10, wisdom=12, charisma=8,
             owner=self.test_user,
-            experience_points=XP_THRESHOLDS[2] # XP for level 3 (index 2 for level 3)
+            experience_points=XP_THRESHOLDS[2], # XP for level 3 (index 2 for level 3)
+            spells_known="Test Spell, Fireball" # Added spells_known for self.character
         )
         # Set initial HP based on class and con for level 1
         class_info = CLASS_DATA_MODEL.get(self.character.character_class, CLASS_DATA_MODEL["Default"])
@@ -154,6 +155,91 @@ class CharacterTestCase(BaseTestCase):
         # auth.routes redirects to character.select_character, which then links to create
         # Let's check the final landing page content
         self.assertIn(b'Create New Character', response.data)
+
+    def test_successful_character_creation_with_all_fields(self):
+        initial_char_count = Character.query.filter_by(user_id=self.test_user.id).count()
+        csrf_token = self._get_csrf_token()
+        
+        character_data = {
+            'name': 'ElaraMoonwhisper',
+            'race': 'Elf',
+            'character_class': 'Wizard',
+            'strength': 10,
+            'dexterity': 14,
+            'constitution': 13, # Modifier +1
+            'intelligence': 16, # Modifier +3
+            'wisdom': 12,
+            'charisma': 8,
+            'spells_known': "Magic Missile, Shield, Mage Armor",
+            'csrf_token': csrf_token
+        }
+        
+        response = self.client.post('/character/create_character', data=character_data, follow_redirects=True)
+        self.assertEqual(response.status_code, 200, "Character creation failed.")
+        self.assertIn(b'Select Your Character', response.data, "Did not redirect to character selection page.")
+        
+        new_char_count = Character.query.filter_by(user_id=self.test_user.id).count()
+        self.assertEqual(new_char_count, initial_char_count + 1, "Character count did not increase.")
+        
+        created_character = Character.query.filter_by(name=character_data['name']).first()
+        self.assertIsNotNone(created_character, "Character was not found in the database.")
+        self.assertEqual(created_character.owner, self.test_user)
+        
+        self.assertEqual(created_character.race, character_data['race'])
+        self.assertEqual(created_character.character_class, character_data['character_class'])
+        self.assertEqual(created_character.strength, character_data['strength'])
+        self.assertEqual(created_character.dexterity, character_data['dexterity'])
+        self.assertEqual(created_character.constitution, character_data['constitution'])
+        self.assertEqual(created_character.intelligence, character_data['intelligence'])
+        self.assertEqual(created_character.wisdom, character_data['wisdom'])
+        self.assertEqual(created_character.charisma, character_data['charisma'])
+        self.assertEqual(created_character.spells_known, character_data['spells_known'])
+        
+        # HP Calculation Check (assuming new characters start at level 1)
+        # In create_character route, level is set to 1.
+        # Max HP is calculated as: class_info["hit_dice"] + con_modifier
+        char_class_name = created_character.character_class
+        class_info = CLASS_DATA_MODEL.get(char_class_name, CLASS_DATA_MODEL["Default"])
+        expected_con_modifier = (created_character.constitution - 10) // 2
+        expected_hp_at_level_1 = class_info["hit_dice_type"] + expected_con_modifier
+        self.assertEqual(created_character.max_hp, expected_hp_at_level_1, "Max HP calculation is incorrect.")
+        self.assertEqual(created_character.level, 1, "New character level should be 1.")
+
+    def test_character_sheet_displays_new_fields(self):
+        # self.character is created in setUp with ability scores and spells_known
+        # Ensure user is logged in (done in setUp)
+        
+        response = self.client.get(f'/character/adventure/{self.character.id}')
+        self.assertEqual(response.status_code, 200, "Failed to load adventure page.")
+        
+        response_data_str = response.data.decode('utf-8')
+
+        # Check ability scores and modifiers
+        # self.character setup: strength=16, dexterity=14, constitution=15, intelligence=10, wisdom=12, charisma=8
+        # Modifiers: Str +3, Dex +2, Con +2, Int +0, Wis +1, Cha -1
+        self.assertIn(f'<p class="score">{self.character.strength}</p>', response_data_str)
+        self.assertIn(f'<p class="modifier">({self.character.get_modifier_for_ability("strength")})</p>', response_data_str)
+        
+        self.assertIn(f'<p class="score">{self.character.dexterity}</p>', response_data_str)
+        self.assertIn(f'<p class="modifier">({self.character.get_modifier_for_ability("dexterity")})</p>', response_data_str)
+
+        self.assertIn(f'<p class="score">{self.character.constitution}</p>', response_data_str)
+        self.assertIn(f'<p class="modifier">({self.character.get_modifier_for_ability("constitution")})</p>', response_data_str)
+
+        self.assertIn(f'<p class="score">{self.character.intelligence}</p>', response_data_str)
+        self.assertIn(f'<p class="modifier">({self.character.get_modifier_for_ability("intelligence")})</p>', response_data_str)
+
+        self.assertIn(f'<p class="score">{self.character.wisdom}</p>', response_data_str)
+        self.assertIn(f'<p class="modifier">({self.character.get_modifier_for_ability("wisdom")})</p>', response_data_str)
+
+        self.assertIn(f'<p class="score">{self.character.charisma}</p>', response_data_str)
+        self.assertIn(f'<p class="modifier">({self.character.get_modifier_for_ability("charisma")})</p>', response_data_str)
+
+        # Check spells_known
+        # self.character.spells_known = "Test Spell, Fireball" (set in modified setUp)
+        # The template uses a <pre> tag for spells_known
+        self.assertIn(f"<pre>{self.character.spells_known}</pre>", response_data_str)
+        self.assertIn("<h3>Spells Known", response_data_str) # Check section header
 
     # --- Dice Rolling Route Tests ---
     def test_roll_initiative_route(self):

@@ -26,3 +26,21 @@ def roll_dice(sides: int, num_dice: int = 1, modifier: int = 0) -> dict:
         'total_with_modifier': total_with_modifier,
         'description': description
     }
+
+def roll_ability_scores() -> list[int]:
+    """
+    Generates 6 D&D 5e ability scores using the "4d6 drop lowest" method.
+    
+    Returns:
+        A list containing the 6 generated ability scores.
+    """
+    ability_scores = []
+    for _ in range(6): # Generate 6 scores
+        # Roll four 6-sided dice
+        rolls = [random.randint(1, 6) for _ in range(4)]
+        # Sort the rolls to easily find the lowest
+        rolls.sort()
+        # Sum the three highest rolls (discarding the lowest)
+        score = sum(rolls[1:]) # The first element is the lowest after sorting
+        ability_scores.append(score)
+    return ability_scores
