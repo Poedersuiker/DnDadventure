@@ -107,7 +107,7 @@
         <div class="char-sheet-grid">
             <div><strong>HP:</strong> {{ character.current_hp }} / {{ character.max_hp }} {% if character.temporary_hp > 0 %}(+{{ character.temporary_hp }} Temp HP){% endif %}</div>
             <div><strong>Armor Class:</strong> {{ character.armor_class }}</div>
-            <div class="rollable-stat" data-rollable="true" data-roll-type="skill_check" data-stat-name="dexterity" data-skill-name="Initiative" title="Roll Initiative">
+            <div class="rollable-stat" data-rollable="true" data-roll-type="initiative" data-skill-name="Initiative" title="Roll Initiative">
                 <strong>Initiative:</strong> {{ '%+d' | format(character.initiative_bonus) }}
             </div>
             <div><strong>Speed:</strong> {{ character.speed }} ft.</div>
@@ -161,7 +161,7 @@
                 'Persuasion': {'ability': 'charisma', 'attr': 'persuasion'}
             } %}
             {% for skill_name_display, skill_info in skills_data.items() %}
-            <div class="rollable-stat" data-rollable="true" data-roll-type="skill_check" data-stat-name="{{ skill_info.attr }}" data-skill-name="{{ skill_name_display }}" title="Roll {{ skill_name_display }}">
+            <div class="rollable-stat" data-rollable="true" data-roll-type="skill_check" data-stat-name="{{ skill_info.attr }}" data-ability-name="{{ skill_info.ability }}" data-skill-name="{{ skill_name_display }}" title="Roll {{ skill_name_display }}">
                 <strong>{{ skill_name_display }}</strong> ({{ skill_info.ability[:3].upper() }}):
                 {{ '%+d' | format(character.get_skill_bonus(skill_info.attr)) }}
                 {% if getattr(character, 'prof_' + skill_info.attr) %}
@@ -405,6 +405,7 @@ document.addEventListener('DOMContentLoaded', () => {
             action_type: rollType,
             stat_name: target.dataset.statName || '', 
             skill_name: target.dataset.skillName || '', 
+            abilityName: target.dataset.abilityName || '', // New line
             dice_type: 0,
             num_dice: 0,
         };
@@ -462,24 +463,76 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function performCharacterAction(payload) {
     var history = document.getElementById("conversation-history");
-    
-    // Display "Rolling..." message in chat log
     var rollingP = document.createElement("p");
     rollingP.innerHTML = `<em>${character.name} is performing an action: ${payload.skill_name || payload.action_type}...</em>`;
     history.appendChild(rollingP);
     history.scrollTop = history.scrollHeight;
 
-    try {
-        const response = await fetch(`/character/adventure/${characterId}/roll_action`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token() }}' // If CSRF is used
-            },
-            body: JSON.stringify(payload)
-        });
+    let endpointUrl;
+    let fetchOptions = {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}' // Make sure this token is available
+        }
+    };
 
-        history.removeChild(rollingP); // Remove "Rolling..." message
+    switch (payload.action_type) {
+        case 'initiative':
+            endpointUrl = `/character/adventure/${characterId}/roll_initiative`;
+            // No body needed for this POST, or an empty one
+            fetchOptions.body = JSON.stringify({}); 
+            break;
+        case 'ability_check':
+            if (!payload.stat_name) {
+                displayError("Ability name missing for ability check.");
+                history.removeChild(rollingP);
+                return;
+            }
+            endpointUrl = `/character/adventure/${characterId}/roll_ability_check/${payload.stat_name}`;
+            fetchOptions.body = JSON.stringify({});
+            break;
+        case 'saving_throw':
+            if (!payload.stat_name) {
+                displayError("Ability name missing for saving throw.");
+                history.removeChild(rollingP);
+                return;
+            }
+            endpointUrl = `/character/adventure/${characterId}/roll_saving_throw/${payload.stat_name}`;
+            fetchOptions.body = JSON.stringify({});
+            break;
+        case 'skill_check':
+            if (!payload.stat_name || !payload.abilityName) {
+                displayError("Skill identifier or ability name missing for skill check.");
+                history.removeChild(rollingP);
+                return;
+            }
+            // Ensure stat_name is the skill attribute (e.g., 'athletics')
+            // and abilityName is the base ability (e.g., 'strength')
+            endpointUrl = `/character/adventure/${characterId}/roll_skill_check/${payload.stat_name}/${payload.abilityName}`;
+            fetchOptions.body = JSON.stringify({});
+            break;
+        case 'attack':
+            endpointUrl = `/character/adventure/${characterId}/roll_attack`;
+            fetchOptions.body = JSON.stringify({});
+            break;
+        case 'damage':
+            endpointUrl = `/character/adventure/${characterId}/roll_damage`;
+            fetchOptions.body = JSON.stringify({
+                num_dice: payload.num_dice,
+                dice_type: payload.dice_type,
+                modifier_stat: payload.stat_name // stat_name is used for modifier_stat in damage rolls
+            });
+            break;
+        default:
+            displayError(`Unknown action type: ${payload.action_type}`);
+            history.removeChild(rollingP);
+            return;
+    }
+
+    try {
+        const response = await fetch(endpointUrl, fetchOptions);
+        history.removeChild(rollingP);
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ error: "Unknown error occurred" }));
@@ -489,18 +542,19 @@ async function performCharacterAction(payload) {
 
         const data = await response.json();
         var actionResultP = document.createElement("p");
-        actionResultP.innerHTML = "<strong>Action:</strong> " + (data.message || "Action performed.");
-        if (data.roll_details) {
-            actionResultP.innerHTML += ` <small>(Details: ${JSON.stringify(data.roll_details.rolls)} -> Total: ${data.roll_details.total_with_modifier})</small>`;
-        }
+        // The message from the server should be suitable for display
+        actionResultP.innerHTML = data.message || "Action performed."; 
+        // The formatLogEntry function handles detailed display of roll_details if it's part of the log fetching later
+        // For immediate display, we can add a simplified version or rely on the server message.
+        // The new backend routes already put detailed roll info in the 'message'.
         history.appendChild(actionResultP);
 
     } catch (error) {
-        history.removeChild(rollingP); // Remove "Rolling..." message
+        history.removeChild(rollingP);
         console.error('Action Fetch error:', error);
         displayError("Failed to perform action. Check connection or try again.");
     } finally {
-        history.scrollTop = history.scrollHeight; // Scroll to bottom
+        history.scrollTop = history.scrollHeight;
     }
 }
 

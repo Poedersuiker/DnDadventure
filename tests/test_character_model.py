@@ -1,22 +1,25 @@
 import unittest
 from app import create_app, db
 from app.models import User, Character, XP_THRESHOLDS, CLASS_DATA_MODEL
-from tests.base_test import BaseTest
+from tests.base_test import BaseTestCase # Corrected import
 import math
 
-class TestCharacterModel(BaseTest):
+class TestCharacterModel(BaseTestCase): # Corrected class inheritance
 
     def setUp(self):
-        super().setUp()  # Call BaseTest's setUp
-        # Create a test user
-        self.user = User(username='testuser', email='test@example.com')
-        self.user.set_password('password')
-        db.session.add(self.user)
-        db.session.commit()
+        super().setUp()  # Call BaseTestCase's setUp
+        # Use the user created by BaseTestCase.setUp()
+        self.user = User.query.filter_by(username='testuser').first()
+        if not self.user: # Should not happen if BaseTestCase.setUp ran correctly
+            self.user = User(username='testuser_model', email='test_model@example.com')
+            self.user.set_password('password')
+            db.session.add(self.user)
+            db.session.commit()
+
 
         # Create a basic character for tests
         self.character = Character(
-            name='Test Character',
+            name='Test Character Model', # Changed name for clarity
             race='Human',
             character_class='Fighter', # Ensure 'Fighter' is in CLASS_DATA_MODEL
             level=1,
@@ -28,7 +31,7 @@ class TestCharacterModel(BaseTest):
             charisma=8,
             max_hp=10, # Will be updated based on class and con
             current_hp=10,
-            owner=self.user,
+            owner=self.user, # Assign the fetched or newly created user
             experience_points=0
         )
         # Set initial HP based on class and con
@@ -68,19 +71,20 @@ class TestCharacterModel(BaseTest):
 
     def test_hp_initialization(self):
         # Test character is created by setUp
-        char_fighter = Character.query.filter_by(name="Test Character_Fighter_Init").first()
+        char_fighter_init_name = "Test Character_Fighter_Init_Model"
+        char_fighter = Character.query.filter_by(name=char_fighter_init_name).first()
         if not char_fighter:
             con_mod = (16 - 10) // 2 # +3
             hit_dice_type = CLASS_DATA_MODEL.get("Fighter")["hit_dice_type"] # 10 for Fighter
             expected_hp = hit_dice_type + con_mod # 10 + 3 = 13
 
             char_fighter = Character(
-                name="Test Character_Fighter_Init",
+                name=char_fighter_init_name, # Use updated name
                 race="Human",
                 character_class="Fighter",
                 level=1,
                 constitution=16, # Con modifier +3
-                owner=self.user
+                owner=self.user # Assign the correct user
             )
             # Manually trigger hp calculation as __init__ does it
             char_fighter.max_hp = hit_dice_type + con_mod
