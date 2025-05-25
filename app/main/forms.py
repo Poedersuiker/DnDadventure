@@ -1,14 +1,9 @@
 from flask_wtf import FlaskForm
-# Remove StringField, SubmitField, DataRequired if no other forms use them,
-# or keep them if other forms in this file need them.
-# For now, let's assume no other forms, so we can clear it out.
-# If there were other forms, they would remain here.
-
-# CharacterCreationForm has been moved to app.character.forms
-
-# Example of another form if it existed:
+# This file can be used for forms specific to the 'main' blueprint.
+# Currently, no forms are defined here.
+# Example:
 # from wtforms import StringField, SubmitField
 # from wtforms.validators import DataRequired
-# class AnotherMainForm(FlaskForm):
+# class SomeMainForm(FlaskForm):
 #     some_field = StringField('Some Field', validators=[DataRequired()])
-#     submit = SubmitField('Submit Another')
+#     submit = SubmitField('Submit')

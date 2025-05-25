@@ -3,9 +3,9 @@ from flask_login import login_required, current_user
 from app.extensions import db
 from app.character import bp
 from app.character.forms import (
-    CharacterCreationForm, RaceSelectionForm, ClassSelectionForm, 
-    AbilityScoreAssignmentForm, BackgroundAlignmentForm, SkillsProficienciesForm, 
-    EquipmentForm, SpellSelectionForm, ALL_SKILLS
+    RaceSelectionForm, ClassSelectionForm, # Removed CharacterCreationForm
+    AbilityScoreAssignmentForm, BackgroundAlignmentForm, SkillsProficienciesForm,
+    EquipmentForm, SpellSelectionForm, ALL_SKILLS, CharacterNameForm
 )
 from app.models import Character, CLASS_DATA_MODEL # Added CLASS_DATA_MODEL
 from app.utils.dice_roller import roll_ability_scores
@@ -248,97 +248,6 @@ def adventure_chat(character_id):
 
     return jsonify({'reply': gemini_response})
 
-# @bp.route('/adventure/<int:character_id>/roll_action', methods=['POST'])
-# @login_required
-# def roll_action(character_id):
-#     character = Character.query.get_or_404(character_id)
-#     if character.owner != current_user:
-#         return jsonify({'error': 'Forbidden'}), 403
-
-#     data = request.get_json()
-#     if not data or 'action_type' not in data:
-#         return jsonify({'error': 'Missing action_type in request'}), 400
-
-#     action_type = data.get('action_type')
-#     stat_name = data.get('stat_name', '').lower() # e.g., 'strength', 'dexterity'
-#     # skill_name = data.get('skill_name', '') # e.g., 'Acrobatics' - for future use
-    
-#     from app.utils.dice_roller import roll_dice # Moved to top-level imports
-#     roll_result = {}
-#     message = ""
-
-#     try:
-#         if action_type == "attack":
-#             # Simple attack roll: 1d20 + (Dex or Str modifier, let's assume Str for now or make it simple)
-#             # For now, let's make it a simple d20 roll without complex modifier logic from character stats
-#             # to keep the initial implementation straightforward.
-#             # A more complex implementation would check character.proficient_in_weapon, character.weapon_used etc.
-#             attack_modifier_from_char = character.get_modifier_for_ability('strength') # Example
-#             # Add proficiency bonus if it were a weapon attack the character is proficient with
-#             # attack_modifier_from_char += character.proficiency_bonus 
-#             roll_result = roll_dice(sides=20, num_dice=1, modifier=data.get('modifier_override', attack_modifier_from_char))
-#             message = f"{character.name} attacks! Roll: {roll_result['total_with_modifier']} ({roll_result['description']})"
-
-#         elif action_type == "skill_check":
-#             if not stat_name:
-#                 return jsonify({'error': 'Missing stat_name for skill_check'}), 400
-            
-#             ability_modifier = character.get_modifier_for_ability(stat_name)
-#             # In a full system, skill proficiency might add character.proficiency_bonus
-#             # For a specific skill like 'Acrobatics (Dex)', you'd check if proficient in Acrobatics.
-#             roll_result = roll_dice(sides=20, num_dice=1, modifier=ability_modifier)
-#             skill_display_name = data.get('skill_name', stat_name.capitalize())
-#             message = f"{character.name} attempts a {skill_display_name} check. Roll: {roll_result['total_with_modifier']} ({roll_result['description']})"
-
-#         elif action_type == "saving_throw":
-#             if not stat_name:
-#                 return jsonify({'error': 'Missing stat_name for saving_throw'}), 400
-            
-#             ability_modifier = character.get_modifier_for_ability(stat_name)
-#             # Proficiency in saving throws for certain classes could be added here
-#             # e.g. if character.class_has_strength_save_proficiency: modifier += character.proficiency_bonus
-#             roll_result = roll_dice(sides=20, num_dice=1, modifier=ability_modifier)
-#             message = f"{character.name} makes a {stat_name.capitalize()} saving throw! Roll: {roll_result['total_with_modifier']} ({roll_result['description']})"
-        
-#         elif action_type == "damage":
-#             dice_type = data.get('dice_type')
-#             num_dice = data.get('num_dice', 1)
-#             modifier = data.get('modifier', 0) # This could come from character.get_modifier_for_ability(stat_name)
-#             if not dice_type:
-#                 return jsonify({'error': 'Missing dice_type for damage roll'}),400
-#             roll_result = roll_dice(sides=dice_type, num_dice=num_dice, modifier=modifier)
-#             message = f"{character.name} deals damage! Roll: {roll_result['total_with_modifier']} ({roll_result['description']})"
-
-#         else:
-#             return jsonify({'error': 'Invalid action_type'}), 400
-        
-#         # Save the action roll to the log
-#         action_log_entry = AdventureLogEntry(
-#             character_id=character.id,
-#             entry_type="action_roll",
-#             message=message,
-#             actor_name=character.name,
-#             roll_details=json.dumps(roll_result)
-#         )
-#         db.session.add(action_log_entry)
-#         try:
-#             db.session.commit()
-#         except Exception as e:
-#             db.session.rollback()
-#             current_app.logger.error(f"Database commit error in roll_action: {e}")
-#             # Still return the roll result to the user, but log the DB error
-#             return jsonify({'message': message, 'roll_details': roll_result, 'db_error': 'Error saving action to log.'}), 500
-
-
-#         return jsonify({'message': message, 'roll_details': roll_result})
-
-#     except ValueError as e: # Catch errors from roll_dice or bad stat_names
-#         current_app.logger.error(f"Error during roll_action: {e}")
-#         return jsonify({'error': str(e)}), 400
-#     except Exception as e:
-#         current_app.logger.error(f"Unexpected error in roll_action: {e}")
-#         return jsonify({'error': 'An unexpected error occurred.'}), 500
-
 # --- New Specific Roll Routes ---
 from app.utils.dice_roller import roll_dice # Ensure it's at the top if not already
 
@@ -507,7 +416,11 @@ def create_character_wizard(step):
     character_data = session.get('character_creation_data', {})
     current_form = None
 
-    if step == 2: # Race
+    if step == 1: # Name
+        current_form = CharacterNameForm(request.form if request.method == 'POST' else None)
+        if request.method == 'GET' and character_data.get('name'):
+            current_form.character_name.data = character_data['name']
+    elif step == 2: # Race
         current_form = RaceSelectionForm(request.form if request.method == 'POST' else None)
         if request.method == 'GET' and character_data.get('race'):
             current_form.race.data = character_data['race']
@@ -628,10 +541,11 @@ def create_character_wizard(step):
         elif action == 'next_step' or (step == 4 and action == 'assign_scores'):
             valid_step = True
             if step == 1: # Process Name
-                character_data['name'] = request.form.get('character_name', '').strip()
-                if not character_data['name']:
-                    flash('Character name is required.', 'error')
-                    valid_step = False
+                # current_form is CharacterNameForm, already instantiated with request.form for POST at the top of create_character_wizard
+                if current_form and current_form.validate(): # Changed validate_on_submit() to validate()
+                    character_data['name'] = current_form.character_name.data
+                else:
+                    valid_step = False # Errors will be displayed by the form rendering
             elif step == 2: # Process Race
                 if current_form and current_form.validate(): # current_form is RaceSelectionForm
                     character_data['race'] = current_form.race.data
@@ -719,7 +633,7 @@ def create_character_wizard(step):
                     valid_step = False # WTForms validation failed (e.g. Length)
             elif step == 8: # Process Spells
                 # current_form is SpellSelectionForm, already instantiated with choices
-                if current_form and current_form.validate_on_submit(): # validate_on_submit for POST specific validation
+                if current_form and current_form.validate(): # Changed validate_on_submit() to validate()
                     # Re-fetch selection_rules for POST context
                     char_class_post = character_data.get('character_class')
                     selection_key_post = f"{char_class_post}_selection"

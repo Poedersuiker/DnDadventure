@@ -1,6 +1,7 @@
 {# Step 3: Character Class - Uses ClassSelectionForm passed as 'form' #}
 <fieldset>
     <legend>Step 3: Choose Your Character's Class</legend>
+    {{ form.hidden_tag() }} {# Add this line #}
     
     {% if form %}
         <p>

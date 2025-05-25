@@ -1,6 +1,7 @@
 {# Step 2: Character Race - Uses RaceSelectionForm passed as 'form' #}
 <fieldset>
     <legend>Step 2: Choose Your Character's Race</legend>
+    {{ form.hidden_tag() }} {# Add this line #}
     
     {% if form %}
         <p>

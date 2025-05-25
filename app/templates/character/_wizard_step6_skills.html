@@ -2,6 +2,7 @@
 {# 'class_info' should also be passed in the context #}
 <fieldset>
     <legend>Step 6: Skills & Proficiencies</legend>
+    {{ form.hidden_tag() }} {# Add this line #}
 
     {% if character_data.character_class and class_info %}
         <h3>Proficiencies for {{ character_data.character_class }}</h3>
