@@ -18,7 +18,12 @@ ENV/
 *.swo
 
 # Instance folder (Flask)
-instance/
+# Ignore most content of instance folder, especially sensitive config
+instance/*
+# But DO NOT ignore the example config file
+!instance/config.py.example
+# Also, ensure .gitkeep or other non-sensitive files can be added if needed
+!instance/.gitkeep
 
 # Database files
 *.sqlite3

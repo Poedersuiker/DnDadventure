@@ -3,16 +3,31 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from werkzeug.middleware.proxy_fix import ProxyFix # Import ProxyFix
 
-app = Flask(__name__)
+# Modified to make instance folder easily accessible for config loading
+app = Flask(__name__, instance_relative_config=True) 
 
 # Apply ProxyFix to handle headers from reverse proxies
-# x_for=1: Trust one hop for X-Forwarded-For (client IP)
-# x_proto=1: Trust one hop for X-Forwarded-Proto (scheme, e.g., https)
-# x_host=1: Trust one hop for X-Forwarded-Host (host name)
-# x_prefix=1: Trust one hop for X-Forwarded-Prefix (URL prefix)
+# This should be done early, but after app instantiation.
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
-app.config['SECRET_KEY'] = 'a_very_secret_key'
+# Load configurations:
+# 1. Load defaults from project's root config.py
+app.config.from_object('config') 
+# 2. Load from instance/config.py (if it exists), overriding defaults.
+# 'config.py' here is relative to the 'instance' folder due to instance_relative_config=True
+app.config.from_pyfile('config.py', silent=True) 
+
+# Note: SECRET_KEY is now loaded from config.py or instance/config.py
+# app.config['SECRET_KEY'] = 'a_very_secret_key' # Removed, as it's loaded from files
+
+# Configure Flask-Dance Google blueprint credentials from loaded config
+# The blueprint is named "google" by default in make_google_blueprint
+# These keys are what Flask-Dance expects (e.g., <BLUPRINT_NAME>_OAUTH_CLIENT_ID)
+app.config['GOOGLE_OAUTH_CLIENT_ID'] = app.config.get('GOOGLE_CLIENT_ID')
+app.config['GOOGLE_OAUTH_CLIENT_SECRET'] = app.config.get('GOOGLE_CLIENT_SECRET')
+
+# These can remain if not intended to be overridden by root/instance config.py by default,
+# or they can be moved to config.py as well. For now, keeping them here.
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///dndadventure.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
