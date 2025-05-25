@@ -31,6 +31,7 @@ class Character(db.Model):
     hp = db.Column(db.Integer, default=0)
     max_hp = db.Column(db.Integer, default=0)
     armor_class = db.Column(db.Integer, default=10)
+    speed = db.Column(db.Integer, default=30, nullable=False) # <-- ADD THIS LINE
     current_proficiencies = db.Column(db.Text, nullable=True)  # JSON
     current_equipment = db.Column(db.Text, nullable=True)  # JSON
     alignment = db.Column(db.String(100), nullable=True)
