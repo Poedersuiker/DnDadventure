@@ -1,9 +1,11 @@
 import json # Added json import
 import json # Added json import (already present but good to ensure)
+import json # Added json import (already present but good to ensure)
 from flask import render_template, redirect, url_for, flash, request, session
 from flask_login import login_required, current_user
 from app import db
-from app.models import User, Character, Race, Class, Spell # Added Spell model
+from app.models import User, Character, Race, Class, Spell
+from app.utils import roll_dice # Added roll_dice import
 from app.main import bp
 
 @bp.route('/')
@@ -68,7 +70,7 @@ def creation_race():
     if selected_race:
         session['new_character_data']['race_id'] = selected_race.id
         session['new_character_data']['race_name'] = selected_race.name
-        # session.modified = True # Ensure session is saved if nested dicts are modified directly
+        session.modified = True # Ensure session is saved if nested dicts are modified directly
         flash(f'{selected_race.name} selected!', 'success')
         return redirect(url_for('main.creation_class')) # Next step
     else:
@@ -106,7 +108,7 @@ def creation_class():
     if selected_class:
         session['new_character_data']['class_id'] = selected_class.id
         session['new_character_data']['class_name'] = selected_class.name
-        # session.modified = True # Ensure session is saved
+        session.modified = True # Ensure session is saved
         flash(f'{selected_class.name} selected!', 'success')
         return redirect(url_for('main.creation_stats')) # Next step: stats
     else:
@@ -140,9 +142,27 @@ def creation_stats():
     
     # Convert list of dicts to a simple dict for easier lookup in template/logic
     racial_bonuses_dict = {bonus['name']: bonus['bonus'] for bonus in racial_bonuses_list}
+    rolled_stats_from_session = session.get('rolled_stats')
 
 
     if request.method == 'POST':
+        action = request.form.get('action')
+
+        if action == 'roll_stats':
+            rolled_scores = [roll_dice(4, 6, 1)[0] for _ in range(6)]
+            session['rolled_stats'] = rolled_scores
+            session.modified = True
+            # Re-render the template with the rolled scores
+            return render_template('create_character_stats.html',
+                                   race_name=selected_race.name,
+                                   class_name=selected_class.name,
+                                   racial_bonuses_dict=racial_bonuses_dict,
+                                   primary_ability=primary_ability,
+                                   standard_array=standard_array,
+                                   rolled_stats=rolled_scores,
+                                   submitted_scores=request.form) # Keep any already submitted scores
+
+        # Existing logic for submitting final stats
         base_scores = {}
         final_scores = {}
         errors = False
@@ -186,7 +206,8 @@ def creation_stats():
 
         session['new_character_data']['ability_scores'] = final_scores
         session['new_character_data']['base_ability_scores'] = base_scores
-        # session.modified = True
+        session.modified = True
+        session.pop('rolled_stats', None) # Clear rolled_stats after successful submission
         flash('Ability scores saved!', 'success')
         return redirect(url_for('main.creation_background')) # Next step
 
@@ -197,6 +218,7 @@ def creation_stats():
                            racial_bonuses_dict=racial_bonuses_dict, # Pass the dict
                            primary_ability=primary_ability,
                            standard_array=standard_array,
+                           rolled_stats=rolled_stats_from_session, # Pass rolled_stats from session
                            submitted_scores=None) # No scores submitted yet for GET
 
 
@@ -258,7 +280,7 @@ def creation_background():
             session['new_character_data']['background_tool_proficiencies'] = chosen_bg_data['tool_proficiencies']
             session['new_character_data']['background_languages'] = chosen_bg_data['languages']
             session['new_character_data']['background_equipment'] = chosen_bg_data['equipment']
-            # session.modified = True # Ensure session is saved if nested dicts are modified directly
+            session.modified = True # Ensure session is saved if nested dicts are modified directly
 
             flash(f"Background '{chosen_bg_data['name']}' selected.", 'success')
             return redirect(url_for('main.creation_skills')) # Next step: class skills
@@ -316,7 +338,7 @@ def creation_skills():
         session['new_character_data']['weapon_proficiencies'] = json.loads(selected_class.proficiencies_weapons or '[]')
         session['new_character_data']['tool_proficiencies_class_fixed'] = json.loads(selected_class.proficiencies_tools or '[]')
         session['new_character_data']['saving_throw_proficiencies'] = saving_throw_proficiencies # Already a list from GET
-        # session.modified = True
+        session.modified = True
 
         flash('Class skills and proficiencies saved!', 'success')
         return redirect(url_for('main.creation_hp')) # Next step: HP
@@ -392,7 +414,7 @@ def creation_hp():
     session['new_character_data']['current_hp'] = max_hp # Start with full HP
     session['new_character_data']['armor_class_base'] = ac_base
     session['new_character_data']['speed'] = speed
-    # session.modified = True
+    session.modified = True
 
     return render_template('create_character_hp.html',
                            race_name=selected_race.name,
@@ -520,7 +542,7 @@ def creation_equipment():
             chosen_equipment_list.append(f"Background: {background_equipment_string}")
 
         session['new_character_data']['final_equipment'] = chosen_equipment_list
-        # session.modified = True
+        session.modified = True
 
         flash('Starting equipment chosen!', 'success')
 
@@ -645,7 +667,7 @@ def creation_spells():
                                    submitted_cantrips=chosen_cantrip_ids_str, 
                                    submitted_level_1_spells=chosen_level_1_spell_ids_str)
         
-        # session.modified = True
+        session.modified = True
         flash('Spells selected!', 'success')
         return redirect(url_for('main.creation_review'))
 

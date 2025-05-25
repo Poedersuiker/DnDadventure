@@ -72,11 +72,11 @@
             </div>
         </div>
         
-        <button type="submit" class="btn btn-primary mt-3">Next</button> 
+        <button type="submit" class="button">Next</button> 
         {# Button text "Next: Spells" or "Next: Review" could be dynamic if we knew spellcasting status here #}
     </form>
 
-    <a href="{{ url_for('main.creation_hp') }}" class="btn btn-secondary mt-4">Back to HP & Combat Stats</a>
-    <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary mt-4 ml-2">Cancel Creation</a>
+    <a href="{{ url_for('main.creation_hp') }}" class="button">Back to HP & Combat Stats</a>
+    <a href="{{ url_for('main.index') }}" class="button">Cancel Creation</a>
 </div>
 {% endblock %}

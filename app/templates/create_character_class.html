@@ -31,14 +31,14 @@
             </label>
             {% endfor %}
         </div>
-        <button type="submit" class="btn btn-primary mt-3">Next: Determine Stats</button>
+        <button type="submit" class="button">Next: Determine Stats</button>
     </form>
     {% else %}
     <div class="alert alert-warning" role="alert">
         No classes are currently available. Please contact an administrator or run the population script.
     </div>
     {% endif %}
-    <a href="{{ url_for('main.creation_race') }}" class="btn btn-secondary mt-3">Back to Race Selection</a>
-    <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary mt-3 ml-2">Cancel Creation</a>
+    <a href="{{ url_for('main.creation_race') }}" class="button">Back to Race Selection</a>
+    <a href="{{ url_for('main.index') }}" class="button">Cancel Creation</a>
 </div>
 {% endblock %}

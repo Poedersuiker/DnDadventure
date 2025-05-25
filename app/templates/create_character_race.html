@@ -27,13 +27,13 @@
             </label>
             {% endfor %}
         </div>
-        <button type="submit" class="btn btn-primary mt-3">Next: Choose Class</button>
+        <button type="submit" class="button">Next: Choose Class</button>
     </form>
     {% else %}
     <div class="alert alert-warning" role="alert">
         No races are currently available. Please contact an administrator.
     </div>
     {% endif %}
-    <a href="{{ url_for('main.index') }}" class="btn btn-secondary mt-3">Cancel Creation</a>
+    <a href="{{ url_for('main.index') }}" class="button">Cancel Creation</a>
 </div>
 {% endblock %}

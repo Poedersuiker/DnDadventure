@@ -129,16 +129,16 @@
         </div>
         {% endif %}
 
-        <button type="submit" class="btn btn-success btn-lg mt-4">Save Character</button>
+        <button type="submit" class="button">Save Character</button>
     </form>
 
     <div class="mt-3 mb-5">
         {% if char_class and char_class.spellcasting_ability %}
-            <a href="{{ url_for('main.creation_spells') }}" class="btn btn-secondary">Back to Spell Selection</a>
+            <a href="{{ url_for('main.creation_spells') }}" class="button">Back to Spell Selection</a>
         {% else %}
-            <a href="{{ url_for('main.creation_equipment') }}" class="btn btn-secondary">Back to Equipment Selection</a>
+            <a href="{{ url_for('main.creation_equipment') }}" class="button">Back to Equipment Selection</a>
         {% endif %}
-        <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary ml-2">Cancel Creation & Discard</a>
+        <a href="{{ url_for('main.index') }}" class="button">Cancel Creation & Discard</a>
     </div>
 </div>
 {% endblock %}

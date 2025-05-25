@@ -70,15 +70,15 @@
         {% endif %}
         
         {% if num_cantrips_to_select > 0 or num_level_1_spells_to_select > 0 %}
-            <button type="submit" class="btn btn-primary mt-3">Next: Final Review</button>
+            <button type="submit" class="button">Next: Final Review</button>
         {% else %}
             <p>Your class does not select spells at this step in this simplified guide. Proceed to review.</p>
-            <a href="{{ url_for('main.creation_review') }}" class="btn btn-primary mt-3">Next: Final Review</a>
+            <a href="{{ url_for('main.creation_review') }}" class="button">Next: Final Review</a>
         {% endif %}
     </form>
 
-    <a href="{{ url_for('main.creation_equipment') }}" class="btn btn-secondary mt-4">Back to Equipment</a>
-    <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary mt-4 ml-2">Cancel Creation</a>
+    <a href="{{ url_for('main.creation_equipment') }}" class="button">Back to Equipment</a>
+    <a href="{{ url_for('main.index') }}" class="button">Cancel Creation</a>
 </div>
 {% endblock %}
 

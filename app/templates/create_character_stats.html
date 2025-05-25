@@ -27,8 +27,24 @@
             <h4>2. Manual Input / Point Buy (Not Implemented)</h4>
             <p>Enter your desired base scores directly below (typically between 3 and 18). Ensure your point buy total is valid if using that system (DM approval may be needed).</p>
 
-            <h4>3. Dice Rolling (4d6, drop lowest, 6 times) - Placeholder</h4>
-            <p>This section is a placeholder for dice rolling functionality. For now, if you roll dice, enter the results manually below.</p>
+            <h4>3. Dice Rolling (4d6, drop lowest, 6 times)</h4>
+            <form method="POST" action="{{ url_for('main.creation_stats') }}" class="mb-3">
+                <button type="submit" name="action" value="roll_stats" class="button">Roll All Stats (4d6 drop 1, six times)</button>
+            </form>
+            
+            {% if rolled_stats %}
+            <div class="alert alert-info">
+                <p><strong>Your Rolled Scores (assign these below):</strong></p>
+                <ul class="list-inline">
+                    {% for score in rolled_stats %}
+                    <li class="list-inline-item"><h4><span class="badge badge-secondary">{{ score }}</span></h4></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+            
+            <!-- Old placeholder UI for dice rolling removed -->
+            <!--
             {% for i in range(6) %}
             <div class="form-group row">
                 <label for="roll_{{i}}" class="col-sm-4 col-form-label">Roll {{i+1}}:</label>
@@ -40,12 +56,15 @@
                 </div>
             </div>
             {% endfor %}
+            -->
         </div>
 
         <div class="col-md-6">
             <h2>Assign Scores</h2>
-            <p>Enter your base scores below. Racial bonuses will be applied automatically.</p>
+            <p>Enter your base scores below (e.g., from Standard Array, Rolled Scores, or Point Buy). Racial bonuses will be applied automatically.</p>
             <form method="POST" action="{{ url_for('main.creation_stats') }}">
+                {# Note: This form is separate from the "Roll All Stats" button's form #}
+                {# The main submit button below will not have name="action" #}
                 {% set abilities = [
                     ('strength', 'STR'), ('dexterity', 'DEX'), ('constitution', 'CON'),
                     ('intelligence', 'INT'), ('wisdom', 'WIS'), ('charisma', 'CHA')
@@ -73,13 +92,13 @@
                 </div>
                 {% endfor %}
                 
-                <button type="submit" class="btn btn-primary mt-3">Next: Background</button>
+                <button type="submit" class="button">Next: Background</button> {# No name="action" here #}
             </form>
         </div>
     </div>
 
-    <a href="{{ url_for('main.creation_class') }}" class="btn btn-secondary mt-4">Back to Class Selection</a>
-    <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary mt-4 ml-2">Cancel Creation</a>
+    <a href="{{ url_for('main.creation_class') }}" class="button">Back to Class Selection</a>
+    <a href="{{ url_for('main.index') }}" class="button">Cancel Creation</a>
 </div>
 {% endblock %}
 
