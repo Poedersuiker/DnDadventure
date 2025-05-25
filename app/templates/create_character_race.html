@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Create Character - Step 1: Race{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="my-4">Create New Character - Step 1: Choose Your Race</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% if races %}
+    <form method="POST" action="{{ url_for('main.creation_race') }}">
+        <div class="list-group">
+            {% for race in races %}
+            <label class="list-group-item">
+                <input type="radio" name="race_id" value="{{ race.id }}" required> 
+                <strong>{{ race.name }}</strong>
+                {# Basic info placeholder - will be expanded in a later step if needed #}
+                {# <p class="mb-1"><small>Speed: {{ race.speed }}</small></p> #}
+                {# <p class="mb-1"><small>Ability Scores: {{ race.ability_score_increases }}</small></p> #}
+            </label>
+            {% endfor %}
+        </div>
+        <button type="submit" class="btn btn-primary mt-3">Next: Choose Class</button>
+    </form>
+    {% else %}
+    <div class="alert alert-warning" role="alert">
+        No races are currently available. Please contact an administrator.
+    </div>
+    {% endif %}
+    <a href="{{ url_for('main.index') }}" class="btn btn-secondary mt-3">Cancel Creation</a>
+</div>
+{% endblock %}

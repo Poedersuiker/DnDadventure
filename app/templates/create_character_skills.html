@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Create Character - Step 5: Class Skills & Proficiencies{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="my-4">Create New Character - Step 5: Class Skills & Proficiencies</h1>
+    <p>For your <strong>{{ race_name }} {{ class_name }}</strong> (Background: {{ background_name }}).</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('main.creation_skills') }}">
+        <div class="card mb-3">
+            <div class="card-header">
+                Saving Throw Proficiencies
+            </div>
+            <div class="card-body">
+                <p>Your class grants you proficiency in the following saving throws: <strong>{{ saving_throws|join(', ') if saving_throws else 'None' }}</strong>.</p>
+            </div>
+        </div>
+
+        {% if num_to_choose > 0 and skill_options %}
+        <div class="card">
+            <div class="card-header">
+                Skill Proficiencies
+            </div>
+            <div class="card-body">
+                <p>Choose {{ num_to_choose }} skill(s) from the following list:</p>
+                <div class="form-group">
+                    {% for skill in skill_options %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="chosen_skill" value="{{ skill }}" id="skill_{{ loop.index }}"
+                               {% if skill in (submitted_skills or []) %}checked{% endif %}>
+                        <label class="form-check-label" for="skill_{{ loop.index }}">
+                            {{ skill }}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+                <small class="form-text text-muted">
+                    Note: Skills gained from your race or background are separate and already accounted for.
+                </small>
+            </div>
+        </div>
+        {% elif num_to_choose == 0 %}
+        <div class="card">
+            <div class="card-header">
+                Skill Proficiencies
+            </div>
+            <div class="card-body">
+                <p>Your class does not grant additional skill choices from a list (any fixed skills are automatically applied).</p>
+            </div>
+        </div>
+        {% else %}
+         <div class="card">
+            <div class="card-header">
+                Skill Proficiencies
+            </div>
+            <div class="card-body">
+                <p>No skill options available for this class or an error occurred.</p>
+            </div>
+        </div>
+        {% endif %}
+        
+        <button type="submit" class="btn btn-primary mt-3">Next: Calculate HP</button>
+    </form>
+
+    <a href="{{ url_for('main.creation_background') }}" class="btn btn-secondary mt-4">Back to Background Selection</a>
+    <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary mt-4 ml-2">Cancel Creation</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+// Optional: JavaScript to limit checkbox selection to num_to_choose
+// Example (requires jQuery or similar for simplicity here, or more vanilla JS)
+// $(document).ready(function() {
+//     var limit = {{ num_to_choose | default(0) }};
+//     if (limit > 0) {
+//         $('input[name="chosen_skill"]').on('change', function(evt) {
+//             if($('input[name="chosen_skill"]:checked').length > limit) {
+//                 this.checked = false;
+//                 alert("You can only select " + limit + " skill(s).");
+//             }
+//         });
+//     }
+// });
+</script>
+{% endblock %}

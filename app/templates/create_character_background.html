@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Create Character - Step 4: Background{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="my-4">Create New Character - Step 4: Choose Your Background</h1>
+    <p>For your <strong>{{ race_name }} {{ class_name }}</strong>.</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('main.creation_background') }}">
+        <div class="list-group">
+            {% for bg_key, bg_data in backgrounds.items() %}
+            <label class="list-group-item list-group-item-action flex-column align-items-start">
+                <div class="d-flex w-100 justify-content-between">
+                    <h5 class="mb-1">
+                        <input type="radio" name="background_name" value="{{ bg_key }}" required 
+                               {% if session.get('new_character_data', {}).get('background_name') == bg_key %}checked{% endif %}>
+                        {{ bg_data.name }}
+                    </h5>
+                </div>
+                <p class="mb-1"><strong>Skill Proficiencies:</strong> {{ bg_data.skill_proficiencies|join(', ') if bg_data.skill_proficiencies else 'None' }}</p>
+                
+                {% if bg_data.tool_proficiencies and bg_data.tool_proficiencies|length > 0 %}
+                <p class="mb-1"><strong>Tool Proficiencies:</strong> {{ bg_data.tool_proficiencies|join(', ') }}</p>
+                {% endif %}
+
+                {% if bg_data.languages and bg_data.languages|length > 0 %}
+                <p class="mb-1"><strong>Languages:</strong> {{ bg_data.languages|join(', ') }}</p>
+                {% endif %}
+                
+                <p class="mb-1"><small><strong>Equipment:</strong> {{ bg_data.equipment }}</small></p>
+            </label>
+            {% endfor %}
+        </div>
+        <button type="submit" class="btn btn-primary mt-3">Next: Class Skills & Proficiencies</button>
+    </form>
+
+    <a href="{{ url_for('main.creation_stats') }}" class="btn btn-secondary mt-4">Back to Ability Scores</a>
+    <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary mt-4 ml-2">Cancel Creation</a>
+</div>
+{% endblock %}

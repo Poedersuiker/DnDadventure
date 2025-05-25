@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Create Character - Step 6: HP & Combat Stats{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="my-4">Create New Character - Step 6: HP & Combat Stats</h1>
+    <p>For your <strong>{{ race_name }} {{ class_name }}</strong> (Background: {{ background_name }}).</p>
+
+    <div class="card mb-3">
+        <div class="card-header">
+            Ability Scores Summary
+        </div>
+        <div class="card-body">
+            <ul class="list-unstyled">
+                {% for ability, score in ability_scores_summary.items() %}
+                <li><strong>{{ ability }}:</strong> {{ score }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="card">
+        <div class="card-header">
+            Combat Statistics (Level 1)
+        </div>
+        <div class="card-body">
+            <p><strong>Maximum Hit Points:</strong> {{ max_hp }}</p>
+            <p><strong>Base Armor Class:</strong> {{ ac_base }} (before armor/shield)</p>
+            <p><strong>Speed:</strong> {{ speed }} ft.</p>
+        </div>
+    </div>
+    
+    <div class="mt-4">
+        <a href="{{ url_for('main.creation_equipment') }}" class="btn btn-primary">Next: Choose Equipment</a>
+        <a href="{{ url_for('main.creation_skills') }}" class="btn btn-secondary ml-2">Back to Skills & Proficiencies</a>
+        <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary ml-2">Cancel Creation</a>
+    </div>
+</div>
+{% endblock %}
