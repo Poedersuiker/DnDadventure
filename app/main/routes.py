@@ -1,14 +1,8 @@
-from flask import render_template, redirect, url_for, flash, request, jsonify
+from flask import render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from app import db
 from app.models import User, Character
 from app.main import bp # Import the blueprint 'bp' from app.main package
-
-
-@bp.route('/debug-headers')
-def debug_headers():
-    headers = {key: value for key, value in request.headers}
-    return jsonify(headers)
 
 @bp.route('/')
 @bp.route('/index')
