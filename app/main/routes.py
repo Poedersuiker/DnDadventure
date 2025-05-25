@@ -162,50 +162,65 @@ def creation_stats():
                                    rolled_stats=rolled_scores,
                                    submitted_scores=request.form) # Keep any already submitted scores
 
-        # Existing logic for submitting final stats
+        # Logic for submitting final stats (action is not 'roll_stats')
         base_scores = {}
-        final_scores = {}
         errors = False
-        ability_names = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma']
+        # Map form field names to 3-letter score keys
+        ability_map = {
+            'strength': 'STR', 'dexterity': 'DEX', 'constitution': 'CON',
+            'intelligence': 'INT', 'wisdom': 'WIS', 'charisma': 'CHA'
+        }
         
-        for ability in ability_names:
-            score_val = request.form.get(ability)
-            if not score_val:
-                flash(f'{ability.capitalize()} score is required.', 'error')
+        form_scores_to_repopulate = {} # For re-rendering in case of error
+
+        for form_name, score_key in ability_map.items():
+            score_val_str = request.form.get(form_name)
+            form_scores_to_repopulate[form_name] = score_val_str # Store original string for repopulation
+
+            if not score_val_str:
+                flash(f'{form_name.capitalize()} score is required.', 'error')
                 errors = True
                 continue
             try:
-                score = int(score_val)
+                score = int(score_val_str)
                 if not (3 <= score <= 18): # Basic validation for manually entered base scores
-                    flash(f'{ability.capitalize()} score must be between 3 and 18 before racial modifiers.', 'error')
+                    flash(f'{form_name.capitalize()} score must be between 3 and 18 before racial modifiers.', 'error')
                     errors = True
-                base_scores[ability.upper()] = score # Store with uppercase key e.g. STR
+                base_scores[score_key] = score # Use 'STR', 'DEX', 'CON', etc.
             except ValueError:
-                flash(f'Invalid score for {ability.capitalize()}. Must be a number.', 'error')
+                flash(f'Invalid score for {form_name.capitalize()}. Must be a number.', 'error')
                 errors = True
         
         if errors:
+            # Pass back the original string values for repopulation
+            # Also need all other context for rendering the template
             return render_template('create_character_stats.html',
-                                   race_name=selected_race.name,
-                                   class_name=selected_class.name,
-                                   racial_bonuses_dict=racial_bonuses_dict,
-                                   primary_ability=primary_ability,
-                                   standard_array=standard_array,
-                                   submitted_scores=request.form) # Pass back submitted form data
+                                   race_name=selected_race.name, 
+                                   class_name=selected_class.name, 
+                                   racial_bonuses_dict=racial_bonuses_dict, 
+                                   primary_ability=primary_ability, 
+                                   standard_array=standard_array, 
+                                   rolled_stats=session.get('rolled_stats'), 
+                                   submitted_scores=form_scores_to_repopulate)
 
-        # Calculate final scores
+
         final_scores = base_scores.copy()
-        for bonus_item in racial_bonuses_list:
-            ability_key = bonus_item.get('name') # e.g., "STR"
+        # racial_bonuses_list is already defined from the GET part of the route
+        # selected_race is also defined
+        
+        # Re-fetch racial_bonuses_list just to be absolutely sure, though it should be available
+        # from the top of the function. This is defensive.
+        # racial_bonuses_list = json.loads(selected_race.ability_score_increases or '[]')
+
+        for bonus_item in racial_bonuses_list: # racial_bonuses_list was defined near the start of the function
+            ability_key = bonus_item.get('name') # This is 'STR', 'DEX', etc.
             bonus_value = bonus_item.get('bonus', 0)
-            if ability_key in final_scores:
+            if ability_key in final_scores: # Now keys 'STR', 'DEX' will match
                 final_scores[ability_key] += bonus_value
-            else: # Should not happen if base_scores keys are correct
-                final_scores[ability_key] = bonus_value 
-
-
+            # No else needed, as all 6 keys ('STR'...'CHA') should be in final_scores.
+        
         session['new_character_data']['ability_scores'] = final_scores
-        session['new_character_data']['base_ability_scores'] = base_scores
+        session['new_character_data']['base_ability_scores'] = base_scores # Now also uses 'STR', 'DEX' keys
         session.modified = True
         session.pop('rolled_stats', None) # Clear rolled_stats after successful submission
         flash('Ability scores saved!', 'success')
