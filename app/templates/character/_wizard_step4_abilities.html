@@ -1,6 +1,8 @@
 {# Step 4: Ability Scores - Uses AbilityScoreAssignmentForm passed as 'form' #}
 <fieldset>
     <legend>Step 4: Determine Ability Scores</legend>
+    {# {{ form.hidden_tag() }} Moved from here (inside {% if form %}) to just below legend #}
+    {{ form.hidden_tag() }} {# Ensure this is correctly scoped if form is not always AbilityScoreAssignmentForm here #}
 
     <p>
         Ability scores determine your character's raw aptitudes. You can roll for them, use a standard set of scores, or (in more advanced options) use point buy.
@@ -43,6 +45,7 @@
 
     <!-- Assignment Form Fields (part of the main wizard form) -->
     {% if form %} {# This is the AbilityScoreAssignmentForm #}
+        {# {{ form.hidden_tag() }}  Moved to top of fieldset #}
         <h4>Assign Your Scores:</h4>
         <div class="char-sheet-grid" style="grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));">
             <p>

@@ -1,6 +1,7 @@
 {# Step 5: Background, Alignment & Basic Details - Uses BackgroundAlignmentForm passed as 'form' #}
 <fieldset>
     <legend>Step 5: Background & Alignment</legend>
+    {{ form.hidden_tag() }} {# Add this line #}
     
     {% if form %}
         <p>

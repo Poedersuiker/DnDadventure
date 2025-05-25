@@ -633,7 +633,7 @@ def create_character_wizard(step):
                     valid_step = False # WTForms validation failed (e.g. Length)
             elif step == 8: # Process Spells
                 # current_form is SpellSelectionForm, already instantiated with choices
-                if current_form and current_form.validate_on_submit(): # validate_on_submit for POST specific validation
+                if current_form and current_form.validate(): # Changed validate_on_submit() to validate()
                     # Re-fetch selection_rules for POST context
                     char_class_post = character_data.get('character_class')
                     selection_key_post = f"{char_class_post}_selection"

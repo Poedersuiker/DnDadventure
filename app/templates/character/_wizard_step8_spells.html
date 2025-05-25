@@ -2,6 +2,7 @@
 {# Context should include: form, selection_rules, spell_data_for_class #}
 <fieldset>
     <legend>Step 8: Select Spells</legend>
+    {{ form.hidden_tag() }} {# Add this line #}
 
     {% if form and selection_rules and spell_data_for_class %}
         <p>
