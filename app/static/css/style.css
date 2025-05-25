@@ -1,157 +1,360 @@
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;1,400&family=MedievalSharp&family=Cinzel:wght@400;700&display=swap');
+
+/*
+Font choices:
+- Body: Merriweather (regular 400, bold 700, italic 400)
+- Headings (Primary H1): MedievalSharp (regular 400) - very thematic
+- Headings (Secondary H2-H6): Cinzel (regular 400, bold 700)
+*/
+
+/* D&D Player's Handbook Inspired Palette, Fonts, Textures & Borders - Compact Layout - Final Review */
+
 /* Basic Body Styling */
 body {
-    font-family: Arial, sans-serif;
+    font-family: 'Merriweather', serif;
+    font-size: 15px;
     margin: 0;
     padding: 0;
-    background-color: #f4f4f4;
-    color: #333;
-    line-height: 1.6;
+    background-color: #f5e8c3;
+    color: #3B2F2F;
+    line-height: 1.5;
+    background-image: linear-gradient(rgba(0,0,0,0.02) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(0,0,0,0.02) 1px, transparent 1px);
+    background-size: 20px 20px;
 }
 
 .container {
     width: 80%;
-    margin: auto;
+    max-width: 960px;
+    margin: 20px auto;
     overflow: hidden;
-    padding: 0 20px;
+    padding: 15px 20px;
+    background-color: #fff9e6;
+    border: 2px solid #5D4037;
+    box-shadow: 3px 3px 8px rgba(0,0,0,0.3);
+    border-radius: 3px;
+}
+
+/* Paragraphs and Lists */
+p, ul, ol {
+    margin-top: 0;
+    margin-bottom: 0.8em;
+}
+
+ul, ol {
+    padding-left: 25px;
+}
+
+/* Headings */
+h1 {
+    font-family: 'MedievalSharp', serif;
+    font-size: 2.6em;
+    color: #8B0000;
+    margin-top: 0.3em;
+    margin-bottom: 0.4em;
+    font-weight: normal;
+    text-align: center;
+}
+
+h2 {
+    font-family: 'Cinzel', serif;
+    font-size: 2.0em;
+    color: #8B0000;
+    margin-top: 0.8em;
+    margin-bottom: 0.4em;
+    font-weight: 700;
+    border-bottom: 1px solid #A0522D;
+    padding-bottom: 0.2em;
+}
+
+h3 {
+    font-family: 'Cinzel', serif;
+    font-size: 1.6em;
+    color: #8B0000;
+    margin-top: 0.7em;
+    margin-bottom: 0.4em;
+    font-weight: 700;
+}
+
+h4, h5, h6 {
+    font-family: 'Cinzel', serif;
+    font-size: 1.3em; /* h4 */
+    color: #8B0000;
+    margin-top: 0.6em;
+    margin-bottom: 0.3em;
+    font-weight: normal;
+}
+
+h5 { font-size: 1.15em; }
+h6 { font-size: 1.0em; }
+
+/* Horizontal Rules */
+hr {
+    border: 0;
+    height: 1px;
+    background-color: #5D4037;
+    margin: 1.5em 0;
 }
 
 /* Navigation Styling */
 nav {
-    background: #333;
-    color: #fff;
-    padding: 10px 0;
+    background: #5D4037;
+    color: #f5e8c3;
+    padding: 8px 0;
     margin-bottom: 20px;
+    border-bottom: 2px solid #A0522D;
+    font-family: 'Merriweather', serif;
 }
 
 nav ul {
     padding: 0;
     list-style: none;
     text-align: center;
+    margin: 0;
 }
 
 nav ul li {
     display: inline;
-    margin-right: 20px;
+    margin-right: 15px;
 }
 
 nav a {
-    color: #fff;
+    color: #f5e8c3;
     text-decoration: none;
-    font-size: 18px;
+    font-size: 1.0em;
+    padding: 5px 8px;
 }
 
 nav a:hover {
-    color: #f0f0f0;
+    color: #fff9e6;
+    text-decoration: underline;
 }
 
 nav span {
-    color: #fff;
-    font-size: 18px;
+    color: #f5e8c3;
+    font-size: 1.0em;
+    margin-right: 15px;
 }
 
+/* General Links Styling */
+a {
+    color: #5D4037; /* Dark Brown - changed from Sea Green for better thematic consistency */
+    text-decoration: none;
+    font-weight: bold;
+}
 
-/* Button Styling */
+a:hover {
+    color: #A0522D; /* Sienna - for hover, provides distinction */
+    text-decoration: underline;
+}
+
+/* Links styled as buttons are handled by .button class */
+/* Links in nav have their own color */
+
+/* Button Styling (Beveled Look) */
 .button, input[type="submit"] {
     display: inline-block;
-    background: #5cb85c;
-    color: #fff;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 5px;
+    background-color: #8B4513;
+    color: #f5e8c3;
+    padding: 6px 12px;
+    border: 2px solid #5D4037;
+    border-top-color: #A0522D;
+    border-left-color: #A0522D;
+    border-radius: 4px;
     cursor: pointer;
     text-decoration: none;
-    font-size: 15px;
+    font-family: 'Merriweather', serif;
+    font-size: 0.95em;
+    font-weight: bold;
+    box-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+    transition: background-color 0.2s ease, box-shadow 0.2s ease, border-style 0.2s ease;
+    margin-top: 5px;
+    margin-bottom: 5px;
 }
 
 .button:hover, input[type="submit"]:hover {
-    background: #4cae4c;
+    background-color: #A0522D;
+    border-color: #3B2F2F;
+    border-top-color: #8B4513;
+    border-left-color: #8B4513;
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+}
+
+.button:active, input[type="submit"]:active {
+    background-color: #5D4037;
+    border-style: inset;
+    border-top-color: #3B2F2F;
+    border-left-color: #3B2F2F;
+    box-shadow: none;
 }
 
 input[type="submit"][value="Delete Character"] {
-    background: #d9534f;
+    background-color: #8B0000;
+    border-color: #5C0000;
+    border-top-color: #A0522D;
+    border-left-color: #A0522D;
 }
 input[type="submit"][value="Delete Character"]:hover {
-    background: #c9302c;
+    background-color: #A0522D; /* Changed for consistency, was Sienna directly */
+    border-color: #8B0000;
+    border-top-color: #5C0000; /* Adjusted */
+    border-left-color: #5C0000; /* Adjusted */
+}
+input[type="submit"][value="Delete Character"]:active {
+    background-color: #5C0000;
+    border-style: inset;
+    border-top-color: #3B2F2F;
+    border-left-color: #3B2F2F;
 }
 
 
 /* Form Styling */
 form div {
-    margin-bottom: 15px;
+    margin-bottom: 10px;
 }
 
 form label {
     display: block;
-    margin-bottom: 5px;
+    margin-bottom: 3px;
     font-weight: bold;
+    color: #5D4037;
+    font-family: 'Cinzel', serif;
+    font-size: 1.05em;
 }
 
 form input[type="text"],
 form textarea {
-    width: 95%; /* Adjusted for padding */
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
+    width: 95%;
+    padding: 6px 8px;
+    border: 1px solid #A0522D;
+    border-radius: 4px;
+    background-color: #fff9e6;
+    color: #3B2F2F;
+    font-family: 'Merriweather', serif;
+    font-size: 0.95em;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease; /* Added for focus */
+}
+
+form input[type="text"]:focus,
+form textarea:focus {
+    border-color: #5D4037; /* Darker brown border on focus */
+    box-shadow: 0 0 5px rgba(93, 64, 55, 0.3); /* Subtle shadow, using dark brown color */
+    outline: none; /* Remove default browser outline */
 }
 
 form textarea {
     resize: vertical;
+    min-height: 60px;
 }
 
 /* Character List Styling */
-#character-list-section ul {
-    list-style: none;
-    padding: 0;
-}
-
-#character-list-section ul li {
-    background: #fff;
-    border: 1px solid #ddd;
-    margin-bottom: 10px;
-    padding: 15px;
-    border-radius: 5px;
-}
-
-#character-list-section h4 {
+.character-cards-list {
+    list-style-type: none;
+    padding-left: 0;
     margin-top: 0;
-    color: #333;
+    margin-bottom: 0.8em;
 }
+
+.character-cards-list li {
+    background-color: #fffdf5;
+    border: 1px solid #A0522D;
+    padding: 10px;
+    margin-bottom: 10px;
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
+    border-radius: 3px;
+}
+
+.character-cards-list li h4 {
+    font-family: 'Cinzel', serif;
+    font-size: 1.2em;
+    color: #8B0000;
+    margin-top: 0;
+    margin-bottom: 5px;
+}
+
+.character-cards-list li p {
+    font-family: 'Merriweather', serif;
+    font-size: 0.9em;
+    line-height: 1.4;
+    margin-bottom: 8px;
+    color: #3B2F2F;
+}
+
+.character-cards-list li .button,
+.character-cards-list li input[type="submit"] {
+    padding: 4px 8px;
+    font-size: 0.85em;
+    margin-right: 5px;
+}
+
+.character-cards-list li form {
+    display: inline-block;
+    margin-left: 0;
+}
+
+
+/* Two-column layout for character cards on wider screens */
+@media (min-width: 768px) {
+    .character-cards-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+
+    .character-cards-list li {
+        flex: 1 1 calc(50% - 15px);
+        margin-bottom: 0;
+    }
+}
+
 
 /* Flashed Messages Styling */
 ul.flashes {
     list-style: none;
     padding: 0;
-    margin-bottom: 20px;
+    margin: 0 0 15px 0;
+    font-family: 'Merriweather', serif;
 }
 
 ul.flashes li {
-    padding: 10px;
-    margin-bottom: 10px;
-    border-radius: 5px;
-    color: #fff;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    border-radius: 3px;
+    color: #f5e8c3;
+    border: 1px solid;
+    font-size: 0.9em;
+    box-shadow: 1px 1px 2px rgba(0,0,0,0.2);
 }
 
 ul.flashes li.success {
-    background: #5cb85c; /* Green */
+    background: #2E8B57;
+    border-color: #20603C;
 }
 
 ul.flashes li.error {
-    background: #d9534f; /* Red */
+    background: #8B0000;
+    border-color: #5C0000;
 }
 
 ul.flashes li.info {
-    background: #5bc0de; /* Blue */
+    background: #4682B4;
+    border-color: #315A7D;
 }
 
 ul.flashes li.warning {
-    background: #f0ad4e; /* Yellow */
+    background: #8B4513;
+    border-color: #5D4037;
+    color: #fff9e6;
 }
 
 /* Footer Styling */
 footer {
     text-align: center;
-    padding: 20px;
-    margin-top: 30px;
-    background: #333;
-    color: #fff;
+    padding: 15px;
+    margin-top: 20px;
+    background: #5D4037;
+    color: #f5e8c3;
+    border-top: 2px solid #A0522D;
+    font-family: 'Merriweather', serif;
+    font-size: 0.85em;
 }
