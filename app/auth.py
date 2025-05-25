@@ -12,8 +12,8 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 
 # Flask-Dance Google OAuth2 Blueprint
 google_bp = make_google_blueprint(
-    client_id="YOUR_CLIENT_ID_FROM_USER_JSON",  # User needs to replace this
-    client_secret="YOUR_CLIENT_SECRET_FROM_USER_JSON", # User needs to replace this
+    client_id="73513939404-6b3t3n7r9jmdmm24gqdrqc1skr913uqc.apps.googleusercontent.com",       # Placeholder
+    client_secret="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", # Placeholder
     scope=["openid", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"],
     authorized_url="/authorized" # Explicitly set the default relative callback path
 )
