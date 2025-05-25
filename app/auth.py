@@ -19,6 +19,7 @@ google_bp = make_google_blueprint(
     # The redirect_url is where Google sends the user back TO THIS APP.
     # Flask-Dance handles this if not specified, usually matching the route it generates.
     # The signal handler doesn't need a separate route if we return False.
+    authorized_url="/authorized" # Explicitly set the default relative callback path
 )
 
 # Register Google blueprint onto the Auth blueprint
