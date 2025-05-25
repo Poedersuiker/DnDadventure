@@ -903,7 +903,7 @@ def send_chat_message(character_id):
         {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
     ]
-    model = genai.GenerativeModel(model_name="gemini-pro", safety_settings=safety_settings)
+    model = genai.GenerativeModel(model_name="gemini-1.5-flash", safety_settings=safety_settings)
 
     # Chat History for Gemini
     gemini_history = []
