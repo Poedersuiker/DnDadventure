@@ -1,12 +1,16 @@
-import json # Added json import
-import json # Added json import (already present but good to ensure)
-import json # Added json import (already present but good to ensure)
-from flask import render_template, redirect, url_for, flash, request, session
+import json
+# import google.generativeai as genai # Placeholder for Gemini API
+from flask import render_template, redirect, url_for, flash, request, session, get_flashed_messages, jsonify
+from flask_babel import _
 from flask_login import login_required, current_user
 from app import db
-from app.models import User, Character, Race, Class, Spell
-from app.utils import roll_dice # Added roll_dice import
+from app.models import User, Character, Race, Class, Spell # Character is already imported
+from app.utils import roll_dice
 from app.main import bp
+
+# Placeholder for Gemini API Key Configuration
+# GEMINI_API_KEY = "YOUR_API_KEY" # Load this from environment variables in a real app
+# genai.configure(api_key=GEMINI_API_KEY)
 
 @bp.route('/')
 @bp.route('/index')
@@ -832,3 +836,72 @@ def creation_review():
                            submitted_name=char_data.get('character_name_draft',''), # For repopulating if user goes back
                            submitted_alignment=char_data.get('alignment_draft',''),
                            submitted_description=char_data.get('description_draft',''))
+
+
+@bp.route('/<int:character_id>/adventure', methods=['GET', 'POST'])
+@login_required
+def adventure(character_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        flash(_('This character does not belong to you.'))
+        return redirect(url_for('main.index'))
+    try:
+        log_entries = json.loads(character.adventure_log or '[]')
+        if not isinstance(log_entries, list):
+            log_entries = []
+    except json.JSONDecodeError:
+        log_entries = []
+        # Optional: flash('Warning: Chat history was corrupted and has been reset.', 'warning')
+        # print(f"Warning: Adventure log for character {character_id} was malformed and has been reset.")
+    return render_template('adventure.html', title=_('Adventure'),
+                           character=character, log_entries=log_entries)
+
+
+@bp.route('/send_chat_message/<int:character_id>', methods=['POST'])
+@login_required
+def send_chat_message(character_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(error=_("Unauthorized. This character does not belong to you.")), 403
+
+    data = request.get_json()
+    user_message = data.get('message')
+
+    if not user_message:
+        return jsonify(error=_("No message provided.")), 400
+
+    try:
+        log_entries = json.loads(character.adventure_log or '[]')
+        if not isinstance(log_entries, list):
+            log_entries = []
+    except json.JSONDecodeError:
+        log_entries = []
+        # print(f"Warning: Adventure log for character {character_id} was malformed and has been reset before new message.")
+        # For an API endpoint, returning an error or a specific message might be appropriate
+        # if the corruption prevents processing the current request.
+        # However, for resilience, we'll proceed with an empty history for this interaction.
+
+    ai_response = ""
+
+    # Placeholder Gemini API Call Logic
+    # model = genai.GenerativeModel('gemini-pro') # Placeholder model initialization
+    # For Gemini, you would pass log_entries as part of the prompt context
+
+    if not log_entries and user_message == "__START_ADVENTURE__":
+        # This is the very first interaction, triggered by page load
+        ai_response = "Welcome, brave adventurer!\nBefore we begin, tell me: what kind of perils or glories do you seek?\nAre you hoping for a challenging dungeon crawl, a rich story of political intrigue, or perhaps something else entirely?"
+        log_entries.append({"sender": "dm", "text": ai_response})
+    else:
+        # Regular message exchange
+        if user_message != "__START_ADVENTURE__": # Don't log the system message
+            log_entries.append({"sender": "user", "text": user_message})
+        
+        # Placeholder AI response for subsequent messages
+        # In a real scenario, the AI would use log_entries for context
+        ai_response = f"Gemini DM Placeholder:\nYou said '{user_message}'.\nThis is a placeholder response based on your input. The real AI would consider the history: {len(log_entries)} entries so far."
+        log_entries.append({"sender": "dm", "text": ai_response})
+
+    character.adventure_log = json.dumps(log_entries)
+    db.session.commit()
+
+    return jsonify(reply=ai_response)
