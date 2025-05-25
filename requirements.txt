@@ -4,3 +4,4 @@ Flask-Login
 Flask-Dance
 google-auth-oauthlib
 SQLAlchemy
+Flask-Babel
