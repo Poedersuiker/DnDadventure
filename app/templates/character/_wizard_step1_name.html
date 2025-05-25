@@ -1,6 +1,7 @@
 {# Step 1: Character Name #}
 <fieldset>
     <legend>Step 1: Name Your Character</legend>
+    {{ form.hidden_tag() }} {# Add this line #}
     <p>
         {{ form.character_name.label }}<br>
         {# The value is pre-populated by the route using form.character_name.data #}
