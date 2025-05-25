@@ -1,6 +1,7 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
+from flask_migrate import Migrate # Added Migrate import
 from werkzeug.middleware.proxy_fix import ProxyFix # Import ProxyFix
 
 # Modified to make instance folder easily accessible for config loading
@@ -31,6 +32,7 @@ app.config['GOOGLE_OAUTH_CLIENT_SECRET'] = app.config.get('GOOGLE_CLIENT_SECRET'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///dndadventure.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+migrate = Migrate(app, db) # Initialized Flask-Migrate
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'main.login_page' # Updated as per Step 6
