@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Create New Character - D&D Adventure App{% endblock %}
+
+{% block content %}
+    <h2>Create New Character</h2>
+    <form method="POST" action="{{ url_for('main.create_character') }}">
+        <div>
+            <label for="name">Character Name:</label><br>
+            <input type="text" id="name" name="name" required>
+        </div>
+        <br>
+        <div>
+            <label for="description">Description:</label><br>
+            <textarea id="description" name="description" rows="4" cols="50"></textarea>
+        </div>
+        <br>
+        <div>
+            <input type="submit" value="Create Character">
+        </div>
+    </form>
+    <br>
+    <p><a href="{{ url_for('main.index') }}">Back to Character List</a></p>
+{% endblock %}

@@ -1,0 +1,157 @@
+/* Basic Body Styling */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f4f4f4;
+    color: #333;
+    line-height: 1.6;
+}
+
+.container {
+    width: 80%;
+    margin: auto;
+    overflow: hidden;
+    padding: 0 20px;
+}
+
+/* Navigation Styling */
+nav {
+    background: #333;
+    color: #fff;
+    padding: 10px 0;
+    margin-bottom: 20px;
+}
+
+nav ul {
+    padding: 0;
+    list-style: none;
+    text-align: center;
+}
+
+nav ul li {
+    display: inline;
+    margin-right: 20px;
+}
+
+nav a {
+    color: #fff;
+    text-decoration: none;
+    font-size: 18px;
+}
+
+nav a:hover {
+    color: #f0f0f0;
+}
+
+nav span {
+    color: #fff;
+    font-size: 18px;
+}
+
+
+/* Button Styling */
+.button, input[type="submit"] {
+    display: inline-block;
+    background: #5cb85c;
+    color: #fff;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    text-decoration: none;
+    font-size: 15px;
+}
+
+.button:hover, input[type="submit"]:hover {
+    background: #4cae4c;
+}
+
+input[type="submit"][value="Delete Character"] {
+    background: #d9534f;
+}
+input[type="submit"][value="Delete Character"]:hover {
+    background: #c9302c;
+}
+
+
+/* Form Styling */
+form div {
+    margin-bottom: 15px;
+}
+
+form label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+form input[type="text"],
+form textarea {
+    width: 95%; /* Adjusted for padding */
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+form textarea {
+    resize: vertical;
+}
+
+/* Character List Styling */
+#character-list-section ul {
+    list-style: none;
+    padding: 0;
+}
+
+#character-list-section ul li {
+    background: #fff;
+    border: 1px solid #ddd;
+    margin-bottom: 10px;
+    padding: 15px;
+    border-radius: 5px;
+}
+
+#character-list-section h4 {
+    margin-top: 0;
+    color: #333;
+}
+
+/* Flashed Messages Styling */
+ul.flashes {
+    list-style: none;
+    padding: 0;
+    margin-bottom: 20px;
+}
+
+ul.flashes li {
+    padding: 10px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+    color: #fff;
+}
+
+ul.flashes li.success {
+    background: #5cb85c; /* Green */
+}
+
+ul.flashes li.error {
+    background: #d9534f; /* Red */
+}
+
+ul.flashes li.info {
+    background: #5bc0de; /* Blue */
+}
+
+ul.flashes li.warning {
+    background: #f0ad4e; /* Yellow */
+}
+
+/* Footer Styling */
+footer {
+    text-align: center;
+    padding: 20px;
+    margin-top: 30px;
+    background: #333;
+    color: #fff;
+}

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Main Page - D&D Adventure App{% endblock %}
+
+{% block content %}
+    <h2>Your Characters</h2>
+    {% if current_user.is_authenticated %}
+        <p>Welcome, {{ current_user.email or current_user.google_id }}!</p>
+    {% endif %}
+
+    <hr>
+    
+    <h3>Character List</h3>
+    <div id="character-list-section">
+        {# This section will be populated by character_list.html or dynamic content later #}
+        {% include "character_list.html" ignore missing with context %}
+    </div>
+
+    <hr>
+
+    <h3>Create New Character</h3>
+    {# Simple link for now, can be a form later #}
+    <p><a href="{{ url_for('main.create_character') }}" class="button">Create New Character</a></p> {# Assuming main.create_character route #}
+{% endblock %}
