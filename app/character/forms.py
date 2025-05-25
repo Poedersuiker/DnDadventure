@@ -31,18 +31,24 @@ CLASS_CHOICES = [
     ("Wizard", "Wizard")
 ]
 
-class CharacterCreationForm(FlaskForm):
-    name = StringField('Character Name', validators=[DataRequired()])
-    race = SelectField('Race', choices=RACE_CHOICES, validators=[DataRequired()])
-    character_class = SelectField('Class', choices=CLASS_CHOICES, validators=[DataRequired()])
-    strength = IntegerField('Strength', default=10, validators=[DataRequired(), NumberRange(min=3, max=20)])
-    dexterity = IntegerField('Dexterity', default=10, validators=[DataRequired(), NumberRange(min=3, max=20)])
-    constitution = IntegerField('Constitution', default=10, validators=[DataRequired(), NumberRange(min=3, max=20)])
-    intelligence = IntegerField('Intelligence', default=10, validators=[DataRequired(), NumberRange(min=3, max=20)])
-    wisdom = IntegerField('Wisdom', default=10, validators=[DataRequired(), NumberRange(min=3, max=20)])
-    charisma = IntegerField('Charisma', default=10, validators=[DataRequired(), NumberRange(min=3, max=20)])
-    spells_known = TextAreaField('Spells Known')
-    submit = SubmitField('Create Character')
+# New form for Step 1: Character Name
+class CharacterNameForm(FlaskForm):
+    character_name = StringField('Character Name', validators=[DataRequired()])
+
+# CharacterCreationForm is no longer used by any route since the wizard implementation.
+# Removing it.
+# class CharacterCreationForm(FlaskForm):
+#     name = StringField('Character Name', validators=[DataRequired()])
+#     race = SelectField('Race', choices=RACE_CHOICES, validators=[DataRequired()])
+#     character_class = SelectField('Class', choices=CLASS_CHOICES, validators=[DataRequired()])
+#     strength = IntegerField('Strength', default=10, validators=[DataRequired(), NumberRange(min=3, max=20)])
+#     dexterity = IntegerField('Dexterity', default=10, validators=[DataRequired(), NumberRange(min=3, max=20)])
+#     constitution = IntegerField('Constitution', default=10, validators=[DataRequired(), NumberRange(min=3, max=20)])
+#     intelligence = IntegerField('Intelligence', default=10, validators=[DataRequired(), NumberRange(min=3, max=20)])
+#     wisdom = IntegerField('Wisdom', default=10, validators=[DataRequired(), NumberRange(min=3, max=20)])
+#     charisma = IntegerField('Charisma', default=10, validators=[DataRequired(), NumberRange(min=3, max=20)])
+#     spells_known = TextAreaField('Spells Known')
+#     submit = SubmitField('Create Character')
 
 class RaceSelectionForm(FlaskForm):
     race = SelectField('Choose your Race', choices=RACE_CHOICES, validators=[DataRequired()])
@@ -59,7 +65,7 @@ class AbilityScoreAssignmentForm(FlaskForm):
     intelligence = IntegerField('Intelligence', validators=[DataRequired(), NumberRange(min=3, max=18, message="Scores must be between 3 and 18 before racial modifiers.")])
     wisdom = IntegerField('Wisdom', validators=[DataRequired(), NumberRange(min=3, max=18, message="Scores must be between 3 and 18 before racial modifiers.")])
     charisma = IntegerField('Charisma', validators=[DataRequired(), NumberRange(min=3, max=18, message="Scores must be between 3 and 18 before racial modifiers.")])
-    # submit = SubmitField('Next Step') # Submit is handled by the main wizard template
+    # Submit is handled by the main wizard template in create_character_wizard.html
 
 # This form might not be strictly necessary if using direct action buttons,
 # but can be useful for structure or if more complex generation options are added.

@@ -2,7 +2,7 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from .extensions import db # Import db from extensions
 from datetime import datetime
-import math # For calculating average HP gain
+# import math # math module was not used. Average HP gain is hardcoded or uses integer division.
 
 # XP thresholds for leveling up (index i is for level i+1)
 # e.g., XP_THRESHOLDS[0] is XP for level 1 (0), XP_THRESHOLDS[1] is XP for level 2 (300)
@@ -66,14 +66,13 @@ class Character(db.Model): # type: ignore
     current_hp = db.Column(db.Integer, default=10) # Should default to max_hp
     temporary_hp = db.Column(db.Integer, default=0)
     armor_class = db.Column(db.Integer, default=10)
-    # initiative_bonus will be a property method
+    # initiative_bonus is a property method
     speed = db.Column(db.Integer, default=30) # Standard speed
     hit_dice_type = db.Column(db.Integer, default=8) # e.g., d8 for a common class
     hit_dice_current = db.Column(db.Integer, default=1) # Should default to level
     hit_dice_max = db.Column(db.Integer, default=1) # Should default to level
 
-    # Proficiency Bonus - Will be calculated by a method based on level
-    # proficiency_bonus = db.Column(db.Integer, default=2) # Default for level 1
+    # Proficiency Bonus is calculated by a method based on level.
     
     alignment = db.Column(db.String(50))
     background = db.Column(db.String(100))

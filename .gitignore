@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE / Editor specific
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Instance folder (Flask)
+instance/
+
+# Database files
+*.sqlite3
+*.db
+# Note: app/app.db is currently tracked. Adding *.db to .gitignore means
+# app/app.db will be ignored by default for future commits unless
+# specifically added using `git add -f app/app.db` or by excluding it
+# with a pattern like `!app/app.db` in this .gitignore file.

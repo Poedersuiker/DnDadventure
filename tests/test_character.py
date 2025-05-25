@@ -482,10 +482,60 @@ class CharacterWizardTestCase(BaseTestCase): # New Test Case for Wizard to keep 
         response = self.client.post('/character/create_wizard/1', data={
             'character_name': '',
             'action': 'next_step'
-        }, follow_redirects=True)
+        }, follow_redirects=True) # follow_redirects=True because the route doesn't redirect on validation fail, it re-renders
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Step 1: Name Your Character', response.data) # Stays on step 1
-        self.assertIn(b'Character name is required.', response.data) # Flash message
+        # Check for WTForms error message in the response
+        self.assertIn(b'This field is required.', response.data) # Default DataRequired message
+
+    # Test for successful submission of Step 1
+    def test_create_character_wizard_step1_post_success(self):
+        # self.login is called in setUp of CharacterWizardTestCase
+        
+        # Optional: GET step 1 to ensure session is clean and page loads
+        response_get = self.client.get('/character/create_wizard/1')
+        self.assertEqual(response_get.status_code, 200)
+        self.assertIn(b'Step 1: Name Your Character', response_get.data)
+
+        # POST to step 1 with valid data
+        character_name_to_test = 'Sir Testington'
+        response_post = self.client.post('/character/create_wizard/1', data={
+            'character_name': character_name_to_test,
+            'action': 'next_step' 
+            # CSRF token is handled by Flask-WTF; {{ csrf_token() }} is in create_character_wizard.html
+        }, follow_redirects=False) # follow_redirects=False to check the 302 response
+
+        self.assertEqual(response_post.status_code, 302, "POST request did not result in a redirect.")
+        # Corrected expected redirect URL using url_for from flask
+        from flask import url_for 
+        self.assertEqual(response_post.location, url_for('character.create_character_wizard', step=2), "Redirect location is not step 2.")
+        
+        with self.client.session_transaction() as sess:
+            self.assertIn('character_creation_data', sess, "Session data not found.")
+            self.assertIn('name', sess['character_creation_data'], "Character name not in session data.")
+            self.assertEqual(sess['character_creation_data']['name'], character_name_to_test, "Character name in session does not match.")
+
+    # Test for Step 1 submission with an empty name (validation failure)
+    def test_create_character_wizard_step1_post_empty_name(self):
+        # self.login is called in setUp
+        response_get = self.client.get('/character/create_wizard/1')
+        self.assertEqual(response_get.status_code, 200)
+
+        response_post = self.client.post('/character/create_wizard/1', data={
+            'character_name': '',
+            'action': 'next_step'
+        }, follow_redirects=False) # Re-renders on validation fail, so no redirect expected for this specific failure
+        
+        self.assertEqual(response_post.status_code, 200, "Form submission with empty name did not re-render the page.")
+        self.assertIn(b'This field is required.', response_post.data, "Error message for empty name not found.")
+        
+        with self.client.session_transaction() as sess:
+            if 'character_creation_data' in sess and 'name' in sess['character_creation_data']:
+                # Name should not be set, or session data for name might be absent/None
+                self.assertIsNone(sess['character_creation_data'].get('name'), "Name was set in session despite validation error.")
+            # Or, more strictly, ensure character_creation_data itself might not be there or 'name' key is absent
+            # depending on how the route handles partial invalid data.
+            # Given the current route logic, if name is invalid, 'name' key won't be added to character_data.
 
     # --- Clear Session Test ---
     def test_wizard_clear_session_route(self):

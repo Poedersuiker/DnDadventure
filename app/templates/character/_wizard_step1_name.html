@@ -2,17 +2,14 @@
 <fieldset>
     <legend>Step 1: Name Your Character</legend>
     <p>
-        <label for="character_name">Character Name:</label><br>
-        <input type="text" id="character_name" name="character_name" 
-               value="{{ character_data.get('name', '') }}" 
-               required 
-               size="30">
-    </p>
-    {% with messages = get_flashed_messages(category_filter=["error"]) %}
-        {% if messages %}
-            {% for message in messages %}
-                <p style="color: red;">{{ message }}</p>
-            {% endfor %}
+        {{ form.character_name.label }}<br>
+        {# The value is pre-populated by the route using form.character_name.data #}
+        {{ form.character_name(size=30) }} 
+        {% if form.character_name.errors %}
+            <ul class="errors" style="color: red;">
+                {% for error in form.character_name.errors %}<li>{{ error }}</li>{% endfor %}
+            </ul>
         {% endif %}
-    {% endwith %}
+    </p>
+    {# Manual flash messages for this field are removed as WTForms handles errors #}
 </fieldset>
