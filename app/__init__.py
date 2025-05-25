@@ -1,9 +1,18 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
+from werkzeug.middleware.proxy_fix import ProxyFix # Import ProxyFix
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'a_very_secret_key'  # Added secret key
+
+# Apply ProxyFix to handle headers from reverse proxies
+# x_for=1: Trust one hop for X-Forwarded-For (client IP)
+# x_proto=1: Trust one hop for X-Forwarded-Proto (scheme, e.g., https)
+# x_host=1: Trust one hop for X-Forwarded-Host (host name)
+# x_prefix=1: Trust one hop for X-Forwarded-Prefix (URL prefix)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
+app.config['SECRET_KEY'] = 'a_very_secret_key'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///dndadventure.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
