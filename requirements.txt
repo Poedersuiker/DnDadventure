@@ -1,13 +1,6 @@
 Flask
 Flask-SQLAlchemy
-Flask-Migrate
-Flask-WTF
+Flask-Login
+Flask-Dance
+google-auth-oauthlib
 SQLAlchemy
-Flask-login
-psycopg2-binary
-python-dotenv
-google-generativeai
-markdown2
-requests
-beautifulsoup4
-email_validator
