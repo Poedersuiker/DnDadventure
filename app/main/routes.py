@@ -19,24 +19,11 @@ def login_page():
         return redirect(url_for('main.index'))
     return render_template('login.html')
 
-@bp.route('/create_character', methods=['GET', 'POST'])
+@bp.route('/create_character', methods=['GET']) # Only GET needed now for redirect
 @login_required
 def create_character():
-    if request.method == 'POST':
-        name = request.form.get('name')
-        description = request.form.get('description')
-
-        if not name:
-            flash('Character name is required.', 'error')
-            return render_template('create_character.html')
-
-        new_character = Character(name=name, description=description, user_id=current_user.id)
-        db.session.add(new_character)
-        db.session.commit()
-        flash('Character created successfully!', 'success')
-        return redirect(url_for('main.index'))
-    
-    return render_template('create_character.html')
+    # Redirect to the first step of the new character creation flow
+    return redirect(url_for('main.creation_race'))
 
 @bp.route('/delete_character/<int:character_id>', methods=['POST'])
 @login_required
