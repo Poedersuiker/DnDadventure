@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_migrate import Migrate # Added Migrate import
 from werkzeug.middleware.proxy_fix import ProxyFix # Import ProxyFix
+from flask_babel import Babel
 
 # Modified to make instance folder easily accessible for config loading
 app = Flask(__name__, instance_relative_config=True) 
@@ -10,6 +11,9 @@ app = Flask(__name__, instance_relative_config=True)
 # Apply ProxyFix to handle headers from reverse proxies
 # This should be done early, but after app instantiation.
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
+babel = Babel()
+babel.init_app(app)
 
 # Load configurations:
 # 1. Load defaults from project's root config.py
