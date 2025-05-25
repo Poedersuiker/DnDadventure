@@ -5,3 +5,4 @@ Flask-Dance
 google-auth-oauthlib
 SQLAlchemy
 Flask-Babel
+google-generativeai

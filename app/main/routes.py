@@ -1,6 +1,7 @@
 import json
-# import google.generativeai as genai # Placeholder for Gemini API
-from flask import render_template, redirect, url_for, flash, request, session, get_flashed_messages, jsonify
+import os
+import google.generativeai as genai
+from flask import render_template, redirect, url_for, flash, request, session, get_flashed_messages, jsonify, current_app
 from flask_babel import _
 from flask_login import login_required, current_user
 from app import db
@@ -883,25 +884,93 @@ def send_chat_message(character_id):
 
     ai_response = ""
 
-    # Placeholder Gemini API Call Logic
-    # model = genai.GenerativeModel('gemini-pro') # Placeholder model initialization
-    # For Gemini, you would pass log_entries as part of the prompt context
+    # API Key Configuration
+    api_key = current_app.config.get('GOOGLE_API_KEY')
+    if not api_key:
+        current_app.logger.error("Gemini API key (GOOGLE_API_KEY) not configured.")
+        return jsonify(error=_("The Dungeon Master's connection to the ethereal plane is disrupted. (API key missing). Please try again later.")), 500
+    
+    try:
+        genai.configure(api_key=api_key)
+    except Exception as e:
+        current_app.logger.error(f"Error configuring Gemini API: {str(e)}")
+        return jsonify(error=_("There was an issue configuring the connection to the ethereal plane. Please try again later.")), 500
 
-    if not log_entries and user_message == "__START_ADVENTURE__":
-        # This is the very first interaction, triggered by page load
-        ai_response = "Welcome, brave adventurer!\nBefore we begin, tell me: what kind of perils or glories do you seek?\nAre you hoping for a challenging dungeon crawl, a rich story of political intrigue, or perhaps something else entirely?"
-        log_entries.append({"sender": "dm", "text": ai_response})
-    else:
-        # Regular message exchange
-        if user_message != "__START_ADVENTURE__": # Don't log the system message
-            log_entries.append({"sender": "user", "text": user_message})
+    # Initialize Model
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+    ]
+    model = genai.GenerativeModel(model_name="gemini-pro", safety_settings=safety_settings)
+
+    # Chat History for Gemini
+    gemini_history = []
+    for entry in log_entries:
+        role = 'user' if entry['sender'] == 'user' else 'model'
+        gemini_history.append({'role': role, 'parts': [{'text': entry['text']}]})
+
+    chat = model.start_chat(history=gemini_history)
+    
+    prompt_text = ""
+    is_initial_adventure_prompt = False
+
+    if not gemini_history and user_message == "__START_ADVENTURE__":
+        is_initial_adventure_prompt = True
         
-        # Placeholder AI response for subsequent messages
-        # In a real scenario, the AI would use log_entries for context
-        ai_response = f"Gemini DM Placeholder:\nYou said '{user_message}'.\nThis is a placeholder response based on your input. The real AI would consider the history: {len(log_entries)} entries so far."
-        log_entries.append({"sender": "dm", "text": ai_response})
+        skills_list = []
+        if character.current_proficiencies:
+            try:
+                prof_data = json.loads(character.current_proficiencies)
+                if isinstance(prof_data, dict) and isinstance(prof_data.get('skills'), list):
+                    skills_list = prof_data.get('skills', [])
+            except json.JSONDecodeError:
+                current_app.logger.warning(f"Malformed current_proficiencies JSON for character {character_id}: {character.current_proficiencies}")
+                # skills_list remains empty, will default to "Not specified"
+        
+        skills_string = ", ".join(skills_list) if skills_list else "Not specified"
+
+        prompt_text = (
+            f"You are a Dungeon Master for a D&D 5e style game. I am your player. "
+            f"My character is named {character.name}, a level {character.level} {character.race.name} {character.char_class.name}. "
+            f"Character Description: {character.description or 'Not specified'}. "
+            f"Character Alignment: {character.alignment or 'Not specified'}. "
+            f"Character Background: {character.background_name or 'Not specified'}. "
+            f"Key Skills: {skills_string}. "
+            f"Please start our adventure. Ask me some engaging questions about what kind of story or challenges I'm looking for. "
+            f"Make your response immersive and welcoming. Keep your initial questions concise, perhaps 2-3 short questions to get started."
+        )
+    else:
+        prompt_text = user_message
+
+    ai_response_text = ""
+    try:
+        response = chat.send_message(prompt_text)
+        ai_response_text = response.text
+    except Exception as e:
+        current_app.logger.error(f"Error sending message to Gemini: {str(e)}")
+        ai_response_text = _("The Dungeon Master seems to be lost in thought and couldn't quite catch that. Could you try again?")
+        # Do not save user message if AI fails to respond, so they can retry the same message.
+        # Or, save user message and this error as DM response. For now, let's just return the error.
+        # However, if it's the initial prompt, we do want to save the DM error.
+        if is_initial_adventure_prompt:
+            log_entries.append({"sender": "dm", "text": ai_response_text})
+            character.adventure_log = json.dumps(log_entries)
+            db.session.commit()
+        return jsonify(reply=ai_response_text)
+
+
+    # Save messages
+    if user_message == "__START_ADVENTURE__":
+        # This was the initial trigger, only log DM's response
+        log_entries.append({"sender": "dm", "text": ai_response_text})
+    else:
+        # Regular message exchange, log both user and DM
+        log_entries.append({"sender": "user", "text": user_message}) # Log the actual user message
+        log_entries.append({"sender": "dm", "text": ai_response_text})
 
     character.adventure_log = json.dumps(log_entries)
     db.session.commit()
 
-    return jsonify(reply=ai_response)
+    return jsonify(reply=ai_response_text)
