@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Create Character - Step 3: Ability Scores{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="my-4">Create New Character - Step 3: Determine Ability Scores</h1>
+    <p>For your <strong>{{ race_name }} {{ class_name }}</strong>.</p>
+    <p>Primary ability hint for {{ class_name }}: <strong>{{ primary_ability or "Refer to class features" }}</strong></p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="row">
+        <div class="col-md-6">
+            <h2>Stat Generation Methods</h2>
+            <p>You can use one of the following methods to determine your character's base ability scores before racial modifiers.</p>
+            
+            <h4>1. Standard Array</h4>
+            <p>Assign these scores to your abilities as you see fit: <strong>{{ standard_array|join(', ') }}</strong>.</p>
+            
+            <h4>2. Manual Input / Point Buy (Not Implemented)</h4>
+            <p>Enter your desired base scores directly below (typically between 3 and 18). Ensure your point buy total is valid if using that system (DM approval may be needed).</p>
+
+            <h4>3. Dice Rolling (4d6, drop lowest, 6 times)</h4>
+            <form method="POST" action="{{ url_for('main.creation_stats') }}" class="mb-3">
+                <button type="submit" name="action" value="roll_stats" class="button">Roll All Stats (4d6 drop 1, six times)</button>
+            </form>
+            
+            {% if rolled_stats %}
+            <div class="alert alert-info">
+                <p><strong>Your Rolled Scores (assign these below):</strong></p>
+                <ul class="list-inline">
+                    {% for score in rolled_stats %}
+                    <li class="list-inline-item"><h4><span class="badge badge-secondary">{{ score }}</span></h4></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+            
+            <!-- Old placeholder UI for dice rolling removed -->
+            <!--
+            {% for i in range(6) %}
+            <div class="form-group row">
+                <label for="roll_{{i}}" class="col-sm-4 col-form-label">Roll {{i+1}}:</label>
+                <div class="col-sm-4">
+                    <input type="text" readonly class="form-control" id="roll_{{i}}" value="--">
+                </div>
+                <div class="col-sm-4">
+                    <button type="button" class="btn btn-sm btn-info" disabled>Roll</button> {# JS needed for functionality #}
+                </div>
+            </div>
+            {% endfor %}
+            -->
+        </div>
+
+        <div class="col-md-6">
+            <h2>Assign Scores</h2>
+            <p>Enter your base scores below (e.g., from Standard Array, Rolled Scores, or Point Buy). Racial bonuses will be applied automatically.</p>
+            <form method="POST" action="{{ url_for('main.creation_stats') }}">
+                {# Note: This form is separate from the "Roll All Stats" button's form #}
+                {# The main submit button below will not have name="action" #}
+                {% set abilities = [
+                    ('strength', 'STR'), ('dexterity', 'DEX'), ('constitution', 'CON'),
+                    ('intelligence', 'INT'), ('wisdom', 'WIS'), ('charisma', 'CHA')
+                ] %}
+                
+                {% for name, abbr in abilities %}
+                <div class="form-group row">
+                    <label for="{{ name }}" class="col-sm-4 col-form-label">{{ name.capitalize() }} ({{ abbr }}):</label>
+                    <div class="col-sm-5">
+                        <input type="number" class="form-control" id="{{ name }}" name="{{ name }}" 
+                               min="3" max="18" required 
+                               value="{{ submitted_scores[name] if submitted_scores and submitted_scores[name] else '' }}">
+                    </div>
+                    <div class="col-sm-3">
+                        <small class="form-text text-muted">
+                            {% if racial_bonuses_dict.get(abbr) %}
+                                +{{ racial_bonuses_dict.get(abbr) }} ({{ race_name }})
+                            {% elif racial_bonuses_dict.get('ALL') %}
+                                +{{ racial_bonuses_dict.get('ALL') }} ({{ race_name }})
+                            {% else %}
+                                +0
+                            {% endif %}
+                        </small>
+                    </div>
+                </div>
+                {% endfor %}
+                
+                <button type="submit" class="button">Next: Background</button> {# No name="action" here #}
+            </form>
+        </div>
+    </div>
+
+    <a href="{{ url_for('main.creation_class') }}" class="button">Back to Class Selection</a>
+    <a href="{{ url_for('main.index') }}" class="button">Cancel Creation</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    // Placeholder for future JS for dice rolling or standard array assignment.
+    // For example, to populate standard array or handle dice rolls.
+    // For now, users manually input scores.
+</script>
+{% endblock %}

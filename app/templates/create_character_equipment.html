@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Create Character - Step 7: Starting Equipment{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="my-4">Create New Character - Step 7: Starting Equipment</h1>
+    <p>For your <strong>{{ race_name }} {{ class_name }}</strong> (Background: {{ background_name }}).</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('main.creation_equipment') }}">
+        <div class="card mb-3">
+            <div class="card-header">Background Equipment</div>
+            <div class="card-body">
+                {% if background_equipment_string %}
+                    <p>{{ background_equipment_string }}</p>
+                {% else %}
+                    <p>No equipment specified by your background.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">Class Equipment</div>
+            <div class="card-body">
+                {% if fixed_items %}
+                    <h5>You automatically receive:</h5>
+                    <ul>
+                        {% for item_data in fixed_items %}
+                            <li>
+                                {{ item_data.equipment.name if item_data.equipment else 'Unknown Item' }} 
+                                (x{{ item_data.quantity if item_data.quantity else 1 }})
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+
+                {% if choice_groups %}
+                    <h5 class="mt-3">Make your choices:</h5>
+                    {% for group in choice_groups %}
+                        <div class="form-group mt-2 p-2 border rounded">
+                            <h6>{{ group.desc }} (Choose {{ group.choose }})</h6>
+                            {% if group.options %}
+                                {% for option in group.options %}
+                                <div class="form-check">
+                                    {# Assuming choose: 1 for simplicity with radio buttons as per subtask hint #}
+                                    {# For choose > 1, this should be type="checkbox" and name might need adjustment for list handling in Flask #}
+                                    <input class="form-check-input" type="radio" 
+                                           name="{{ group.id }}"  {# e.g., name="choice_0" #}
+                                           id="{{ group.id }}_{{ loop.index0 }}" 
+                                           value="{{ option.index }}" required>
+                                    <label class="form-check-label" for="{{ group.id }}_{{ loop.index0 }}">
+                                        {{ option.name }} (x{{ option.quantity if option.quantity else 1 }})
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <p>No specific options listed for this choice (this might indicate a complex choice like 'any simple weapon' not fully parsed by the simple parser).</p>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                {% elif not fixed_items %}
+                     <p>No specific starting equipment listed for your class, or it could not be parsed.</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <button type="submit" class="button">Next</button> 
+        {# Button text "Next: Spells" or "Next: Review" could be dynamic if we knew spellcasting status here #}
+    </form>
+
+    <a href="{{ url_for('main.creation_hp') }}" class="button">Back to HP & Combat Stats</a>
+    <a href="{{ url_for('main.index') }}" class="button">Cancel Creation</a>
+</div>
+{% endblock %}

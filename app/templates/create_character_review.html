@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Create Character - Final Review{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="my-4">Create New Character - Final Review & Details</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('main.creation_review') }}">
+        <div class="row">
+            <div class="col-md-6">
+                <h3>Character Details</h3>
+                <div class="form-group">
+                    <label for="character_name">Character Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="character_name" name="character_name" 
+                           value="{{ submitted_name or data.get('character_name_draft', '') }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="alignment">Alignment</label>
+                    <input type="text" class="form-control" id="alignment" name="alignment"
+                           value="{{ submitted_alignment or data.get('alignment_draft', '') }}">
+                </div>
+                <div class="form-group">
+                    <label for="character_description">Character Description/Backstory</label>
+                    <textarea class="form-control" id="character_description" name="character_description" 
+                              rows="5">{{ submitted_description or data.get('description_draft', '') }}</textarea>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <h3>Summary</h3>
+                <p><strong>Race:</strong> {{ race.name if race else 'N/A' }}</p>
+                <p><strong>Class:</strong> {{ char_class.name if char_class else 'N/A' }}</p>
+                <p><strong>Level:</strong> 1</p>
+                <p><strong>Background:</strong> {{ data.get('background_name', 'N/A') }}</p>
+                
+                <h4 class="mt-3">Ability Scores</h4>
+                <ul class="list-unstyled">
+                    <li><strong>Strength:</strong> {{ data.get('ability_scores', {}).get('STR', 'N/A') }}</li>
+                    <li><strong>Dexterity:</strong> {{ data.get('ability_scores', {}).get('DEX', 'N/A') }}</li>
+                    <li><strong>Constitution:</strong> {{ data.get('ability_scores', {}).get('CON', 'N/A') }}</li>
+                    <li><strong>Intelligence:</strong> {{ data.get('ability_scores', {}).get('INT', 'N/A') }}</li>
+                    <li><strong>Wisdom:</strong> {{ data.get('ability_scores', {}).get('WIS', 'N/A') }}</li>
+                    <li><strong>Charisma:</strong> {{ data.get('ability_scores', {}).get('CHA', 'N/A') }}</li>
+                </ul>
+
+                <h4 class="mt-3">Combat Stats</h4>
+                <p><strong>Max HP:</strong> {{ data.get('max_hp', 'N/A') }}</p>
+                <p><strong>Base Armor Class:</strong> {{ data.get('armor_class_base', 'N/A') }} (before armor)</p>
+                <p><strong>Speed:</strong> {{ data.get('speed', 'N/A') }} ft.</p>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <h3>Proficiencies</h3>
+                <div class="row">
+                    <div class="col-md-4">
+                        <h5>Saving Throws</h5>
+                        <ul>{% for st in data.get('saving_throw_proficiencies', []) %}<li>{{ st }}</li>{% else %}<li>None</li>{% endfor %}</ul>
+                    </div>
+                    <div class="col-md-4">
+                        <h5>Skills</h5>
+                        <ul>{% for skill in all_skill_proficiencies %}<li>{{ skill }}</li>{% else %}<li>None</li>{% endfor %}</ul>
+                    </div>
+                    <div class="col-md-4">
+                        <h5>Tools</h5>
+                        <ul>{% for tool in all_tool_proficiencies %}<li>{{ tool }}</li>{% else %}<li>None</li>{% endfor %}</ul>
+                    </div>
+                    <div class="col-md-4">
+                        <h5>Languages</h5>
+                        <ul>{% for lang in all_language_proficiencies %}<li>{{ lang }}</li>{% else %}<li>None</li>{% endfor %}</ul>
+                    </div>
+                    <div class="col-md-4">
+                        <h5>Armor</h5>
+                        <ul>{% for armor in data.get('armor_proficiencies', []) %}<li>{{ armor }}</li>{% else %}<li>None</li>{% endfor %}</ul>
+                    </div>
+                    <div class="col-md-4">
+                        <h5>Weapons</h5>
+                        <ul>{% for weapon in data.get('weapon_proficiencies', []) %}<li>{{ weapon }}</li>{% else %}<li>None</li>{% endfor %}</ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <h3>Equipment</h3>
+                <ul>
+                    {% for item_string in data.get('final_equipment', []) %}
+                        <li>{{ item_string }}</li>
+                    {% else %}
+                        <li>No equipment listed.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        {% if cantrips or level_1_spells %}
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <h3>Cantrips</h3>
+                <ul>
+                    {% for spell in cantrips %}
+                        <li>{{ spell.name }}</li>
+                    {% else %}
+                        <li>No cantrips selected or known.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <h3>1st-Level Spells</h3>
+                <ul>
+                    {% for spell in level_1_spells %}
+                        <li>{{ spell.name }}</li>
+                    {% else %}
+                        <li>No 1st-level spells selected or known.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        <button type="submit" class="button">Save Character</button>
+    </form>
+
+    <div class="mt-3 mb-5">
+        {% if char_class and char_class.spellcasting_ability %}
+            <a href="{{ url_for('main.creation_spells') }}" class="button">Back to Spell Selection</a>
+        {% else %}
+            <a href="{{ url_for('main.creation_equipment') }}" class="button">Back to Equipment Selection</a>
+        {% endif %}
+        <a href="{{ url_for('main.index') }}" class="button">Cancel Creation & Discard</a>
+    </div>
+</div>
+{% endblock %}
