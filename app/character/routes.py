@@ -542,7 +542,7 @@ def create_character_wizard(step):
             valid_step = True
             if step == 1: # Process Name
                 # current_form is CharacterNameForm, already instantiated with request.form for POST at the top of create_character_wizard
-                if current_form and current_form.validate_on_submit():
+                if current_form and current_form.validate(): # Changed validate_on_submit() to validate()
                     character_data['name'] = current_form.character_name.data
                 else:
                     valid_step = False # Errors will be displayed by the form rendering
