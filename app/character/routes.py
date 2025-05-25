@@ -3,9 +3,9 @@ from flask_login import login_required, current_user
 from app.extensions import db
 from app.character import bp
 from app.character.forms import (
-    CharacterCreationForm, RaceSelectionForm, ClassSelectionForm,
+    RaceSelectionForm, ClassSelectionForm, # Removed CharacterCreationForm
     AbilityScoreAssignmentForm, BackgroundAlignmentForm, SkillsProficienciesForm,
-    EquipmentForm, SpellSelectionForm, ALL_SKILLS, CharacterNameForm  # Imported CharacterNameForm
+    EquipmentForm, SpellSelectionForm, ALL_SKILLS, CharacterNameForm
 )
 from app.models import Character, CLASS_DATA_MODEL # Added CLASS_DATA_MODEL
 from app.utils.dice_roller import roll_ability_scores
