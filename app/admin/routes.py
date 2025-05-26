@@ -3,7 +3,8 @@ from flask import render_template, abort, current_app, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from . import admin_bp
 from app.utils import list_gemini_models
-from app.models import User
+from app.models import User, Setting # Add Setting import
+from app import db # Add db import
 # Imports for population scripts from app/scripts/
 from app.scripts.populate_races import populate_races_data
 from app.scripts.populate_classes import populate_classes_data
@@ -29,8 +30,22 @@ def general_settings():
             # Validate if new_model is one of the available models to prevent arbitrary values
             available_models_check = list_gemini_models() # Potentially re-fetch or pass from a session/cache
             if new_model in available_models_check:
-                current_app.config['DEFAULT_GEMINI_MODEL'] = new_model
-                flash(f"Default Gemini Model updated to {new_model}. This change is for the current session.", 'success')
+                try:
+                    db_setting = Setting.query.filter_by(key='DEFAULT_GEMINI_MODEL').first()
+                    if db_setting:
+                        db_setting.value = new_model
+                    else:
+                        # This case should ideally be handled by app/__init__.py on startup
+                        db_setting = Setting(key='DEFAULT_GEMINI_MODEL', value=new_model)
+                        db.session.add(db_setting)
+                    
+                    db.session.commit()
+                    current_app.config['DEFAULT_GEMINI_MODEL'] = new_model # Update live config
+                    flash(f"Default Gemini Model updated to {new_model} and saved persistently.", 'success')
+                except Exception as e:
+                    db.session.rollback()
+                    current_app.logger.error(f"Error saving DEFAULT_GEMINI_MODEL to database: {str(e)}")
+                    flash(f"Error saving setting to database: {str(e)}", 'danger')
             else:
                 flash("Invalid model selected.", 'danger')
         else:

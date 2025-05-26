@@ -1,9 +1,9 @@
 import unittest
 import json
-from unittest.mock import patch, MagicMock, ANY # Added ANY
+from unittest.mock import patch, MagicMock, ANY 
 from flask import current_app, url_for
 from app import app, db
-from app.models import User, Character, Race, Class # Add other necessary models
+from app.models import User, Character, Race, Class, Setting # Added Setting
 
 class TestMainRoutes(unittest.TestCase):
     def setUp(self):
@@ -52,39 +52,116 @@ class TestMainRoutes(unittest.TestCase):
         app.config['DEFAULT_GEMINI_MODEL'] = self.original_default_gemini_model
         self.app_context.pop()
 
-    @patch('app.main.routes.genai') # Target 'genai' where it's imported in routes
-    def test_send_chat_message_uses_configured_api_key_and_model(self, mock_genai_module):
-        test_api_key = "test_gemini_key_for_chat_route"
-        test_model_name = "test-gemini-model-for-chat"
-        
-        current_app.config['GEMINI_API_KEY'] = test_api_key
-        current_app.config['DEFAULT_GEMINI_MODEL'] = test_model_name
+    # Removed old test_send_chat_message_uses_configured_api_key_and_model
 
-        # Configure the mock chain for genai
+    @patch('app.main.routes.Setting.query') 
+    @patch('app.main.routes.genai')    
+    @patch('app.main.routes.current_app.logger')
+    def test_send_chat_model_from_db(self, mock_logger, mock_genai_module, mock_setting_query):
+        test_api_key = "test_gemini_key_for_chat_route_db"
+        current_app.config['GEMINI_API_KEY'] = test_api_key
+
+        test_model_name_from_db = "model-from-db"
+        
+        mock_db_setting_instance = MagicMock(spec=Setting)
+        mock_db_setting_instance.value = test_model_name_from_db
+        mock_setting_query.filter_by.return_value.first.return_value = mock_db_setting_instance
+        
         mock_model_instance = MagicMock()
         mock_chat_instance = MagicMock()
-        mock_response_instance = MagicMock()
-        mock_response_instance.text = "AI test reply"
-
+        mock_response_instance = MagicMock(text="AI test reply from DB model")
         mock_chat_instance.send_message.return_value = mock_response_instance
         mock_model_instance.start_chat.return_value = mock_chat_instance
         mock_genai_module.GenerativeModel.return_value = mock_model_instance
-        
-        # Make the call
+
         response = self.client.post(
             url_for('main.send_chat_message', character_id=self.character.id),
-            json={'message': 'Hello DM'}
+            json={'message': 'Hello DM from DB test'}
         )
-
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json['reply'], "AI test reply")
+        self.assertEqual(response.json['reply'], "AI test reply from DB model")
 
-        # Assertions
-        mock_genai_module.configure.assert_called_once_with(api_key=test_api_key)
+        mock_setting_query.filter_by.assert_called_once_with(key='DEFAULT_GEMINI_MODEL')
         mock_genai_module.GenerativeModel.assert_called_once_with(
-            model_name=test_model_name,
-            safety_settings=ANY # Using ANY from unittest.mock
+            model_name=test_model_name_from_db, 
+            safety_settings=ANY
         )
+        mock_genai_module.configure.assert_called_once_with(api_key=test_api_key)
+        # Optional: Check that no warning/error was logged for model selection
+        # mock_logger.warning.assert_not_called() 
+        # mock_logger.error.assert_not_called()
+
+
+    @patch('app.main.routes.Setting.query')
+    @patch('app.main.routes.genai')
+    @patch('app.main.routes.current_app.logger') 
+    def test_send_chat_model_from_config_fallback(self, mock_logger, mock_genai_module, mock_setting_query):
+        test_api_key = "test_gemini_key_for_chat_route_config"
+        current_app.config['GEMINI_API_KEY'] = test_api_key
+
+        test_model_name_from_config = "model-from-config-py"
+        current_app.config['DEFAULT_GEMINI_MODEL'] = test_model_name_from_config
+
+        mock_setting_query.filter_by.return_value.first.return_value = None # Simulate Not in DB
+        
+        mock_model_instance = MagicMock()
+        mock_chat_instance = MagicMock()
+        mock_response_instance = MagicMock(text="AI test reply from config model")
+        mock_chat_instance.send_message.return_value = mock_response_instance
+        mock_model_instance.start_chat.return_value = mock_chat_instance
+        mock_genai_module.GenerativeModel.return_value = mock_model_instance
+
+        response = self.client.post(
+            url_for('main.send_chat_message', character_id=self.character.id),
+            json={'message': 'Hello DM from config fallback test'}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json['reply'], "AI test reply from config model")
+
+        mock_setting_query.filter_by.assert_called_once_with(key='DEFAULT_GEMINI_MODEL')
+        mock_genai_module.GenerativeModel.assert_called_once_with(
+            model_name=test_model_name_from_config, 
+            safety_settings=ANY
+        )
+        mock_genai_module.configure.assert_called_once_with(api_key=test_api_key)
+        mock_logger.warning.assert_called_with(
+            f"Using DEFAULT_GEMINI_MODEL '{test_model_name_from_config}' from config.py (not found in DB or DB value empty)."
+        )
+
+    @patch('app.main.routes.Setting.query')
+    @patch('app.main.routes.genai')
+    @patch('app.main.routes.current_app.logger')
+    def test_send_chat_model_from_hardcoded_fallback(self, mock_logger, mock_genai_module, mock_setting_query):
+        test_api_key = "test_gemini_key_for_chat_route_hardcoded"
+        current_app.config['GEMINI_API_KEY'] = test_api_key
+        
+        current_app.config['DEFAULT_GEMINI_MODEL'] = None # Ensure not in config
+
+        mock_setting_query.filter_by.return_value.first.return_value = None # Simulate Not in DB
+        
+        mock_model_instance = MagicMock()
+        mock_chat_instance = MagicMock()
+        mock_response_instance = MagicMock(text="AI test reply from hardcoded model")
+        mock_chat_instance.send_message.return_value = mock_response_instance
+        mock_model_instance.start_chat.return_value = mock_chat_instance
+        mock_genai_module.GenerativeModel.return_value = mock_model_instance
+
+        response = self.client.post(
+            url_for('main.send_chat_message', character_id=self.character.id),
+            json={'message': 'Hello DM from hardcoded fallback test'}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json['reply'], "AI test reply from hardcoded model")
+
+        mock_setting_query.filter_by.assert_called_once_with(key='DEFAULT_GEMINI_MODEL')
+        mock_genai_module.GenerativeModel.assert_called_once_with(
+            model_name="gemini-1.5-flash", # Hardcoded fallback
+            safety_settings=ANY
+        )
+        mock_genai_module.configure.assert_called_once_with(api_key=test_api_key)
+        mock_logger.error.assert_called_with("DEFAULT_GEMINI_MODEL not found in database or config.py.")
+        mock_logger.warning.assert_called_with("Critial: Using hardcoded fallback Gemini model: gemini-1.5-flash.")
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -5,7 +5,7 @@ from flask import render_template, redirect, url_for, flash, request, session, g
 from flask_babel import _
 from flask_login import login_required, current_user
 from app import db
-from app.models import User, Character, Race, Class, Spell # Character is already imported
+from app.models import User, Character, Race, Class, Spell, Setting # Add Setting import
 from app.utils import roll_dice
 from app.main import bp
 
@@ -904,14 +904,22 @@ def send_chat_message(character_id):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
     ]
     
-    default_model_name = current_app.config.get('DEFAULT_GEMINI_MODEL')
-    if not default_model_name:
-        current_app.logger.error("DEFAULT_GEMINI_MODEL is not configured in current_app.config.")
-        # Fallback to a common default model if not configured, and log a warning.
-        default_model_name = "gemini-1.5-flash" 
-        current_app.logger.warning(f"Using fallback Gemini model: {default_model_name} due to missing configuration.")
+    # New logic to query the database for DEFAULT_GEMINI_MODEL
+    db_setting = Setting.query.filter_by(key='DEFAULT_GEMINI_MODEL').first()
+    if db_setting and db_setting.value:
+        model_to_use = db_setting.value
+        # current_app.logger.info(f"Using DEFAULT_GEMINI_MODEL '{model_to_use}' from database.") # Optional: use debug
+    else:
+        # Fallback to config file's value if not in DB (should be rare due to init logic)
+        model_to_use = current_app.config.get('DEFAULT_GEMINI_MODEL')
+        if not model_to_use: # If still not found (e.g. not in config.py either)
+            current_app.logger.error("DEFAULT_GEMINI_MODEL not found in database or config.py.")
+            model_to_use = "gemini-1.5-flash" # Ultimate fallback
+            current_app.logger.warning(f"Critial: Using hardcoded fallback Gemini model: {model_to_use}.")
+        else:
+            current_app.logger.warning(f"Using DEFAULT_GEMINI_MODEL '{model_to_use}' from config.py (not found in DB or DB value empty).")
     
-    model = genai.GenerativeModel(model_name=default_model_name, safety_settings=safety_settings)
+    model = genai.GenerativeModel(model_name=model_to_use, safety_settings=safety_settings)
 
     # Chat History for Gemini
     gemini_history = []

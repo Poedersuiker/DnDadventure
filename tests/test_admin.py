@@ -1,7 +1,7 @@
 import unittest
-from unittest.mock import patch
-from app import app, db, User  # Assuming User is directly accessible from app
-from flask import current_app, session, url_for # Added url_for
+from unittest.mock import patch, MagicMock # Added MagicMock
+from app import app, db, User, Setting # Added Setting
+from flask import current_app, session, url_for
 
 class AdminTestCase(unittest.TestCase):
     def setUp(self):
@@ -94,26 +94,78 @@ class AdminTestCase(unittest.TestCase):
         self.assertIn(f'<option value="{app.config["DEFAULT_GEMINI_MODEL"]}" selected', response_data)
         self.logout()
 
-    @patch('app.utils.list_gemini_models')
-    def test_general_settings_update_model(self, mock_list_models):
-        """Test updating the default Gemini model."""
-        mock_list_models.return_value = ['gemini-test-model', 'gemini-pro', 'new-gemini-model']
-        self.login(email=app.config['ADMIN_EMAIL'])
-        
-        new_model_to_set = 'new-gemini-model'
-        response = self.client.post('/admin/general', 
-                                    data={'gemini_model': new_model_to_set}, 
-                                    follow_redirects=False) # Test redirect separately
-        
-        self.assertEqual(response.status_code, 302) # Should redirect
-        self.assertIn('/admin/general', response.location)
-        self.assertEqual(current_app.config['DEFAULT_GEMINI_MODEL'], new_model_to_set)
+    @patch('app.utils.list_gemini_models') # For the GET part of the route loading
+    @patch('app.admin.routes.db') # Mock the db object used in routes for commit/rollback
+    @patch('app.admin.routes.Setting') # Mock the Setting class used in routes for query/instantiation
+    def test_general_settings_update_model(self, mock_setting_class, mock_db_ops, mock_list_gemini_models_util):
+        """Test updating the default Gemini model, including database interaction."""
+        self.login(self.admin_user.email)
 
-        # Check for flash message - this requires follow_redirects=True or checking session
-        with self.client.session_transaction() as sess:
-            flashed_messages = dict(sess.get('_flashes', []))
-            self.assertIn('success', flashed_messages) # Check if 'success' category exists
-            self.assertIn(f"Default Gemini Model updated to {new_model_to_set}", flashed_messages['success'])
+        # Configure list_gemini_models mock (called during GET part of rendering the form)
+        # Ensure the models chosen in POST are "valid" according to this mock
+        valid_models = ['model_from_api', 'new_selected_model', 'another_new_model']
+        mock_list_gemini_models_util.return_value = valid_models
+        
+        # --- Scenario 1: Setting already exists in DB ---
+        mock_db_setting_instance = MagicMock(spec=Setting)
+        mock_db_setting_instance.value = 'old_model_in_db'
+        
+        # Setting.query.filter_by().first()
+        mock_setting_class.query.filter_by.return_value.first.return_value = mock_db_setting_instance
+        
+        new_model_to_set_update = 'new_selected_model'
+        response_update = self.client.post(url_for('admin.general_settings'), 
+                                           data={'gemini_model': new_model_to_set_update}, 
+                                           follow_redirects=True)
+
+        self.assertEqual(response_update.status_code, 200)
+        mock_setting_class.query.filter_by.assert_called_once_with(key='DEFAULT_GEMINI_MODEL')
+        self.assertEqual(mock_db_setting_instance.value, new_model_to_set_update) # Check value was updated on mock
+        mock_db_ops.session.commit.assert_called_once()
+        self.assertEqual(current_app.config['DEFAULT_GEMINI_MODEL'], new_model_to_set_update)
+        self.assertIn(b"saved persistently", response_update.data)
+
+        # --- Reset mocks for Scenario 2 ---
+        mock_setting_class.reset_mock()
+        mock_db_ops.reset_mock()
+        mock_list_gemini_models_util.reset_mock() # Reset if it's called again on redirect/render
+        mock_list_gemini_models_util.return_value = valid_models # Re-prime if needed
+
+        # --- Scenario 2: Setting does NOT exist in DB (first() returns None) ---
+        mock_setting_class.query.filter_by.return_value.first.return_value = None
+        
+        # Mock the Setting constructor to return a trackable instance
+        # This is a bit more involved: we need to ensure that when Setting(key=..., value=...)
+        # is called in the route, our mock_db_ops.session.add gets a mock object we can inspect.
+        # The mock_setting_class itself is a mock of the class. When instantiated, it returns a new MagicMock.
+        # We can capture the instance returned by mock_setting_class()
+        
+        created_setting_instance = MagicMock(spec=Setting) # This will be the object "created"
+        mock_setting_class.side_effect = lambda key, value: created_setting_instance if setattr(created_setting_instance, 'key', key) or setattr(created_setting_instance, 'value', value) else created_setting_instance
+
+
+        new_model_to_set_create = 'another_new_model'
+        response_create = self.client.post(url_for('admin.general_settings'), 
+                                           data={'gemini_model': new_model_to_set_create}, 
+                                           follow_redirects=True)
+
+        self.assertEqual(response_create.status_code, 200)
+        mock_setting_class.query.filter_by.assert_called_once_with(key='DEFAULT_GEMINI_MODEL')
+        
+        # Assert that Setting(key=..., value=...) was called
+        # The side_effect for mock_setting_class ensures the instance is created.
+        # We check if db.session.add was called with an object that matches.
+        mock_db_ops.session.add.assert_called_once()
+        added_object = mock_db_ops.session.add.call_args[0][0]
+        
+        # Verify the attributes of the object passed to add
+        self.assertIs(added_object, created_setting_instance) # Check it's the instance our constructor mock made
+        self.assertEqual(created_setting_instance.key, 'DEFAULT_GEMINI_MODEL')
+        self.assertEqual(created_setting_instance.value, new_model_to_set_create)
+        
+        mock_db_ops.session.commit.assert_called_once()
+        self.assertEqual(current_app.config['DEFAULT_GEMINI_MODEL'], new_model_to_set_create)
+        self.assertIn(b"saved persistently", response_create.data)
         
         self.logout()
 
