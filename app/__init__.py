@@ -31,6 +31,33 @@ app.config.from_pyfile('config.py', silent=True)
 app.config['GOOGLE_OAUTH_CLIENT_ID'] = app.config.get('GOOGLE_CLIENT_ID')
 app.config['GOOGLE_OAUTH_CLIENT_SECRET'] = app.config.get('GOOGLE_CLIENT_SECRET')
 
+# Logging Configuration
+import logging
+from logging.handlers import RotatingFileHandler
+import os
+
+# Ensure instance folder exists
+if not os.path.exists(app.instance_path):
+    os.makedirs(app.instance_path)
+
+log_file_path = os.path.join(app.instance_path, 'app.log')
+file_handler = RotatingFileHandler(log_file_path,
+                                   maxBytes=102400, backupCount=10)
+file_handler.setFormatter(logging.Formatter(
+    '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'))
+
+# Set level for the handler
+file_handler.setLevel(logging.INFO)
+
+# Get the Flask app's logger and add the handler
+# app.logger.handlers.clear() # Cautious about clearing existing handlers
+app.logger.addHandler(file_handler)
+app.logger.setLevel(logging.INFO) # Set overall logger level
+app.logger.info('Application logging configured to file.')
+
+# Store log file path in app config for easy access in routes
+app.config['APP_LOG_FILE'] = log_file_path
+
 # These can remain if not intended to be overridden by root/instance config.py by default,
 # or they can be moved to config.py as well. For now, keeping them here.
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///dndadventure.db'
@@ -54,3 +81,7 @@ app.register_blueprint(auth_bp)
 
 from app.main import bp as main_bp # Import main blueprint
 app.register_blueprint(main_bp) # Register main blueprint
+
+# Near other blueprint registrations
+from app.admin import admin_bp
+app.register_blueprint(admin_bp)

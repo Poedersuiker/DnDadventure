@@ -11,6 +11,11 @@
         <nav>
         <ul>
             <li><a href="{{ url_for('main.index') }}">Home</a></li> {# Assuming main.index will exist #}
+            {# Add Admin Panel Link Start #}
+            {% if current_user.is_authenticated and current_user.email == current_app.config.get('ADMIN_EMAIL') %}
+                <li><a href="{{ url_for('admin.admin_dashboard') }}">Admin Panel</a></li>
+            {% endif %}
+            {# Add Admin Panel Link End #}
             {% if current_user.is_authenticated %}
                 <li><span>Welcome, {{ current_user.email or current_user.google_id }}!</span></li>
                 <li><a href="{{ url_for('auth.logout') }}">Logout</a></li>

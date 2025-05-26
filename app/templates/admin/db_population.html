@@ -1,0 +1,38 @@
+{% extends "admin/admin_base.html" %}
+
+{% block title %}Admin - Database Population{% endblock %}
+
+{% block admin_db_population %}
+  <h2>Database Population</h2>
+  <p>Trigger scripts to populate the database with data from dnd5eapi.co. Check the server console for detailed progress.</p>
+  
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="row">
+    <div class="col-md-4 mb-3">
+      <form method="POST" action="{{ url_for('admin.run_populate_races') }}">
+        {# {{ csrf_token_hidden() if csrf_token_hidden else '' }} #}  {# Omitted as per previous tasks, assuming no Flask-WTF CSRF yet #}
+        <button type="submit" class="btn btn-primary w-100">Populate Races</button>
+      </form>
+    </div>
+    <div class="col-md-4 mb-3">
+      <form method="POST" action="{{ url_for('admin.run_populate_classes') }}">
+        {# {{ csrf_token_hidden() if csrf_token_hidden else '' }} #}
+        <button type="submit" class="btn btn-primary w-100">Populate Classes</button>
+      </form>
+    </div>
+    <div class="col-md-4 mb-3">
+      <form method="POST" action="{{ url_for('admin.run_populate_spells') }}">
+        {# {{ csrf_token_hidden() if csrf_token_hidden else '' }} #}
+        <button type="submit" class="btn btn-primary w-100">Populate Spells</button>
+      </form>
+    </div>
+  </div>
+  <p><small>Note: These operations can take some time. The page will reload when the process is initiated. Monitor server logs for detailed output and completion status.</small></p>
+{% endblock %}

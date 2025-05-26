@@ -1,0 +1,31 @@
+{% extends "admin/admin_base.html" %}
+
+{% block title %}Admin - General Settings{% endblock %}
+
+{% block admin_general_settings %}
+  <h2>General Settings</h2>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+  <form method="POST" action="{{ url_for('admin.general_settings') }}">
+    {# Add this if you have CSRF protection like Flask-WTF #}
+    {# {{ csrf_token_hidden() if csrf_token_hidden else '' }} #}
+    <div class="mb-3">
+      <label for="gemini_model" class="form-label">Default Gemini Model</label>
+      <select class="form-select" id="gemini_model" name="gemini_model">
+        {% if available_models %}
+          {% for model in available_models %}
+            <option value="{{ model }}" {% if model == current_model %}selected{% endif %}>{{ model }}</option>
+          {% endfor %}
+        {% else %}
+          <option value="">No models available or API key missing</option>
+        {% endif %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Save Settings</button>
+  </form>
+{% endblock %}

@@ -1,4 +1,7 @@
 import random
+from flask import current_app
+import google.generativeai as genai
+import logging # For logging errors/warnings
 
 def roll_dice(num_dice: int, num_sides: int, drop_lowest: int = 0) -> tuple[int, list[int]]:
     '''
@@ -31,3 +34,20 @@ def roll_dice(num_dice: int, num_sides: int, drop_lowest: int = 0) -> tuple[int,
         sum_of_rolls = sum(rolls)
     
     return sum_of_rolls, rolls # Return original rolls for transparency
+
+def list_gemini_models():
+    api_key = current_app.config.get('GEMINI_API_KEY')
+    if not api_key or api_key == 'YOUR_GEMINI_API_KEY_HERE':
+        logging.warning("GEMINI_API_KEY is not configured or is set to the placeholder.")
+        return []
+
+    try:
+        genai.configure(api_key=api_key)
+        models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                models.append(m.name)
+        return models
+    except Exception as e:
+        logging.error(f"Error listing Gemini models: {e}")
+        return []

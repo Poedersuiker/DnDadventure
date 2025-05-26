@@ -12,3 +12,12 @@ GOOGLE_CLIENT_SECRET = 'YOUR_ACTUAL_GOOGLE_CLIENT_SECRET'
 
 # Example for overriding database URI if needed
 # SQLALCHEMY_DATABASE_URI = 'sqlite:///your_custom_database_name.db'
+
+# Example Gemini API Key (replace with your actual key)
+# GEMINI_API_KEY = 'YOUR_ACTUAL_GEMINI_API_KEY'
+
+# Example Default Gemini Model
+# DEFAULT_GEMINI_MODEL = 'gemini-pro'
+
+# Example Administrator Email
+# ADMIN_EMAIL = 'your_admin_email@example.com'

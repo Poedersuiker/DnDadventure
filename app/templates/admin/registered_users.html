@@ -1,0 +1,16 @@
+{% extends "admin/admin_base.html" %}
+
+{% block title %}Admin - Registered Users{% endblock %}
+
+{% block admin_registered_users %}
+  <h2>Registered Users</h2>
+  {% if users %}
+    <ul class="list-group">
+      {% for user in users %}
+        <li class="list-group-item">{{ user.email if user.email else 'N/A (Google ID: ' ~ user.google_id ~ ')' }}</li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>No registered users found.</p>
+  {% endif %}
+{% endblock %}
