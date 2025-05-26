@@ -2,20 +2,34 @@
 
 {% block content %}
 <div id="character-sheet-overlay" style="display: none;">
-    <h3>{{ character.name }}</h3>
-    <p>Race: {{ character.race.name }} | Class: {{ character.char_class.name }} | Level: {{ character.level }}</p>
-    <p>HP: {{ character.hp }}/{{ character.max_hp }} | AC: {{ character.armor_class }} | Speed: {{ character.speed }}</p>
-    <h4>Abilities</h4>
-    <p>STR: {{ character.strength }} <button class="roll-button" data-roll-type="stat" data-stat-name="Strength" data-stat-value="{{ character.strength }}">🎲 Roll</button></p>
-    <p>DEX: {{ character.dexterity }} <button class="roll-button" data-roll-type="stat" data-stat-name="Dexterity" data-stat-value="{{ character.dexterity }}">🎲 Roll</button></p>
-    <p>CON: {{ character.constitution }} <button class="roll-button" data-roll-type="stat" data-stat-name="Constitution" data-stat-value="{{ character.constitution }}">🎲 Roll</button></p>
-    <p>INT: {{ character.intelligence }} <button class="roll-button" data-roll-type="stat" data-stat-name="Intelligence" data-stat-value="{{ character.intelligence }}">🎲 Roll</button></p>
-    <p>WIS: {{ character.wisdom }} <button class="roll-button" data-roll-type="stat" data-stat-name="Wisdom" data-stat-value="{{ character.wisdom }}">🎲 Roll</button></p>
-    <p>CHA: {{ character.charisma }} <button class="roll-button" data-roll-type="stat" data-stat-name="Charisma" data-stat-value="{{ character.charisma }}">🎲 Roll</button></p>
+    <div id="sheet-drag-handle" class="sheet-header-title"> <!-- Made h3 a div for more control -->
+        <h3>{{ character.name }}</h3>
+    </div>
+    <div class="sheet-subheader">
+        <p>{{ character.race.name }} {{ character.char_class.name }} {{ character.level }}</p> <!-- Simplified display -->
+    </div>
+
+    <div class="main-attributes">
+        <div class="attribute-box"><div>HP</div><div>{{ character.hp }}/{{ character.max_hp }}</div></div>
+        <div class="attribute-box"><div>AC</div><div>{{ character.armor_class }}</div></div>
+        <div class="attribute-box"><div>Speed</div><div>{{ character.speed }}</div></div>
+    </div>
+
+    <h4 class="sheet-section-title">Abilities</h4>
+    <div class="abilities-grid">
+        <div class="ability-box"><span>STR</span> {{ character.strength }} <button class="roll-button" data-roll-type="stat" data-stat-name="Strength" data-stat-value="{{ character.strength }}">🎲</button></div>
+        <div class="ability-box"><span>DEX</span> {{ character.dexterity }} <button class="roll-button" data-roll-type="stat" data-stat-name="Dexterity" data-stat-value="{{ character.dexterity }}">🎲</button></div>
+        <div class="ability-box"><span>CON</span> {{ character.constitution }} <button class="roll-button" data-roll-type="stat" data-stat-name="Constitution" data-stat-value="{{ character.constitution }}">🎲</button></div>
+        <div class="ability-box"><span>INT</span> {{ character.intelligence }} <button class="roll-button" data-roll-type="stat" data-stat-name="Intelligence" data-stat-value="{{ character.intelligence }}">🎲</button></div>
+        <div class="ability-box"><span>WIS</span> {{ character.wisdom }} <button class="roll-button" data-roll-type="stat" data-stat-name="Wisdom" data-stat-value="{{ character.wisdom }}">🎲</button></div>
+        <div class="ability-box"><span>CHA</span> {{ character.charisma }} <button class="roll-button" data-roll-type="stat" data-stat-name="Charisma" data-stat-value="{{ character.charisma }}">🎲</button></div>
+    </div>
     
-    <!-- Placeholder for Skills -->
-    <h4>Skills (Example)</h4>
-    <p>Athletics: +3 <button class="roll-button" data-roll-type="skill" data-skill-name="Athletics" data-skill-modifier="+3">🎲 Roll</button></p>
+    <h4 class="sheet-section-title">Skills (Example)</h4>
+    <div class="skills-list">
+         <p>Athletics: +3 <button class="roll-button" data-roll-type="skill" data-skill-name="Athletics" data-skill-modifier="+3">🎲</button></p>
+         <!-- Add more skills here if available from character data -->
+    </div>
 
     <button id="close-sheet-button">Close</button>
 </div>
@@ -24,18 +38,21 @@
     <button id="character-sheet-button" title="Character Sheet">📜</button>
 </div>
 
-<h1>{{ character.name }}'s Adventure</h1>
+<div id="adventure-container">
+    <h1>{{ character.name }}'s Adventure</h1>
 
-<div id="chat-messages">
-    <!-- Chat messages will appear here -->
+    <div id="chat-messages">
+        <!-- Chat messages will appear here -->
+    </div>
+
+    <input type="text" id="chat-input" placeholder="Type your message...">
+    <button id="send-button">Send</button>
 </div>
-
-<input type="text" id="chat-input" placeholder="Type your message...">
-<button id="send-button">Send</button>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const characterSheetOverlay = document.getElementById('character-sheet-overlay');
+    const sheetDragHandle = document.getElementById('sheet-drag-handle');
     const characterSheetButton = document.getElementById('character-sheet-button');
     const closeSheetButton = document.getElementById('close-sheet-button');
     const chatInput = document.getElementById('chat-input');
@@ -161,6 +178,45 @@ document.addEventListener('DOMContentLoaded', function() {
         sendMessage(null); 
     }
 
+    // Draggable Character Sheet Logic
+    if (sheetDragHandle) {
+        let isDragging = false;
+        let offsetX, offsetY;
+
+        sheetDragHandle.addEventListener('mousedown', function(e) {
+            isDragging = true;
+            
+            // Get the current visual position of the overlay
+            const rect = characterSheetOverlay.getBoundingClientRect();
+            
+            // Set the style to absolute/fixed positioning using top/left
+            // This effectively "unpins" it from the transform-based centering
+            characterSheetOverlay.style.left = rect.left + 'px';
+            characterSheetOverlay.style.top = rect.top + 'px';
+            characterSheetOverlay.style.transform = 'none'; // Remove the centering transform
+
+            // Calculate offset from the mouse pointer to the top-left of the overlay
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
+
+            sheetDragHandle.style.cursor = 'grabbing'; 
+            e.preventDefault(); // Prevent text selection
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (isDragging) {
+                characterSheetOverlay.style.left = (e.clientX - offsetX) + 'px';
+                characterSheetOverlay.style.top = (e.clientY - offsetY) + 'px';
+            }
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (isDragging) {
+                isDragging = false;
+                sheetDragHandle.style.cursor = 'move';
+            }
+        });
+    }
 });
 </script>
 {% endblock %}

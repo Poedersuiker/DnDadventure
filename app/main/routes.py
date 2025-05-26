@@ -47,6 +47,56 @@ def delete_character(character_id):
     flash('Character deleted successfully.', 'success')
     return redirect(url_for('main.index'))
 
+@bp.route('/clear_character_progress/<int:character_id>', methods=['POST'])
+@login_required
+def clear_character_progress(character_id):
+    character = Character.query.get_or_404(character_id)
+
+    if character.user_id != current_user.id:
+        flash('You do not have permission to modify this character.', 'error')
+        return redirect(url_for('main.index'))
+
+    # Reset adventure log and level
+    character.adventure_log = json.dumps([])
+    character.level = 1
+
+    # Recalculate HP for Level 1
+    if character.constitution and character.char_class and character.char_class.hit_die:
+        con_score = character.constitution
+        con_modifier = (con_score - 10) // 2
+        try:
+            hit_die_value = int(character.char_class.hit_die[1:]) # Assumes format like "d8"
+        except (ValueError, TypeError, IndexError):
+            current_app.logger.error(f"Could not parse hit_die '{character.char_class.hit_die}' for class {character.char_class.name}. Defaulting to 8 for HP calculation.")
+            hit_die_value = 8 # Default to a d8 if parsing fails
+        
+        character.max_hp = hit_die_value + con_modifier
+        character.hp = character.max_hp
+    else:
+        # Fallback or error if essential data is missing
+        current_app.logger.warning(f"Could not recalculate HP for character {character.id} due to missing CON or class/hit_die info. HP set to a default or remains unchanged if that's safer.")
+        # Consider setting a default HP, e.g., based on average if CON/hit_die is missing
+        # For now, if this data is missing, HP calculation is skipped. User might need to edit character.
+
+    # Reset Armor Class to base (10 + DEX modifier)
+    if character.dexterity is not None: # Ensure dexterity is not None
+        dex_score = character.dexterity
+        dex_modifier = (dex_score - 10) // 2
+        character.armor_class = 10 + dex_modifier
+    else:
+        current_app.logger.warning(f"Could not recalculate AC for character {character.id} due to missing Dexterity. AC remains unchanged or could be set to a default.")
+        # character.armor_class = 10 # Default if DEX is missing
+
+    # Clear spells (Chosen Simplification)
+    character.known_spells = []
+    character.prepared_spells = []
+    
+    # current_equipment and current_proficiencies are assumed to be the L1 state as per creation_review logic.
+
+    db.session.commit()
+    flash('Adventure progress cleared. Your character has been reset to level 1.', 'success')
+    return redirect(url_for('main.index'))
+
 # Character Creation Step 1: Race Selection
 @bp.route('/creation/race', methods=['GET', 'POST'])
 @login_required

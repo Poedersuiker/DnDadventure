@@ -10,9 +10,16 @@ Font choices:
 /* D&D Player's Handbook Inspired Palette, Fonts, Textures & Borders - Compact Layout - Final Review */
 
 /* Basic Body Styling */
+html, body {
+    height: 100%;
+    margin: 0;
+    overflow-x: hidden; /* Prevent horizontal scroll if vh causes issues */
+}
+
 body {
     font-family: 'Merriweather', serif;
     font-size: 15px;
+    /* margin: 0; Already set in html, body */
     margin: 0;
     padding: 0;
     background-color: #f5e8c3;
@@ -21,6 +28,7 @@ body {
     background-image: linear-gradient(rgba(0,0,0,0.02) 1px, transparent 1px),
                       linear-gradient(90deg, rgba(0,0,0,0.02) 1px, transparent 1px);
     background-size: 20px 20px;
+    /* height: 100%; Already set in html, body */
 }
 
 .container {
@@ -366,63 +374,161 @@ footer {
 
 /* Adventure Page Specific Styles */
 
-/* Character Sheet Overlay */
+/* Character Sheet Overlay - D&D PHB Style */
 #character-sheet-overlay {
     position: fixed;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%);
-    width: 80%;
-    max-width: 500px;
-    background-color: #fff9e6; /* Light parchment */
-    border: 3px solid #5D4037; /* Dark brown border */
-    padding: 20px;
-    box-shadow: 5px 5px 15px rgba(0,0,0,0.5);
+    transform: translate(-50%, -50%); /* Initial centering, JS will override for dragging */
+    width: 90%; /* Wider for sheet layout */
+    max-width: 600px; /* Max width */
+    background-color: #fdf5e6; /* Parchment color */
+    border: 3px double #5D4037; /* Dark brown double border */
+    padding: 15px; /* Slightly reduced padding */
+    box-shadow: 5px 5px 15px rgba(0,0,0,0.4);
     z-index: 1000;
-    border-radius: 5px;
-    overflow-y: auto; /* Scroll if content is too long */
-    max-height: 90vh; /* Max height to prevent overflow on small screens */
-}
-
-#character-sheet-overlay h3 {
-    margin-top: 0;
-    color: #8B0000; /* Match other h3 */
-}
-
-#character-sheet-overlay h4 {
-    margin-top: 10px;
-    margin-bottom: 5px;
-    color: #8B0000; /* Match other h4 */
-}
-
-#character-sheet-overlay p {
-    margin-bottom: 5px;
-    font-size: 0.9em;
-}
-
-#character-sheet-overlay button { /* Style for close button inside overlay */
-    display: block; /* Make it a block to center it or position easily */
-    margin: 15px auto 0; /* Center the button */
-    background-color: #8B4513; /* Match general button style */
-    color: #f5e8c3;
-    padding: 6px 12px;
-    border: 2px solid #5D4037;
-    border-top-color: #A0522D;
-    border-left-color: #A0522D;
-    border-radius: 4px;
-    cursor: pointer;
+    border-radius: 3px; /* Subtle rounding */
+    overflow-y: auto;
+    max-height: 90vh;
+    color: #3B2F2F; /* Dark brown text */
     font-family: 'Merriweather', serif;
+}
+
+/* Drag Handle - Character Name area */
+#sheet-drag-handle.sheet-header-title {
+    cursor: move;
+    text-align: center;
+    margin-bottom: 5px;
+}
+#sheet-drag-handle.sheet-header-title h3 {
+    font-family: 'MedievalSharp', serif;
+    font-size: 2.2em; /* Larger name */
+    color: #8B0000; /* Dark red */
+    margin: 0 0 5px 0;
+    font-weight: normal;
+}
+
+.sheet-subheader {
+    text-align: center;
+    margin-bottom: 15px;
+}
+.sheet-subheader p {
+    font-family: 'Merriweather', serif;
+    font-size: 0.85em;
+    font-style: italic;
+    color: #5D4037;
+    margin: 0;
+}
+
+.main-attributes {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #A0522D;
+}
+.attribute-box {
+    border: 1px solid #A0522D;
+    padding: 8px;
+    text-align: center;
+    border-radius: 3px;
+    background-color: #fff9e6; /* Slightly lighter than sheet bg */
+    min-width: 80px; /* Minimum width for each box */
+    box-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+}
+.attribute-box div:first-child { /* Label like HP, AC */
+    font-family: 'Cinzel', serif;
+    font-weight: bold;
     font-size: 0.9em;
+    color: #8B0000;
+    margin-bottom: 3px;
 }
-#character-sheet-overlay button:hover {
-    background-color: #A0522D;
+.attribute-box div:last-child { /* Value */
+    font-family: 'Merriweather', serif;
+    font-size: 1.1em;
+    font-weight: bold;
+}
+
+.sheet-section-title { /* For H4s like "Abilities", "Skills" */
+    font-family: 'Cinzel', serif;
+    font-size: 1.4em;
+    color: #8B0000;
+    font-weight: 700; /* Cinzel bold */
+    margin-top: 15px;
+    margin-bottom: 10px;
+    padding-bottom: 3px;
+    border-bottom: 1px solid #A0522D; /* Sienna underline */
+    text-align: left;
+}
+
+.abilities-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr); /* Two columns */
+    gap: 10px;
+    margin-bottom: 15px;
+}
+.ability-box { /* Reusing .attribute-box for individual abilities */
+    border: 1px solid #A0522D;
+    padding: 10px;
+    text-align: center;
+    background-color: #fff9e6;
+    border-radius: 3px;
+    box-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+}
+.ability-box span { /* For STR, DEX labels */
+    display: block;
+    font-family: 'Cinzel', serif;
+    font-weight: bold;
+    font-size: 1em;
+    color: #8B0000;
+    margin-bottom: 4px;
+}
+/* Value text is direct child of .ability-box, roll button is also a child */
+
+.skills-list {
+    padding-left: 5px; /* Indent skill list slightly */
+}
+.skills-list p {
+    font-size: 0.9em;
+    margin-bottom: 4px; /* Tighter list */
+    display: flex; /* Align skill name and button */
+    justify-content: space-between;
+    align-items: center;
 }
 
 
-/* Chat Window Elements */
+/* Close Button on Character Sheet */
+#character-sheet-overlay #close-sheet-button { /* Increased specificity */
+    display: block;
+    margin: 20px auto 5px; /* More space above, less below */
+    background-color: #A0522D; /* Sienna */
+    color: #fdf5e6; /* Parchment text */
+    padding: 5px 15px; /* Smaller padding */
+    border: 1px solid #5D4037; /* Dark brown border */
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: 'Cinzel', serif; /* Thematic font */
+    font-size: 0.9em;
+    font-weight: bold;
+    box-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+}
+#character-sheet-overlay #close-sheet-button:hover {
+    background-color: #8B4513; /* Darker sienna */
+    border-color: #3B2F2F;
+}
+
+
+/* Adventure Page Container Layout (remains the same) */
+#adventure-container {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 230px); /* This estimate remains, might need fine-tuning */
+}
+
+/* Chat Window Elements (remains the same) */
 #chat-messages {
-    height: 300px;
-    overflow-y: scroll;
+    flex-grow: 1; /* Allows chat messages to take up available vertical space */
+    overflow-y: auto; /* Changed from scroll to auto for better behavior */
     border: 1px solid #A0522D; /* Sienna border, like form inputs */
     padding: 10px;
     margin-bottom: 10px;
@@ -474,23 +580,22 @@ footer {
 
 /* Roll Buttons on Character Sheet */
 .roll-button {
-    font-size: 0.8em;
-    padding: 2px 6px;
-    margin-left: 8px;
-    background-color: #e0e0e0; /* Light grey, less prominent */
-    color: #333;
-    border: 1px solid #999;
-    border-radius: 3px;
+    font-size: 1.1em; /* Slightly larger die icon */
+    padding: 0 3px; /* Minimal padding */
+    margin-left: 5px; /* Reduced margin */
+    background: none;
+    border: none;
+    color: #5D4037; /* Dark brown, like text */
     cursor: pointer;
-    font-family: 'Merriweather', serif;
+    font-family: 'Merriweather', serif; /* Keep consistent if icon font not used */
+    vertical-align: middle; /* Align with text better */
 }
 
 .roll-button:hover {
-    background-color: #ccc;
-    border-color: #777;
+    color: #8B0000; /* Dark red on hover */
 }
 
-/* Chat Messages Styling */
+/* Chat Messages Styling (remains the same) */
 .message {
     padding: 5px 8px;
     margin-bottom: 5px;
