@@ -151,21 +151,40 @@ document.addEventListener('DOMContentLoaded', function() {
         chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight; // Scroll to bottom
     }
 
-    async function sendMessage(messageText) {
-        if (!messageText && messageText !== null) { // Allow null for initial message
-             const textFromInput = chatInput.value.trim();
-             if (!textFromInput) return;
-             messageText = textFromInput;
-             appendMessage(messageText, 'user');
-             chatInput.value = '';
-        } else if (messageText === null) { // Special case for initial message
-            // Don't append a "You: null" message
-        } else {
-            // This case is for pre-defined messages that are not from user input
-            // but should still be displayed as if the user sent them (e.g. "Rolling ...")
-             appendMessage(messageText, 'user');
-        }
+    // Revised sendMessage function
+    async function sendMessage(messageContent, isSystemMessageNoEcho = false) {
+        let textForBackend = messageContent; // For system messages (like dice rolls) or programmatic user messages to be echoed.
 
+        if (!isSystemMessageNoEcho) {
+            // This branch handles messages that should be echoed in the chat as "You: ..."
+            if (messageContent === undefined || messageContent === null) { 
+                // Message is from the chat input box by the user
+                const textFromInput = chatInput.value.trim();
+                if (!textFromInput) return; // Don't send empty messages from input
+                textForBackend = textFromInput;
+                appendMessage(textForBackend, 'user'); // Append typed message
+                chatInput.value = '';
+            } else {
+                // This is a programmatic message that should still be shown as from user
+                // (e.g. if we had a button "Say Hello", it would call sendMessage("Hello", false))
+                appendMessage(textForBackend, 'user');
+            }
+        }
+        // If isSystemMessageNoEcho is true, messageContent is used directly as textForBackend,
+        // and no appendMessage happens here for the user's turn (it's pre-appended for dice rolls).
+
+        // Special handling for the very first message to start the adventure
+        if (messageContent === null && isSystemMessageNoEcho === false) { 
+            textForBackend = "__START_ADVENTURE__";
+        }
+        
+        if (textForBackend === undefined) { 
+            // This case should ideally not be reached if logic is sound.
+            // It implies messageContent was undefined AND isSystemMessageNoEcho was true.
+            console.error("sendMessage called with undefined message and no echo flag.");
+            return; 
+        }
+        // Note: textForBackend can be null if initialLogEntries is empty, then it's set to __START_ADVENTURE__
 
         try {
             const response = await fetch(`/send_chat_message/${characterId}`, {
@@ -173,7 +192,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ message: messageText === null ? "__START_ADVENTURE__" : messageText }) 
+                body: JSON.stringify({ message: textForBackend }) 
             });
 
             if (!response.ok) {
@@ -192,10 +211,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    sendButton.addEventListener('click', () => sendMessage());
+    sendButton.addEventListener('click', () => sendMessage()); // isSystemMessageNoEcho defaults to false
     chatInput.addEventListener('keypress', function(event) {
         if (event.key === 'Enter') {
-            sendMessage();
+            sendMessage(); // isSystemMessageNoEcho defaults to false
         }
     });
 
@@ -245,11 +264,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 rollDetailsForUser += `): Rolled [${data.rolls.join(', ')}]`;
 
-                // Show calculation if there's a modifier or multiple dice
                 if (data.modifier !== 0 || data.rolls.length > 1) {
-                    // This part of the logic seems to duplicate the modifier in the sum
-                    // The subtotal already includes all dice rolls. We just need to add the modifier.
-                    // Corrected logic for sum part:
                     if (data.modifier > 0) {
                         rollDetailsForUser += ` + ${data.modifier}`;
                     } else if (data.modifier < 0) {
@@ -258,10 +273,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 rollDetailsForUser += ` = **${data.total}**`;
                 
-                // Use this rollDetailsForUser for both appendMessage and sendMessage
-                appendMessage(rollDetailsForUser, 'user');
+                appendMessage(rollDetailsForUser, 'user'); // Display the roll to the user
                 characterSheetOverlay.style.display = 'none';
-                sendMessage(rollDetailsForUser);
+                sendMessage(rollDetailsForUser, true); // Send to AI, isSystemMessageNoEcho = true
             })
             .catch(error => {
                 console.error('Dice roll error:', error);
@@ -277,7 +291,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     } else {
         // Send initial message to trigger DM's intro only if no history
-        sendMessage(null); 
+        sendMessage(null); // isSystemMessageNoEcho defaults to false
     }
 
     // Draggable Character Sheet Logic
@@ -288,21 +302,17 @@ document.addEventListener('DOMContentLoaded', function() {
         sheetDragHandle.addEventListener('mousedown', function(e) {
             isDragging = true;
             
-            // Get the current visual position of the overlay
             const rect = characterSheetOverlay.getBoundingClientRect();
             
-            // Set the style to absolute/fixed positioning using top/left
-            // This effectively "unpins" it from the transform-based centering
             characterSheetOverlay.style.left = rect.left + 'px';
             characterSheetOverlay.style.top = rect.top + 'px';
-            characterSheetOverlay.style.transform = 'none'; // Remove the centering transform
+            characterSheetOverlay.style.transform = 'none'; 
 
-            // Calculate offset from the mouse pointer to the top-left of the overlay
             offsetX = e.clientX - rect.left;
             offsetY = e.clientY - rect.top;
 
             sheetDragHandle.style.cursor = 'grabbing'; 
-            e.preventDefault(); // Prevent text selection
+            e.preventDefault(); 
         });
 
         document.addEventListener('mousemove', function(e) {
