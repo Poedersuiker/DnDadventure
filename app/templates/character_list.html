@@ -4,11 +4,22 @@
             <li>
                 <h4>{{ character.name }}</h4>
                 <p>{{ character.description or "No description." }}</p>
-                {# Placeholder links/buttons for actions #}
-                <a href="{{ url_for('main.adventure', character_id=character.id) }}" class="button">Start/Continue Adventure</a>
-                <form method="POST" action="{{ url_for('main.delete_character', character_id=character.id) }}" style="display:inline;"> {# Assuming main.delete_character route #}
-                    <input type="submit" value="Delete Character" onclick="return confirm('Are you sure you want to delete this character?');">
-                </form>
+                {# Action buttons #}
+                <a href="{{ url_for('main.adventure', character_id=character.id) }}" class="button">
+                    {% if character.adventure_log and character.adventure_log != '[]' and character.adventure_log != 'null' %}
+                        Continue Adventure
+                    {% else %}
+                        Start Adventure
+                    {% endif %}
+                </a>
+                <div class="character-actions">
+                    <form method="POST" action="{{ url_for('main.clear_character_progress', character_id=character.id) }}" style="display:inline;">
+                        <input type="submit" value="Clear Progress" onclick="return confirm('Are you sure you want to clear all adventure progress for this character? This will reset them to level 1 stats and clear their adventure history.');">
+                    </form>
+                    <form method="POST" action="{{ url_for('main.delete_character', character_id=character.id) }}" style="display:inline;"> {# Assuming main.delete_character route #}
+                        <input type="submit" value="Delete Character" onclick="return confirm('Are you sure you want to delete this character?');">
+                    </form>
+                </div>
             </li>
         {% endfor %}
     </ul>

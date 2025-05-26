@@ -2,20 +2,108 @@
 
 {% block content %}
 <div id="character-sheet-overlay" style="display: none;">
-    <h3>{{ character.name }}</h3>
-    <p>Race: {{ character.race.name }} | Class: {{ character.char_class.name }} | Level: {{ character.level }}</p>
-    <p>HP: {{ character.hp }}/{{ character.max_hp }} | AC: {{ character.armor_class }} | Speed: {{ character.speed }}</p>
-    <h4>Abilities</h4>
-    <p>STR: {{ character.strength }} <button class="roll-button" data-roll-type="stat" data-stat-name="Strength" data-stat-value="{{ character.strength }}">🎲 Roll</button></p>
-    <p>DEX: {{ character.dexterity }} <button class="roll-button" data-roll-type="stat" data-stat-name="Dexterity" data-stat-value="{{ character.dexterity }}">🎲 Roll</button></p>
-    <p>CON: {{ character.constitution }} <button class="roll-button" data-roll-type="stat" data-stat-name="Constitution" data-stat-value="{{ character.constitution }}">🎲 Roll</button></p>
-    <p>INT: {{ character.intelligence }} <button class="roll-button" data-roll-type="stat" data-stat-name="Intelligence" data-stat-value="{{ character.intelligence }}">🎲 Roll</button></p>
-    <p>WIS: {{ character.wisdom }} <button class="roll-button" data-roll-type="stat" data-stat-name="Wisdom" data-stat-value="{{ character.wisdom }}">🎲 Roll</button></p>
-    <p>CHA: {{ character.charisma }} <button class="roll-button" data-roll-type="stat" data-stat-name="Charisma" data-stat-value="{{ character.charisma }}">🎲 Roll</button></p>
+    <div id="sheet-drag-handle" class="sheet-header-title">
+        <h3>{{ character.name }}</h3>
+    </div>
+    <div class="sheet-subheader">
+        <p>{{ character.race.name }} Lvl {{ character.level }} {{ character.char_class.name }}</p>
+    </div>
+
+    <div class="sheet-details">
+        <p><strong>Alignment:</strong> {{ character.alignment|default('N/A') }}</p>
+        <p><strong>Background:</strong> {{ character.background_name|default('N/A') }}</p>
+    </div>
+
+    <div class="main-attributes">
+        <div class="attribute-box"><div>Prof. Bonus</div><div>+{{ proficiency_bonus }}</div></div>
+        <div class="attribute-box"><div>HP</div><div>{{ character.hp }}/{{ character.max_hp }}</div></div>
+        <div class="attribute-box"><div>AC</div><div>{{ character.armor_class }}</div></div>
+        <div class="attribute-box"><div>Speed</div><div>{{ character.speed }}</div></div>
+    </div>
+
+    <h4 class="sheet-section-title">Abilities</h4>
+    <div class="abilities-grid">
+        {% for ability in abilities_data %}
+            <div class="ability-box">
+                <span class="ability-label">{{ ability.name_short }}</span>
+                <span class="ability-score">{{ ability.score }}</span>
+                <span class="ability-modifier">({% if ability.modifier >=0 %}+{% endif %}{{ ability.modifier }})</span>
+                <button class="roll-button" 
+                        data-roll-type="stat" 
+                        data-roll-name="{{ ability.name_full }} Check"
+                        data-dice-formula="1d20"
+                        data-modifier="{{ ability.modifier }}">🎲</button>
+            </div>
+        {% endfor %}
+    </div>
     
-    <!-- Placeholder for Skills -->
-    <h4>Skills (Example)</h4>
-    <p>Athletics: +3 <button class="roll-button" data-roll-type="skill" data-skill-name="Athletics" data-skill-modifier="+3">🎲 Roll</button></p>
+    <h4 class="sheet-section-title">Saving Throws</h4>
+    <div class="saving-throws-list">
+        {% for save_info in saving_throws_data %}
+            <p>
+                <span class="prof-indicator">{% if save_info.is_proficient %}●{% else %}○{% endif %}</span>
+                <span class="ability-name">{{ save_info.name }}</span>
+                <span class="modifier">{% if save_info.modifier >= 0 %}+{% endif %}{{ save_info.modifier }}</span>
+                <button class="roll-button" 
+                        data-roll-type="save" 
+                        data-roll-name="{{ save_info.name }} Save"
+                        data-dice-formula="1d20"
+                        data-modifier="{{ save_info.modifier }}">🎲</button>
+            </p>
+        {% endfor %}
+    </div>
+
+    <h4 class="sheet-section-title">Skills</h4>
+    <div class="skills-list">
+        {% for skill_info in skills_data %}
+            <p>
+                <span class="prof-indicator">{% if skill_info.is_proficient %}●{% else %}○{% endif %}</span>
+                <span class="skill-name">{{ skill_info.name }}</span>
+                <span class="skill-ability-abbr">({{ skill_info.ability_abbr }})</span>
+                <span class="modifier">{% if skill_info.modifier >= 0 %}+{% endif %}{{ skill_info.modifier }}</span>
+                <button class="roll-button" 
+                        data-roll-type="skill" 
+                        data-roll-name="{{ skill_info.name }}"
+                        data-dice-formula="1d20"
+                        data-modifier="{{ skill_info.modifier }}">🎲</button>
+            </p>
+        {% endfor %}
+    </div>
+    
+    {% if proficient_armor %}
+    <h4 class="sheet-section-title">Armor Proficiencies</h4>
+    <div class="proficiencies-list"><ul>{% for item in proficient_armor %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    {% endif %}
+
+    {% if proficient_weapons %}
+    <h4 class="sheet-section-title">Weapon Proficiencies</h4>
+    <div class="proficiencies-list"><ul>{% for item in proficient_weapons %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    {% endif %}
+
+    {% if proficient_tools %}
+    <h4 class="sheet-section-title">Tool Proficiencies</h4>
+    <div class="proficiencies-list"><ul>{% for item in proficient_tools %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    {% endif %}
+
+    {% if proficient_languages %}
+    <h4 class="sheet-section-title">Languages</h4>
+    <div class="proficiencies-list"><ul>{% for item in proficient_languages %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    {% endif %}
+
+    {% if equipment_list %}
+    <h4 class="sheet-section-title">Equipment</h4>
+    <div class="equipment-list"><ul>{% for item in equipment_list %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    {% endif %}
+    
+    {% if cantrips %}
+    <h4 class="sheet-section-title">Cantrips</h4>
+    <div class="spells-list"><ul>{% for spell in cantrips %}<li>{{ spell.name }}</li>{% endfor %}</ul></div>
+    {% endif %}
+
+    {% if level_1_spells %}
+    <h4 class="sheet-section-title">Level 1 Spells</h4>
+    <div class="spells-list"><ul>{% for spell in level_1_spells %}<li>{{ spell.name }}</li>{% endfor %}</ul></div>
+    {% endif %}
 
     <button id="close-sheet-button">Close</button>
 </div>
@@ -24,18 +112,21 @@
     <button id="character-sheet-button" title="Character Sheet">📜</button>
 </div>
 
-<h1>{{ character.name }}'s Adventure</h1>
+<div id="adventure-container">
+    <h1>{{ character.name }}'s Adventure</h1>
 
-<div id="chat-messages">
-    <!-- Chat messages will appear here -->
+    <div id="chat-messages">
+        <!-- Chat messages will appear here -->
+    </div>
+
+    <input type="text" id="chat-input" placeholder="Type your message...">
+    <button id="send-button">Send</button>
 </div>
-
-<input type="text" id="chat-input" placeholder="Type your message...">
-<button id="send-button">Send</button>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const characterSheetOverlay = document.getElementById('character-sheet-overlay');
+    const sheetDragHandle = document.getElementById('sheet-drag-handle');
     const characterSheetButton = document.getElementById('character-sheet-button');
     const closeSheetButton = document.getElementById('close-sheet-button');
     const chatInput = document.getElementById('chat-input');
@@ -60,21 +151,40 @@ document.addEventListener('DOMContentLoaded', function() {
         chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight; // Scroll to bottom
     }
 
-    async function sendMessage(messageText) {
-        if (!messageText && messageText !== null) { // Allow null for initial message
-             const textFromInput = chatInput.value.trim();
-             if (!textFromInput) return;
-             messageText = textFromInput;
-             appendMessage(messageText, 'user');
-             chatInput.value = '';
-        } else if (messageText === null) { // Special case for initial message
-            // Don't append a "You: null" message
-        } else {
-            // This case is for pre-defined messages that are not from user input
-            // but should still be displayed as if the user sent them (e.g. "Rolling ...")
-             appendMessage(messageText, 'user');
-        }
+    // Revised sendMessage function
+    async function sendMessage(messageContent, isSystemMessageNoEcho = false) {
+        let textForBackend = messageContent; // For system messages (like dice rolls) or programmatic user messages to be echoed.
 
+        if (!isSystemMessageNoEcho) {
+            // This branch handles messages that should be echoed in the chat as "You: ..."
+            if (messageContent === undefined || messageContent === null) { 
+                // Message is from the chat input box by the user
+                const textFromInput = chatInput.value.trim();
+                if (!textFromInput) return; // Don't send empty messages from input
+                textForBackend = textFromInput;
+                appendMessage(textForBackend, 'user'); // Append typed message
+                chatInput.value = '';
+            } else {
+                // This is a programmatic message that should still be shown as from user
+                // (e.g. if we had a button "Say Hello", it would call sendMessage("Hello", false))
+                appendMessage(textForBackend, 'user');
+            }
+        }
+        // If isSystemMessageNoEcho is true, messageContent is used directly as textForBackend,
+        // and no appendMessage happens here for the user's turn (it's pre-appended for dice rolls).
+
+        // Special handling for the very first message to start the adventure
+        if (messageContent === null && isSystemMessageNoEcho === false) { 
+            textForBackend = "__START_ADVENTURE__";
+        }
+        
+        if (textForBackend === undefined) { 
+            // This case should ideally not be reached if logic is sound.
+            // It implies messageContent was undefined AND isSystemMessageNoEcho was true.
+            console.error("sendMessage called with undefined message and no echo flag.");
+            return; 
+        }
+        // Note: textForBackend can be null if initialLogEntries is empty, then it's set to __START_ADVENTURE__
 
         try {
             const response = await fetch(`/send_chat_message/${characterId}`, {
@@ -82,7 +192,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ message: messageText === null ? "__START_ADVENTURE__" : messageText }) 
+                body: JSON.stringify({ message: textForBackend }) 
             });
 
             if (!response.ok) {
@@ -101,10 +211,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    sendButton.addEventListener('click', () => sendMessage());
+    sendButton.addEventListener('click', () => sendMessage()); // isSystemMessageNoEcho defaults to false
     chatInput.addEventListener('keypress', function(event) {
         if (event.key === 'Enter') {
-            sendMessage();
+            sendMessage(); // isSystemMessageNoEcho defaults to false
         }
     });
 
@@ -125,29 +235,52 @@ document.addEventListener('DOMContentLoaded', function() {
             event.preventDefault();
 
             const rollType = this.dataset.rollType;
-            let rollString = "Rolling ";
+            const rollName = this.dataset.rollName;
+            const diceFormula = this.dataset.diceFormula || '1d20';
+            const modifier = parseInt(this.dataset.modifier || '0');
 
-            if (rollType === 'stat') {
-                const statName = this.dataset.statName;
-                const statValue = parseInt(this.dataset.statValue);
-                const modifier = Math.floor((statValue - 10) / 2);
-
-                rollString += `${statName} check: 1d20`;
-                if (modifier >= 0) { // Show +0 or actual positive modifier
-                    rollString += ` + ${modifier}`;
-                } else { // Show negative modifier
-                    rollString += ` - ${Math.abs(modifier)}`;
+            fetch("{{ url_for('main.roll_dice_from_sheet') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', },
+                body: JSON.stringify({
+                    roll_type: rollType,
+                    roll_name: rollName,
+                    dice_formula: diceFormula,
+                    modifier: modifier
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    appendMessage(`Error rolling dice: ${data.error}`, 'dm');
+                    return;
                 }
-            } else if (rollType === 'skill') {
-                const skillName = this.dataset.skillName;
-                const skillModifier = this.dataset.skillModifier; 
+                
+                let rollDetailsForUser = `Rolling ${data.roll_name} (${data.dice_formula}`;
+                if (data.modifier > 0) {
+                    rollDetailsForUser += `+${data.modifier}`;
+                } else if (data.modifier < 0) {
+                    rollDetailsForUser += `${data.modifier}`; // Negative sign is inherent
+                }
+                rollDetailsForUser += `): Rolled [${data.rolls.join(', ')}]`;
 
-                rollString += `${skillName} skill check: 1d20 ${skillModifier}`;
-            }
-            
-            // Instead of directly putting to chatInput, send it as a user message
-            sendMessage(rollString); 
-            characterSheetOverlay.style.display = 'none'; // Close sheet after preparing roll
+                if (data.modifier !== 0 || data.rolls.length > 1) {
+                    if (data.modifier > 0) {
+                        rollDetailsForUser += ` + ${data.modifier}`;
+                    } else if (data.modifier < 0) {
+                        rollDetailsForUser += ` - ${Math.abs(data.modifier)}`;
+                    }
+                }
+                rollDetailsForUser += ` = **${data.total}**`;
+                
+                appendMessage(rollDetailsForUser, 'user'); // Display the roll to the user
+                characterSheetOverlay.style.display = 'none';
+                sendMessage(rollDetailsForUser, true); // Send to AI, isSystemMessageNoEcho = true
+            })
+            .catch(error => {
+                console.error('Dice roll error:', error);
+                appendMessage('Error performing dice roll.', 'dm');
+            });
         });
     });
 
@@ -158,9 +291,44 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     } else {
         // Send initial message to trigger DM's intro only if no history
-        sendMessage(null); 
+        sendMessage(null); // isSystemMessageNoEcho defaults to false
     }
 
+    // Draggable Character Sheet Logic
+    if (sheetDragHandle) {
+        let isDragging = false;
+        let offsetX, offsetY;
+
+        sheetDragHandle.addEventListener('mousedown', function(e) {
+            isDragging = true;
+            
+            const rect = characterSheetOverlay.getBoundingClientRect();
+            
+            characterSheetOverlay.style.left = rect.left + 'px';
+            characterSheetOverlay.style.top = rect.top + 'px';
+            characterSheetOverlay.style.transform = 'none'; 
+
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
+
+            sheetDragHandle.style.cursor = 'grabbing'; 
+            e.preventDefault(); 
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (isDragging) {
+                characterSheetOverlay.style.left = (e.clientX - offsetX) + 'px';
+                characterSheetOverlay.style.top = (e.clientY - offsetY) + 'px';
+            }
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (isDragging) {
+                isDragging = false;
+                sheetDragHandle.style.cursor = 'move';
+            }
+        });
+    }
 });
 </script>
 {% endblock %}

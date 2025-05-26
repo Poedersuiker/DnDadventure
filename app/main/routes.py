@@ -47,6 +47,56 @@ def delete_character(character_id):
     flash('Character deleted successfully.', 'success')
     return redirect(url_for('main.index'))
 
+@bp.route('/clear_character_progress/<int:character_id>', methods=['POST'])
+@login_required
+def clear_character_progress(character_id):
+    character = Character.query.get_or_404(character_id)
+
+    if character.user_id != current_user.id:
+        flash('You do not have permission to modify this character.', 'error')
+        return redirect(url_for('main.index'))
+
+    # Reset adventure log and level
+    character.adventure_log = json.dumps([])
+    character.level = 1
+
+    # Recalculate HP for Level 1
+    if character.constitution and character.char_class and character.char_class.hit_die:
+        con_score = character.constitution
+        con_modifier = (con_score - 10) // 2
+        try:
+            hit_die_value = int(character.char_class.hit_die[1:]) # Assumes format like "d8"
+        except (ValueError, TypeError, IndexError):
+            current_app.logger.error(f"Could not parse hit_die '{character.char_class.hit_die}' for class {character.char_class.name}. Defaulting to 8 for HP calculation.")
+            hit_die_value = 8 # Default to a d8 if parsing fails
+        
+        character.max_hp = hit_die_value + con_modifier
+        character.hp = character.max_hp
+    else:
+        # Fallback or error if essential data is missing
+        current_app.logger.warning(f"Could not recalculate HP for character {character.id} due to missing CON or class/hit_die info. HP set to a default or remains unchanged if that's safer.")
+        # Consider setting a default HP, e.g., based on average if CON/hit_die is missing
+        # For now, if this data is missing, HP calculation is skipped. User might need to edit character.
+
+    # Reset Armor Class to base (10 + DEX modifier)
+    if character.dexterity is not None: # Ensure dexterity is not None
+        dex_score = character.dexterity
+        dex_modifier = (dex_score - 10) // 2
+        character.armor_class = 10 + dex_modifier
+    else:
+        current_app.logger.warning(f"Could not recalculate AC for character {character.id} due to missing Dexterity. AC remains unchanged or could be set to a default.")
+        # character.armor_class = 10 # Default if DEX is missing
+
+    # Clear spells (Chosen Simplification)
+    character.known_spells = []
+    character.prepared_spells = []
+    
+    # current_equipment and current_proficiencies are assumed to be the L1 state as per creation_review logic.
+
+    db.session.commit()
+    flash('Adventure progress cleared. Your character has been reset to level 1.', 'success')
+    return redirect(url_for('main.index'))
+
 # Character Creation Step 1: Race Selection
 @bp.route('/creation/race', methods=['GET', 'POST'])
 @login_required
@@ -839,6 +889,18 @@ def creation_review():
                            submitted_description=char_data.get('description_draft',''))
 
 
+
+ALL_SKILLS_LIST = [
+    ("Acrobatics", "DEX"), ("Animal Handling", "WIS"), ("Arcana", "INT"),
+    ("Athletics", "STR"), ("Deception", "CHA"), ("History", "INT"),
+    ("Insight", "WIS"), ("Intimidation", "CHA"), ("Investigation", "INT"),
+    ("Medicine", "WIS"), ("Nature", "INT"), ("Perception", "WIS"),
+    ("Performance", "CHA"), ("Persuasion", "CHA"), ("Religion", "INT"),
+    ("Sleight of Hand", "DEX"), ("Stealth", "DEX"), ("Survival", "WIS")
+]
+ABILITY_NAMES_FULL = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma']
+
+
 @bp.route('/<int:character_id>/adventure', methods=['GET', 'POST'])
 @login_required
 def adventure(character_id):
@@ -846,16 +908,180 @@ def adventure(character_id):
     if character.user_id != current_user.id:
         flash(_('This character does not belong to you.'))
         return redirect(url_for('main.index'))
+
     try:
         log_entries = json.loads(character.adventure_log or '[]')
         if not isinstance(log_entries, list):
             log_entries = []
     except json.JSONDecodeError:
         log_entries = []
-        # Optional: flash('Warning: Chat history was corrupted and has been reset.', 'warning')
-        # print(f"Warning: Adventure log for character {character_id} was malformed and has been reset.")
-    return render_template('adventure.html', title=_('Adventure'),
-                           character=character, log_entries=log_entries)
+        current_app.logger.warning(f"Adventure log for character {character_id} was malformed and has been reset.")
+
+    # --- Data Preparation for Character Sheet ---
+    proficiency_bonus = (character.level - 1) // 4 + 2
+
+    # Parse Proficiencies (proficient_skills and proficient_saving_throws are used below and also for AI prompt context)
+    proficiencies_data = {}
+    try:
+        proficiencies_data = json.loads(character.current_proficiencies or '{}')
+        if not isinstance(proficiencies_data, dict): # Ensure it's a dict
+            proficiencies_data = {}
+            current_app.logger.warning(f"current_proficiencies for char {character_id} was not a dict, reset to empty.")
+    except json.JSONDecodeError:
+        current_app.logger.error(f"Failed to parse current_proficiencies JSON for character {character_id}: {character.current_proficiencies}")
+        proficiencies_data = {} # Default to empty if parsing fails
+
+    proficient_skills = proficiencies_data.get('skills', [])
+    proficient_tools = proficiencies_data.get('tools', [])
+    proficient_languages = proficiencies_data.get('languages', [])
+    proficient_armor = proficiencies_data.get('armor', [])
+    proficient_weapons = proficiencies_data.get('weapons', [])
+    proficient_saving_throws = proficiencies_data.get('saving_throws', []) # List of ability abbreviations e.g. ["STR", "DEX"]
+
+    # Parse Equipment
+    equipment_list = []
+    try:
+        equipment_list = json.loads(character.current_equipment or '[]')
+        if not isinstance(equipment_list, list): # Ensure it's a list
+            equipment_list = []
+            current_app.logger.warning(f"current_equipment for char {character_id} was not a list, reset to empty.")
+    except json.JSONDecodeError:
+        current_app.logger.error(f"Failed to parse current_equipment JSON for character {character_id}: {character.current_equipment}")
+        equipment_list = [] # Default to empty list if parsing fails
+
+    # Filter Spells
+    cantrips = [spell for spell in character.known_spells if spell.level == 0]
+    level_1_spells = [spell for spell in character.known_spells if spell.level == 1]
+
+    # Prepare Saving Throws Data
+    saving_throws_data = []
+    for ability_name_full in ABILITY_NAMES_FULL:
+        ability_attr_lower = ability_name_full.lower() 
+        ability_attr_short = ability_name_full[:3].upper() 
+        
+        base_score = getattr(character, ability_attr_lower, 10) 
+        base_modifier = (base_score - 10) // 2
+        is_proficient = ability_attr_short in proficient_saving_throws
+        final_modifier = base_modifier + proficiency_bonus if is_proficient else base_modifier
+        saving_throws_data.append({
+            "name": ability_name_full,
+            "attribute_short": ability_attr_short, 
+            "modifier": final_modifier,
+            "is_proficient": is_proficient
+        })
+
+    # Prepare Skills Data
+    skills_data = []
+    ability_abbr_to_attr_lower = {
+        "STR": "strength", "DEX": "dexterity", "CON": "constitution",
+        "INT": "intelligence", "WIS": "wisdom", "CHA": "charisma"
+    }
+    for skill_name, skill_ability_abbr in ALL_SKILLS_LIST:
+        ability_attr_lower = ability_abbr_to_attr_lower.get(skill_ability_abbr)
+        if not ability_attr_lower:
+            current_app.logger.error(f"Unknown ability abbreviation '{skill_ability_abbr}' for skill '{skill_name}'. Defaulting score to 10.")
+            base_score = 10
+        else:
+            base_score = getattr(character, ability_attr_lower, 10)
+            
+        base_modifier = (base_score - 10) // 2
+        is_proficient = skill_name in proficient_skills
+        final_modifier = base_modifier + proficiency_bonus if is_proficient else base_modifier
+        skills_data.append({
+            "name": skill_name,
+            "ability_abbr": skill_ability_abbr,
+            "modifier": final_modifier,
+            "is_proficient": is_proficient
+        })
+
+    # Prepare Abilities Data
+    abilities_data = []
+    ability_full_to_short_map = {
+        'Strength': 'STR', 'Dexterity': 'DEX', 'Constitution': 'CON',
+        'Intelligence': 'INT', 'Wisdom': 'WIS', 'Charisma': 'CHA'
+    }
+    for ability_name_full in ABILITY_NAMES_FULL:
+        attr_lower = ability_name_full.lower() 
+        score = getattr(character, attr_lower, 10) 
+        modifier = (score - 10) // 2
+        abilities_data.append({
+            "name_full": ability_name_full,
+            "name_short": ability_full_to_short_map.get(ability_name_full, "UNK"), 
+            "score": score,
+            "modifier": modifier
+        })
+    
+    return render_template('adventure.html', 
+                           title=_('Adventure'),
+                           character=character, 
+                           log_entries=log_entries,
+                           # Character Sheet Data:
+                           all_skills_list=ALL_SKILLS_LIST, 
+                           ability_names_full=ABILITY_NAMES_FULL, 
+                           proficiency_bonus=proficiency_bonus,
+                           proficient_skills=proficient_skills, 
+                           proficient_saving_throws=proficient_saving_throws,
+                           proficient_tools=proficient_tools,
+                           proficient_languages=proficient_languages,
+                           proficient_armor=proficient_armor,
+                           proficient_weapons=proficient_weapons,
+                           equipment_list=equipment_list,
+                           cantrips=cantrips,
+                           level_1_spells=level_1_spells,
+                           # New pre-calculated data for template:
+                           saving_throws_data=saving_throws_data,
+                           skills_data=skills_data,
+                           abilities_data=abilities_data
+                           )
+
+@bp.route('/roll_dice_from_sheet', methods=['POST'])
+@login_required
+def roll_dice_from_sheet():
+    data = request.get_json()
+    if not data:
+        return jsonify(error="No data provided"), 400
+
+    roll_type = data.get('roll_type')
+    dice_formula = data.get('dice_formula', '1d20') # Default to 1d20
+    modifier = data.get('modifier', 0)
+    roll_name = data.get('roll_name', 'Roll') # Default roll name
+
+    if not isinstance(modifier, int):
+        try:
+            modifier = int(modifier)
+        except ValueError:
+            return jsonify(error="Invalid modifier format. Must be an integer."), 400
+
+    try:
+        parts = dice_formula.lower().split('d')
+        if len(parts) != 2:
+            raise ValueError("Invalid dice formula format. Expected 'XdY', e.g., '1d20'.")
+        
+        num_dice = int(parts[0])
+        num_sides = int(parts[1])
+
+        if num_dice <= 0 or num_sides <= 0:
+            raise ValueError("Number of dice and sides must be positive.")
+
+    except Exception as e: # Catches ValueError from int conversion or splitting
+        current_app.logger.error(f"Error parsing dice formula '{dice_formula}': {e}")
+        return jsonify(error=f"Invalid dice formula: {dice_formula}. Expected format 'XdY' (e.g., '1d20')."), 400
+
+    # Call the utility function. It returns (sum_of_rolls, list_of_all_rolls)
+    # The prompt implies `actual_rolls, subtotal = roll_dice(...)`
+    # My utils.roll_dice returns `sum_of_rolls, rolls`. So:
+    # subtotal = sum_of_rolls, actual_rolls = rolls
+    subtotal, actual_rolls = roll_dice(num_dice, num_sides) 
+    total = subtotal + modifier
+
+    return jsonify({
+        "roll_name": roll_name,
+        "dice_formula": dice_formula,
+        "modifier": modifier,
+        "rolls": actual_rolls,
+        "subtotal": subtotal,
+        "total": total
+    })
 
 
 @bp.route('/send_chat_message/<int:character_id>', methods=['POST'])
@@ -954,8 +1180,12 @@ def send_chat_message(character_id):
             f"Character Alignment: {character.alignment or 'Not specified'}. "
             f"Character Background: {character.background_name or 'Not specified'}. "
             f"Key Skills: {skills_string}. "
-            f"Please start our adventure. Ask me some engaging questions about what kind of story or challenges I'm looking for. "
-            f"Make your response immersive and welcoming. Keep your initial questions concise, perhaps 2-3 short questions to get started."
+            # New instructions for dice rolls:
+            "When the player sends a message that clearly states a dice roll result (e.g., 'Rolling Strength Check (1d20+2): Rolled [15] + 2 = 17'), you should acknowledge this roll and incorporate its outcome into your narrative response. For example, if they roll high on a persuasion check, describe how the NPC is convinced. If they roll low on an attack, describe how their attack misses or is parried. "
+            "As a Dungeon Master, you should also pay attention to the context of the roll. If a player states they are making a roll that seems inappropriate for the current situation (e.g., rolling for damage before an attack roll has been made and confirmed to hit, or rolling a skill check that doesn't fit the narrative or your last request), gently point this out. Explain what kind of roll you were expecting or why their stated roll might not be suitable right now. Ask them to make the correct roll or to clarify their action. Your goal is to guide the player and ensure the game flows logically, but do so in a helpful and immersive way. Don't be overly strict if the player is just learning or if the roll could be creatively interpreted. "
+            # Original instructions continue:
+            "Please start our adventure. Ask me some engaging questions about what kind of story or challenges I'm looking for. "
+            "Make your response immersive and welcoming. Keep your initial questions concise, perhaps 2-3 short questions to get started."
         )
     else:
         prompt_text = user_message
