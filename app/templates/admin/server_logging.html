@@ -1,0 +1,10 @@
+{% extends "admin/admin_base.html" %}
+
+{% block title %}Admin - Server Logs{% endblock %}
+
+{% block admin_server_logging %}
+  <h2>Server Logs</h2>
+  <a href="{{ url_for('admin.server_logs', refresh='true') }}" class="btn btn-sm btn-outline-secondary mb-3">Refresh Logs</a>
+  <a href="{{ url_for('admin.clear_logs') }}" class="btn btn-sm btn-outline-danger mb-3 float-end" onclick="return confirm('Are you sure you want to clear the log file?');">Clear Logs</a>
+  <pre style="max-height: 600px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; background-color: #f8f9fa;">{{ log_content if log_content else "Log file is empty or not found." }}</pre>
+{% endblock %}

@@ -1,58 +1,79 @@
 import unittest
-import sys
-import os
+from unittest.mock import patch, MagicMock
+from app import app # Your Flask app instance
+from app.utils import list_gemini_models
+# If google.generativeai is not easily importable for error types,
+# you can mock a generic Exception for the API error test.
 
-# Add the project root to the Python path to allow direct import of 'app'
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, project_root)
-
-from app.utils import roll_dice
+class MockModel:
+    def __init__(self, name, supported_generation_methods):
+        self.name = name
+        self.supported_generation_methods = supported_generation_methods
 
 class TestUtils(unittest.TestCase):
+    def setUp(self):
+        self.app_context = app.app_context()
+        self.app_context.push()
+        # Store original config values to restore them in tearDown
+        self.original_gemini_api_key = app.config.get('GEMINI_API_KEY')
+        # Set a default test API key, can be overridden in specific tests
+        app.config['GEMINI_API_KEY'] = 'default_test_api_key' 
 
-    def test_roll_dice_basic(self):
-        total, rolls = roll_dice(num_dice=2, num_sides=6)
-        self.assertEqual(len(rolls), 2)
-        self.assertTrue(1 <= rolls[0] <= 6)
-        self.assertTrue(1 <= rolls[1] <= 6)
-        self.assertEqual(total, sum(rolls))
+    def tearDown(self):
+        # Restore original config values
+        app.config['GEMINI_API_KEY'] = self.original_gemini_api_key
+        self.app_context.pop()
 
-    def test_roll_dice_drop_lowest(self):
-        # Test with a scenario where dropping is guaranteed to change the sum
-        # For example, roll 4d6, drop 1. If rolls are [1, 6, 6, 6], sum is 18.
-        # If we didn't drop, sum would be 19.
-        # It's hard to guarantee specific rolls, so we check logic.
-        total, rolls = roll_dice(num_dice=4, num_sides=6, drop_lowest=1)
-        self.assertEqual(len(rolls), 4) # Should show all original rolls
+    @patch('app.utils.genai') # Patching 'genai' where it's used in app.utils
+    def test_list_gemini_models_success(self, mock_genai_module):
+        app.config['GEMINI_API_KEY'] = 'fake_valid_key' # Specific key for this test
         
-        # Sum should be sum of 3 highest rolls
-        sorted_rolls = sorted(rolls)
-        expected_sum = sum(sorted_rolls[1:])
-        self.assertEqual(total, expected_sum)
+        # Configure mock return values for genai.list_models()
+        mock_genai_module.list_models.return_value = [
+            MockModel(name='models/gemini-pro', supported_generation_methods=['generateContent', 'embedContent']),
+            MockModel(name='models/gemini-pro-vision', supported_generation_methods=['generateContent']),
+            MockModel(name='models/embedding-001', supported_generation_methods=['embedContent'])
+        ]
+        
+        result = list_gemini_models()
+        
+        mock_genai_module.configure.assert_called_once_with(api_key='fake_valid_key')
+        self.assertEqual(result, ['models/gemini-pro', 'models/gemini-pro-vision'])
 
-    def test_roll_dice_drop_multiple(self):
-        total, rolls = roll_dice(num_dice=5, num_sides=10, drop_lowest=2)
-        self.assertEqual(len(rolls), 5)
-        sorted_rolls = sorted(rolls)
-        expected_sum = sum(sorted_rolls[2:])
-        self.assertEqual(total, expected_sum)
+    @patch('app.utils.genai')
+    @patch('app.utils.logging') # Patch logging in app.utils
+    def test_list_gemini_models_no_api_key(self, mock_logging, mock_genai_module):
+        app.config['GEMINI_API_KEY'] = None
+        result = list_gemini_models()
+        self.assertEqual(result, [])
+        mock_genai_module.configure.assert_not_called()
+        mock_logging.warning.assert_called_with("GEMINI_API_KEY is not configured or is set to the placeholder.")
+        
+        mock_logging.reset_mock() # Reset mock for the next call
 
-    def test_roll_dice_no_drop(self):
-        total, rolls = roll_dice(num_dice=3, num_sides=8, drop_lowest=0)
-        self.assertEqual(len(rolls), 3)
-        self.assertEqual(total, sum(rolls))
+        app.config['GEMINI_API_KEY'] = 'YOUR_GEMINI_API_KEY_HERE' # Placeholder
+        result = list_gemini_models()
+        self.assertEqual(result, [])
+        mock_genai_module.configure.assert_not_called()
+        mock_logging.warning.assert_called_with("GEMINI_API_KEY is not configured or is set to the placeholder.")
 
-    def test_roll_dice_invalid_inputs(self):
-        with self.assertRaises(ValueError):
-            roll_dice(num_dice=0, num_sides=6) # Num dice not positive
-        with self.assertRaises(ValueError):
-            roll_dice(num_dice=2, num_sides=0) # Num sides not positive
-        with self.assertRaises(ValueError):
-            roll_dice(num_dice=3, num_sides=6, drop_lowest=-1) # Drop lowest negative
-        with self.assertRaises(ValueError):
-            roll_dice(num_dice=3, num_sides=6, drop_lowest=3) # Drop lowest >= num_dice
-        with self.assertRaises(ValueError):
-            roll_dice(num_dice=3, num_sides=6, drop_lowest=4) # Drop lowest > num_dice
+    @patch('app.utils.genai')
+    @patch('app.utils.logging') # Patch logging in app.utils
+    def test_list_gemini_models_api_error(self, mock_logging, mock_genai_module):
+        app.config['GEMINI_API_KEY'] = 'fake_valid_key_for_error_test'
+        
+        # genai.configure should not raise an error for this test path
+        mock_genai_module.configure.return_value = None 
+        
+        # Simulate an error during genai.list_models()
+        simulated_error_message = "Simulated API Error"
+        mock_genai_module.list_models.side_effect = Exception(simulated_error_message)
+
+        result = list_gemini_models()
+        
+        mock_genai_module.configure.assert_called_once_with(api_key='fake_valid_key_for_error_test')
+        self.assertEqual(result, [])
+        mock_logging.error.assert_called_with(f"Error listing Gemini models: {simulated_error_message}")
 
 if __name__ == '__main__':
     unittest.main()

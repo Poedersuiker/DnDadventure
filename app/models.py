@@ -129,3 +129,11 @@ class Race(db.Model):
 
     def __repr__(self):
         return f'<Race {self.name}>'
+
+class Setting(db.Model):
+    __tablename__ = 'setting'
+    key = db.Column(db.String(100), primary_key=True, nullable=False)
+    value = db.Column(db.String(255), nullable=True)
+
+    def __repr__(self):
+        return f'<Setting {self.key}={self.value}>'

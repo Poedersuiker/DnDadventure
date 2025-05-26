@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Panel{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Admin Panel</h1>
+    <ul class="nav nav-tabs" id="adminTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <a class="nav-link {% if request.endpoint == 'admin.general_settings' %}active{% endif %}" id="general-tab" 
+               href="{{ url_for('admin.general_settings') }}" 
+               aria-controls="general" aria-selected="{% if request.endpoint == 'admin.general_settings' %}true{% else %}false{% endif %}">
+               General Settings
+            </a>
+        </li>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link {% if request.endpoint == 'admin.users_list' %}active{% endif %}" id="users-tab" 
+               href="{{ url_for('admin.users_list') }}" role="tab" 
+               aria-controls="users" aria-selected="{% if request.endpoint == 'admin.users_list' %}true{% else %}false{% endif %}">
+               Registered Users
+            </a>
+        </li>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link {% if request.endpoint == 'admin.db_population_status' or request.endpoint.startswith('admin.run_populate_') %}active{% endif %}" id="db-populate-tab"
+               href="{{ url_for('admin.db_population_status') }}" role="tab"
+               aria-controls="db-populate" aria-selected="{% if request.endpoint == 'admin.db_population_status' or request.endpoint.startswith('admin.run_populate_') %}true{% else %}false{% endif %}">
+               Database Population
+            </a>
+        </li>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link {% if request.endpoint == 'admin.server_logs' or request.endpoint == 'admin.clear_logs' %}active{% endif %}" id="logging-tab"
+               href="{{ url_for('admin.server_logs') }}" role="tab"
+               aria-controls="logging" aria-selected="{% if request.endpoint == 'admin.server_logs' or request.endpoint == 'admin.clear_logs' %}true{% else %}false{% endif %}">
+               Server Logging
+            </a>
+        </li>
+    </ul>
+    <div class="tab-content" id="adminTabsContent">
+        <div class="tab-pane fade {% if request.endpoint == 'admin.general_settings' %}show active{% endif %}" id="general" role="tabpanel" aria-labelledby="general-tab">
+            {% block admin_general_settings %}{% endblock %}
+        </div>
+        <div class="tab-pane fade {% if request.endpoint == 'admin.users_list' %}show active{% endif %}" id="users" role="tabpanel" aria-labelledby="users-tab">
+            {% block admin_registered_users %}{% endblock %}
+        </div>
+        <div class="tab-pane fade {% if request.endpoint == 'admin.db_population_status' or request.endpoint.startswith('admin.run_populate_') %}show active{% endif %}" id="db-populate" role="tabpanel" aria-labelledby="db-populate-tab">
+            {% block admin_db_population %}{% endblock %}
+        </div>
+        <div class="tab-pane fade {% if request.endpoint == 'admin.server_logs' or request.endpoint == 'admin.clear_logs' %}show active{% endif %}" id="logging" role="tabpanel" aria-labelledby="logging-tab">
+            {% block admin_server_logging %}{% endblock %}
+        </div>
+    </div>
+</div>
+{% endblock %}
