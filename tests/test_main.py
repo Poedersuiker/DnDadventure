@@ -66,11 +66,9 @@ class TestMainRoutes(unittest.TestCase):
         app.config['DEFAULT_GEMINI_MODEL'] = self.original_default_gemini_model
         self.app_context.pop()
 
-    # Old tests for send_chat_message that might need updating/removal due to refactoring
-    # For now, they are left as is, but their patch targets might be incorrect for deep logic testing.
     @patch('app.main.routes.Setting.query') 
-    @patch('app.gemini.genai') # Patched app.gemini.genai for the call from routes
-    @patch('app.gemini.current_app') # Patched app.gemini.current_app for the call from routes
+    @patch('app.gemini.genai') 
+    @patch('app.gemini.current_app') 
     def test_send_chat_model_from_db(self, mock_gemini_current_app, mock_gemini_genai_module, mock_main_routes_setting_query):
         test_api_key_val = "test_gemini_key_for_chat_route_db"
         mock_gemini_current_app.config = {'GEMINI_API_KEY': test_api_key_val, 'DEFAULT_GEMINI_MODEL': 'db_should_override'}
@@ -241,11 +239,14 @@ class TestMainRoutes(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         actual_prompt = mock_chat_instance.send_message.call_args[0][0]
+        
         self.assertIn("If the character description or background is 'Not specified' or very brief", actual_prompt)
         self.assertIn("When a situation requires a dice roll, please ask me to make a specific roll", actual_prompt)
         self.assertIn("If I state I am making a roll that seems inappropriate", actual_prompt) 
         self.assertIn("When you need information from me, please ask only one question at a time", actual_prompt)
         self.assertIn("You will also need to keep track of my character's experience points (XP)", actual_prompt)
+        # New assertion for playstyle preference question:
+        self.assertIn("Also, let me know if you prefer a game where I, as the DM, provide more guidance and steer the story, or if you'd prefer more freedom to explore and make decisions independently.", actual_prompt)
 
     @patch('app.gemini.Setting.query') 
     @patch('app.gemini.genai')         
@@ -277,10 +278,8 @@ class TestMainRoutes(unittest.TestCase):
         log_entries = json.loads(updated_character.adventure_log)
         self.assertEqual(log_entries, [{"sender": "user", "text": user_message_text}, {"sender": "dm", "text": mocked_ai_reply}])
 
-    # --- NEW TEST FOR ADVENTURE PAGE INITIAL DM MESSAGE ---
-    @patch('app.main.routes.geminiai') # Patching where geminiai is *called from* in the adventure route
+    @patch('app.main.routes.geminiai') 
     def test_adventure_page_loads_with_initial_dm_message_for_new_character(self, mock_geminiai_call_in_adventure_route):
-        # 1. Setup a new user and character with an empty adventure_log
         new_user_adventure_test = User(id=2, email="new_adventure_user@example.com", google_id="new_adventure_user_google_id")
         db.session.add(new_user_adventure_test)
         db.session.commit()
@@ -290,48 +289,37 @@ class TestMainRoutes(unittest.TestCase):
             race_id=self.test_race.id, class_id=self.test_class.id, level=1,
             strength=10, dexterity=10, constitution=10, intelligence=10, wisdom=10, charisma=10,
             hp=10, max_hp=10, armor_class=10, speed=30,
-            adventure_log=None # Explicitly None for empty log
+            adventure_log=None 
         )
         db.session.add(new_character_adventure_test)
         db.session.commit()
 
-        # 2. Configure the mock for the geminiai call within the adventure route
         initial_dm_reply_text = "Welcome to your brand new adventure!"
         mock_geminiai_call_in_adventure_route.return_value = {'reply': initial_dm_reply_text}
 
-        # 3. Simulate login for the new user
         with self.client.session_transaction() as sess:
-            sess['user_id'] = new_user_adventure_test.id # Use the new user's ID
+            sess['user_id'] = new_user_adventure_test.id 
             sess['_fresh'] = True
         
-        # 4. Make a GET request to the adventure page for the new character
         response = self.client.get(url_for('main.adventure', character_id=new_character_adventure_test.id))
 
-        # 5. Assertions
-        self.assertEqual(response.status_code, 200, "Adventure page should load successfully.")
+        self.assertEqual(response.status_code, 200)
         
-        # Assert geminiai was called correctly by the adventure route
         mock_geminiai_call_in_adventure_route.assert_called_once_with(
             character_id=new_character_adventure_test.id,
             user_message="__START_ADVENTURE__",
             current_user_id=new_user_adventure_test.id
         )
 
-        # Assert that the initial DM message is in the response data (rendered template)
-        # The template prepends "DM: " so we check for that too.
-        self.assertIn(f"DM: {initial_dm_reply_text}".encode('utf-8'), response.data, 
-                      "Initial DM message not found in rendered page.")
+        self.assertIn(f"DM: {initial_dm_reply_text}".encode('utf-8'), response.data)
 
-        # Assert that the character's adventure_log in DB was updated
         updated_character_from_db = Character.query.get(new_character_adventure_test.id)
-        self.assertIsNotNone(updated_character_from_db.adventure_log, 
-                             "Adventure log should have been updated in the database.")
+        self.assertIsNotNone(updated_character_from_db.adventure_log)
         
         log_entries = json.loads(updated_character_from_db.adventure_log)
-        self.assertEqual(len(log_entries), 1, "Adventure log should contain one entry.")
-        self.assertEqual(log_entries[0]['sender'], 'dm', "First message sender should be 'dm'.")
-        self.assertEqual(log_entries[0]['text'], initial_dm_reply_text, 
-                         "The text of the first message should be the initial DM reply.")
+        self.assertEqual(len(log_entries), 1)
+        self.assertEqual(log_entries[0]['sender'], 'dm')
+        self.assertEqual(log_entries[0]['text'], initial_dm_reply_text)
 
 if __name__ == '__main__':
     unittest.main()

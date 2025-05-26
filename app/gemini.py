@@ -105,7 +105,8 @@ def geminiai(character_id, user_message, current_user_id):
             "You will also need to keep track of my character's experience points (XP). Inform me when I have gained enough XP to level up and guide me through that process if necessary (though actual level-up mechanics are handled outside this chat). For now, just letting me know I can level up is sufficient. "
             
             # Starting the Adventure:
-            "Please start our adventure now. Ask me some engaging questions about what kind of story or challenges I'm looking for. "
+            "Please start our adventure now. Ask me some engaging questions about what kind of story or challenges I'm looking for. " # This is the line to modify
+            "Also, let me know if you prefer a game where I, as the DM, provide more guidance and steer the story, or if you'd prefer more freedom to explore and make decisions independently. " # New question added
             "Make your response immersive and welcoming. Keep your initial questions concise (perhaps 2-3 short questions to get started, remembering the one-question-at-a-time rule for follow-ups)."
         )
     else:
