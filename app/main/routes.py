@@ -918,6 +918,40 @@ def adventure(character_id):
         log_entries = []
         current_app.logger.warning(f"Adventure log for character {character_id} was malformed and has been reset.")
 
+    # If adventure log is empty, trigger initial DM message
+    if not log_entries:
+        # Call geminiai to get the initial adventure prompt
+        # current_user is available here due to @login_required
+        gemini_response = geminiai(character_id=character.id, 
+                                   user_message="__START_ADVENTURE__", 
+                                   current_user_id=current_user.id)
+        
+        # geminiai returns a dict on success, or (dict, status_code) on error
+        ai_reply_text = None
+        if isinstance(gemini_response, dict) and 'reply' in gemini_response:
+            ai_reply_text = gemini_response['reply']
+        elif isinstance(gemini_response, tuple) and len(gemini_response) == 2:
+            # This means geminiai returned an error (e.g., API key issue)
+            # For __START_ADVENTURE__, this is an issue. Log it.
+            # The page will render with an empty log for the user.
+            error_details = gemini_response[0].get('error', 'Unknown error from geminiai')
+            current_app.logger.error(f"Failed to get initial DM message for char {character_id}: {error_details}")
+            # Potentially flash a message to the user if desired, but problem asks for non-interactive
+        else:
+            # Unexpected response type from geminiai
+            current_app.logger.error(f"Unexpected response type from geminiai during initial message fetch: {type(gemini_response)}")
+
+        if ai_reply_text:
+            log_entries.append({"sender": "dm", "text": ai_reply_text})
+            character.adventure_log = json.dumps(log_entries)
+            try:
+                db.session.commit()
+            except Exception as e:
+                current_app.logger.error(f"Failed to commit initial DM message to DB for char {character_id}: {str(e)}")
+                db.session.rollback() # Rollback on error
+                # If commit fails, log_entries on the page might not reflect the DB state for this request.
+                # For simplicity, we'll proceed to render with the in-memory log_entries.
+
     # --- Data Preparation for Character Sheet ---
     proficiency_bonus = (character.level - 1) // 4 + 2
 
