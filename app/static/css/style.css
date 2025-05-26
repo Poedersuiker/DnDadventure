@@ -392,116 +392,178 @@ footer {
     max-height: 90vh;
     color: #3B2F2F; /* Dark brown text */
     font-family: 'Merriweather', serif;
+    line-height: 1.6; /* Slightly increased line height for readability */
 }
 
 /* Drag Handle - Character Name area */
 #sheet-drag-handle.sheet-header-title {
     cursor: move;
     text-align: center;
-    margin-bottom: 5px;
+    margin-bottom: 2px; /* Reduced margin */
 }
 #sheet-drag-handle.sheet-header-title h3 {
     font-family: 'MedievalSharp', serif;
-    font-size: 2.2em; /* Larger name */
+    font-size: 2.0em; /* Slightly reduced from 2.2 for space */
     color: #8B0000; /* Dark red */
-    margin: 0 0 5px 0;
+    margin: 0 0 3px 0; /* Reduced margin */
     font-weight: normal;
 }
 
 .sheet-subheader {
     text-align: center;
-    margin-bottom: 15px;
+    margin-bottom: 10px; /* Reduced margin */
 }
 .sheet-subheader p {
     font-family: 'Merriweather', serif;
-    font-size: 0.85em;
+    font-size: 0.8em; /* Slightly smaller */
     font-style: italic;
     color: #5D4037;
     margin: 0;
 }
 
+.sheet-details {
+    text-align: center;
+    font-size: 0.85em;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #A0522D; /* Separator line */
+}
+.sheet-details p {
+    margin: 2px 0;
+    color: #3B2F2F;
+}
+.sheet-details p strong {
+    color: #5D4037;
+}
+
+
 .main-attributes {
     display: flex;
     justify-content: space-around;
-    margin-bottom: 20px;
-    padding-bottom: 15px;
+    flex-wrap: wrap; /* Allow wrapping on smaller screens */
+    gap: 5px; /* Gap between boxes */
+    margin-bottom: 15px; /* Reduced margin */
+    padding-bottom: 10px; /* Reduced padding */
     border-bottom: 1px solid #A0522D;
 }
 .attribute-box {
     border: 1px solid #A0522D;
-    padding: 8px;
+    padding: 6px; /* Reduced padding */
     text-align: center;
     border-radius: 3px;
-    background-color: #fff9e6; /* Slightly lighter than sheet bg */
-    min-width: 80px; /* Minimum width for each box */
+    background-color: #fff9e6;
+    min-width: 70px; /* Reduced min-width */
     box-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+    flex-grow: 1; /* Allow boxes to grow */
+    flex-basis: 0; /* Distribute space evenly */
 }
-.attribute-box div:first-child { /* Label like HP, AC */
+.attribute-box div:first-child { /* Label */
     font-family: 'Cinzel', serif;
     font-weight: bold;
-    font-size: 0.9em;
+    font-size: 0.8em; /* Smaller label */
     color: #8B0000;
-    margin-bottom: 3px;
+    margin-bottom: 2px;
 }
 .attribute-box div:last-child { /* Value */
     font-family: 'Merriweather', serif;
-    font-size: 1.1em;
+    font-size: 1.0em; /* Slightly smaller value */
     font-weight: bold;
+    color: #3B2F2F;
 }
 
 .sheet-section-title { /* For H4s like "Abilities", "Skills" */
     font-family: 'Cinzel', serif;
-    font-size: 1.4em;
+    font-size: 1.3em; /* Slightly smaller section titles */
     color: #8B0000;
-    font-weight: 700; /* Cinzel bold */
-    margin-top: 15px;
-    margin-bottom: 10px;
-    padding-bottom: 3px;
-    border-bottom: 1px solid #A0522D; /* Sienna underline */
+    font-weight: 700;
+    margin-top: 12px; /* Reduced margin */
+    margin-bottom: 8px; /* Reduced margin */
+    padding-bottom: 2px; /* Reduced padding */
+    border-bottom: 1px solid #A0522D;
     text-align: left;
 }
 
 .abilities-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr); /* Two columns */
-    gap: 10px;
-    margin-bottom: 15px;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); /* More responsive columns */
+    gap: 8px; /* Reduced gap */
+    margin-bottom: 12px; /* Reduced margin */
 }
-.ability-box { /* Reusing .attribute-box for individual abilities */
+.ability-box { 
     border: 1px solid #A0522D;
-    padding: 10px;
+    padding: 8px; /* Reduced padding */
     text-align: center;
     background-color: #fff9e6;
     border-radius: 3px;
     box-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+    font-size: 0.95em; /* Base font size for ability box content */
 }
 .ability-box span { /* For STR, DEX labels */
     display: block;
     font-family: 'Cinzel', serif;
     font-weight: bold;
-    font-size: 1em;
+    font-size: 0.9em; /* Relative to parent .ability-box */
     color: #8B0000;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
 }
-/* Value text is direct child of .ability-box, roll button is also a child */
+/* Value and roll button are direct children */
 
-.skills-list {
-    padding-left: 5px; /* Indent skill list slightly */
-}
-.skills-list p {
+.saving-throws-list p, .skills-list p {
     font-size: 0.9em;
-    margin-bottom: 4px; /* Tighter list */
-    display: flex; /* Align skill name and button */
-    justify-content: space-between;
+    margin-bottom: 5px; /* Consistent spacing */
+    display: flex;
     align-items: center;
+    border-bottom: 1px solid #eee; /* Light separator for each skill/save */
+    padding-bottom: 3px;
+}
+.saving-throws-list p:last-child, .skills-list p:last-child {
+    border-bottom: none;
+}
+
+.prof-indicator {
+    font-size: 0.8em; /* Smaller circle */
+    margin-right: 6px;
+    width: 15px; /* Fixed width for alignment */
+    display: inline-block;
+    text-align: center;
+    color: #5D4037;
+}
+.ability-name, .skill-name {
+    flex-grow: 1;
+    font-weight: normal; /* Merriweather regular */
+    color: #3B2F2F;
+}
+.skill-ability-abbr {
+    font-size: 0.85em;
+    color: #5D4037;
+    margin-left: 4px;
+    margin-right: auto; /* Push modifier to the right */
+}
+.modifier {
+    font-weight: bold;
+    margin-left: auto; /* Push to the right, after name/abbr */
+    margin-right: 8px; /* Space before roll button */
+    min-width: 25px; /* Ensure space for modifier */
+    text-align: right;
+}
+
+.proficiencies-list ul, .equipment-list ul, .spells-list ul {
+    list-style-type: none;
+    padding-left: 10px;
+    margin: 5px 0 0 0;
+    font-size: 0.9em;
+}
+.proficiencies-list li, .equipment-list li, .spells-list li {
+    margin-bottom: 3px;
+    color: #3B2F2F;
 }
 
 
 /* Close Button on Character Sheet */
-#character-sheet-overlay #close-sheet-button { /* Increased specificity */
+#character-sheet-overlay #close-sheet-button {
     display: block;
-    margin: 20px auto 5px; /* More space above, less below */
-    background-color: #A0522D; /* Sienna */
+    margin: 15px auto 5px; /* Reduced margin */
+    background-color: #A0522D;
     color: #fdf5e6; /* Parchment text */
     padding: 5px 15px; /* Smaller padding */
     border: 1px solid #5D4037; /* Dark brown border */

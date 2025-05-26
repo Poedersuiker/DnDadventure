@@ -197,6 +197,116 @@ class TestMainRoutes(unittest.TestCase):
         
         self.assertIn(b'Adventure progress cleared. Your character has been reset to level 1.', response.data, "Flash message not found in response.")
 
+    def test_roll_dice_from_sheet(self):
+        # User is logged in via self.setUp
+
+        # Scenario 1: Basic 1d20 roll with positive modifier
+        roll_data_s1 = {
+            "roll_type": "stat", "roll_name": "Strength Check",
+            "dice_formula": "1d20", "modifier": 3
+        }
+        response_s1 = self.client.post(url_for('main.roll_dice_from_sheet'), json=roll_data_s1)
+        self.assertEqual(response_s1.status_code, 200)
+        data_s1 = response_s1.get_json()
+        self.assertEqual(data_s1['roll_name'], "Strength Check")
+        self.assertEqual(data_s1['dice_formula'], "1d20")
+        self.assertEqual(data_s1['modifier'], 3)
+        self.assertEqual(len(data_s1['rolls']), 1)
+        self.assertTrue(1 <= data_s1['rolls'][0] <= 20)
+        self.assertEqual(data_s1['subtotal'], data_s1['rolls'][0])
+        self.assertEqual(data_s1['total'], data_s1['subtotal'] + 3)
+
+        # Scenario 2: Multi-dice roll (2d6) with negative modifier
+        roll_data_s2 = {
+            "roll_type": "damage", "roll_name": "Sword Damage",
+            "dice_formula": "2d6", "modifier": -1
+        }
+        response_s2 = self.client.post(url_for('main.roll_dice_from_sheet'), json=roll_data_s2)
+        self.assertEqual(response_s2.status_code, 200)
+        data_s2 = response_s2.get_json()
+        self.assertEqual(data_s2['dice_formula'], "2d6")
+        self.assertEqual(data_s2['modifier'], -1)
+        self.assertEqual(len(data_s2['rolls']), 2)
+        self.assertTrue(1 <= data_s2['rolls'][0] <= 6)
+        self.assertTrue(1 <= data_s2['rolls'][1] <= 6)
+        self.assertEqual(data_s2['subtotal'], data_s2['rolls'][0] + data_s2['rolls'][1])
+        self.assertEqual(data_s2['total'], data_s2['subtotal'] - 1)
+
+        # Scenario 3: Roll with zero modifier
+        roll_data_s3 = {
+            "roll_type": "test", "roll_name": "Zero Mod Roll",
+            "dice_formula": "1d10", "modifier": 0
+        }
+        response_s3 = self.client.post(url_for('main.roll_dice_from_sheet'), json=roll_data_s3)
+        self.assertEqual(response_s3.status_code, 200)
+        data_s3 = response_s3.get_json()
+        self.assertEqual(data_s3['modifier'], 0)
+        self.assertEqual(data_s3['total'], data_s3['subtotal'])
+
+        # Scenario 4a: Error handling - Invalid dice formula (general text)
+        roll_data_s4a = {
+            "roll_type": "error_test", "roll_name": "Bad Formula 1",
+            "dice_formula": "invalid", "modifier": 0
+        }
+        response_s4a = self.client.post(url_for('main.roll_dice_from_sheet'), json=roll_data_s4a)
+        self.assertEqual(response_s4a.status_code, 400)
+        data_s4a = response_s4a.get_json()
+        self.assertIn('error', data_s4a)
+        self.assertIn("Invalid dice formula: invalid. Expected format 'XdY'", data_s4a['error'])
+        
+        # Scenario 4b: Error handling - Invalid dice formula (wrong structure)
+        roll_data_s4b = {
+            "roll_type": "error_test", "roll_name": "Bad Formula 2",
+            "dice_formula": "1d20d30", "modifier": 0
+        }
+        response_s4b = self.client.post(url_for('main.roll_dice_from_sheet'), json=roll_data_s4b)
+        self.assertEqual(response_s4b.status_code, 400)
+        data_s4b = response_s4b.get_json()
+        self.assertIn('error', data_s4b)
+        self.assertIn("Invalid dice formula: 1d20d30. Expected format 'XdY'", data_s4b['error'])
+
+        # Scenario 5: Error handling - Invalid modifier format
+        roll_data_s5 = {
+            "roll_type": "error_test", "roll_name": "Bad Modifier",
+            "dice_formula": "1d4", "modifier": "abc"
+        }
+        response_s5 = self.client.post(url_for('main.roll_dice_from_sheet'), json=roll_data_s5)
+        self.assertEqual(response_s5.status_code, 400)
+        data_s5 = response_s5.get_json()
+        self.assertIn('error', data_s5)
+        self.assertEqual(data_s5['error'], "Invalid modifier format. Must be an integer.")
+
+        # Scenario 6: Missing dice_formula (should default to 1d20)
+        roll_data_s6 = {
+            "roll_type": "default_test", "roll_name": "Default Formula",
+            "modifier": 1 
+            # dice_formula is intentionally missing
+        }
+        response_s6 = self.client.post(url_for('main.roll_dice_from_sheet'), json=roll_data_s6)
+        self.assertEqual(response_s6.status_code, 200)
+        data_s6 = response_s6.get_json()
+        self.assertEqual(data_s6['dice_formula'], "1d20") # Default
+        self.assertEqual(data_s6['modifier'], 1)
+        self.assertEqual(len(data_s6['rolls']), 1)
+        self.assertTrue(1 <= data_s6['rolls'][0] <= 20)
+        self.assertEqual(data_s6['total'], data_s6['subtotal'] + 1)
+
+        # Scenario 7a: Error handling - Non-positive num_dice
+        roll_data_s7a = {"dice_formula": "0d6", "modifier": 0}
+        response_s7a = self.client.post(url_for('main.roll_dice_from_sheet'), json=roll_data_s7a)
+        self.assertEqual(response_s7a.status_code, 400)
+        data_s7a = response_s7a.get_json()
+        self.assertIn('error', data_s7a)
+        self.assertIn("Invalid dice formula: 0d6", data_s7a['error']) # Route should catch this
+
+        # Scenario 7b: Error handling - Non-positive num_sides
+        roll_data_s7b = {"dice_formula": "1d0", "modifier": 0}
+        response_s7b = self.client.post(url_for('main.roll_dice_from_sheet'), json=roll_data_s7b)
+        self.assertEqual(response_s7b.status_code, 400)
+        data_s7b = response_s7b.get_json()
+        self.assertIn('error', data_s7b)
+        self.assertIn("Invalid dice formula: 1d0", data_s7b['error'])
+
 
     @patch('app.main.routes.Setting.query')
     @patch('app.main.routes.genai')

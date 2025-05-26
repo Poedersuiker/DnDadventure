@@ -889,6 +889,18 @@ def creation_review():
                            submitted_description=char_data.get('description_draft',''))
 
 
+
+ALL_SKILLS_LIST = [
+    ("Acrobatics", "DEX"), ("Animal Handling", "WIS"), ("Arcana", "INT"),
+    ("Athletics", "STR"), ("Deception", "CHA"), ("History", "INT"),
+    ("Insight", "WIS"), ("Intimidation", "CHA"), ("Investigation", "INT"),
+    ("Medicine", "WIS"), ("Nature", "INT"), ("Perception", "WIS"),
+    ("Performance", "CHA"), ("Persuasion", "CHA"), ("Religion", "INT"),
+    ("Sleight of Hand", "DEX"), ("Stealth", "DEX"), ("Survival", "WIS")
+]
+ABILITY_NAMES_FULL = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma']
+
+
 @bp.route('/<int:character_id>/adventure', methods=['GET', 'POST'])
 @login_required
 def adventure(character_id):
@@ -896,16 +908,119 @@ def adventure(character_id):
     if character.user_id != current_user.id:
         flash(_('This character does not belong to you.'))
         return redirect(url_for('main.index'))
+
     try:
         log_entries = json.loads(character.adventure_log or '[]')
         if not isinstance(log_entries, list):
             log_entries = []
     except json.JSONDecodeError:
         log_entries = []
-        # Optional: flash('Warning: Chat history was corrupted and has been reset.', 'warning')
-        # print(f"Warning: Adventure log for character {character_id} was malformed and has been reset.")
-    return render_template('adventure.html', title=_('Adventure'),
-                           character=character, log_entries=log_entries)
+        current_app.logger.warning(f"Adventure log for character {character_id} was malformed and has been reset.")
+
+    # --- Data Preparation for Character Sheet ---
+    proficiency_bonus = (character.level - 1) // 4 + 2
+
+    # Parse Proficiencies
+    proficiencies_data = {}
+    try:
+        proficiencies_data = json.loads(character.current_proficiencies or '{}')
+        if not isinstance(proficiencies_data, dict): # Ensure it's a dict
+            proficiencies_data = {}
+            current_app.logger.warning(f"current_proficiencies for char {character_id} was not a dict, reset to empty.")
+    except json.JSONDecodeError:
+        current_app.logger.error(f"Failed to parse current_proficiencies JSON for character {character_id}: {character.current_proficiencies}")
+        proficiencies_data = {} # Default to empty if parsing fails
+
+    proficient_skills = proficiencies_data.get('skills', [])
+    proficient_tools = proficiencies_data.get('tools', [])
+    proficient_languages = proficiencies_data.get('languages', [])
+    proficient_armor = proficiencies_data.get('armor', [])
+    proficient_weapons = proficiencies_data.get('weapons', [])
+    proficient_saving_throws = proficiencies_data.get('saving_throws', []) # List of ability abbreviations e.g. ["STR", "DEX"]
+
+    # Parse Equipment
+    equipment_list = []
+    try:
+        equipment_list = json.loads(character.current_equipment or '[]')
+        if not isinstance(equipment_list, list): # Ensure it's a list
+            equipment_list = []
+            current_app.logger.warning(f"current_equipment for char {character_id} was not a list, reset to empty.")
+    except json.JSONDecodeError:
+        current_app.logger.error(f"Failed to parse current_equipment JSON for character {character_id}: {character.current_equipment}")
+        equipment_list = [] # Default to empty list if parsing fails
+
+    # Filter Spells
+    cantrips = [spell for spell in character.known_spells if spell.level == 0]
+    level_1_spells = [spell for spell in character.known_spells if spell.level == 1]
+    # For future, could add: level_2_spells = [spell for spell in character.known_spells if spell.level == 2] etc.
+
+    return render_template('adventure.html', 
+                           title=_('Adventure'),
+                           character=character, 
+                           log_entries=log_entries,
+                           # Character Sheet Data:
+                           all_skills_list=ALL_SKILLS_LIST,
+                           ability_names_full=ABILITY_NAMES_FULL,
+                           proficiency_bonus=proficiency_bonus,
+                           proficient_skills=proficient_skills,
+                           proficient_tools=proficient_tools,
+                           proficient_languages=proficient_languages,
+                           proficient_armor=proficient_armor,
+                           proficient_weapons=proficient_weapons,
+                           proficient_saving_throws=proficient_saving_throws,
+                           equipment_list=equipment_list,
+                           cantrips=cantrips,
+                           level_1_spells=level_1_spells
+                           )
+
+@bp.route('/roll_dice_from_sheet', methods=['POST'])
+@login_required
+def roll_dice_from_sheet():
+    data = request.get_json()
+    if not data:
+        return jsonify(error="No data provided"), 400
+
+    roll_type = data.get('roll_type')
+    dice_formula = data.get('dice_formula', '1d20') # Default to 1d20
+    modifier = data.get('modifier', 0)
+    roll_name = data.get('roll_name', 'Roll') # Default roll name
+
+    if not isinstance(modifier, int):
+        try:
+            modifier = int(modifier)
+        except ValueError:
+            return jsonify(error="Invalid modifier format. Must be an integer."), 400
+
+    try:
+        parts = dice_formula.lower().split('d')
+        if len(parts) != 2:
+            raise ValueError("Invalid dice formula format. Expected 'XdY', e.g., '1d20'.")
+        
+        num_dice = int(parts[0])
+        num_sides = int(parts[1])
+
+        if num_dice <= 0 or num_sides <= 0:
+            raise ValueError("Number of dice and sides must be positive.")
+
+    except Exception as e: # Catches ValueError from int conversion or splitting
+        current_app.logger.error(f"Error parsing dice formula '{dice_formula}': {e}")
+        return jsonify(error=f"Invalid dice formula: {dice_formula}. Expected format 'XdY' (e.g., '1d20')."), 400
+
+    # Call the utility function. It returns (sum_of_rolls, list_of_all_rolls)
+    # The prompt implies `actual_rolls, subtotal = roll_dice(...)`
+    # My utils.roll_dice returns `sum_of_rolls, rolls`. So:
+    # subtotal = sum_of_rolls, actual_rolls = rolls
+    subtotal, actual_rolls = roll_dice(num_dice, num_sides) 
+    total = subtotal + modifier
+
+    return jsonify({
+        "roll_name": roll_name,
+        "dice_formula": dice_formula,
+        "modifier": modifier,
+        "rolls": actual_rolls,
+        "subtotal": subtotal,
+        "total": total
+    })
 
 
 @bp.route('/send_chat_message/<int:character_id>', methods=['POST'])

@@ -2,14 +2,20 @@
 
 {% block content %}
 <div id="character-sheet-overlay" style="display: none;">
-    <div id="sheet-drag-handle" class="sheet-header-title"> <!-- Made h3 a div for more control -->
+    <div id="sheet-drag-handle" class="sheet-header-title">
         <h3>{{ character.name }}</h3>
     </div>
     <div class="sheet-subheader">
-        <p>{{ character.race.name }} {{ character.char_class.name }} {{ character.level }}</p> <!-- Simplified display -->
+        <p>{{ character.race.name }} Lvl {{ character.level }} {{ character.char_class.name }}</p>
+    </div>
+
+    <div class="sheet-details">
+        <p><strong>Alignment:</strong> {{ character.alignment|default('N/A') }}</p>
+        <p><strong>Background:</strong> {{ character.background_name|default('N/A') }}</p>
     </div>
 
     <div class="main-attributes">
+        <div class="attribute-box"><div>Prof. Bonus</div><div>+{{ proficiency_bonus }}</div></div>
         <div class="attribute-box"><div>HP</div><div>{{ character.hp }}/{{ character.max_hp }}</div></div>
         <div class="attribute-box"><div>AC</div><div>{{ character.armor_class }}</div></div>
         <div class="attribute-box"><div>Speed</div><div>{{ character.speed }}</div></div>
@@ -17,19 +23,106 @@
 
     <h4 class="sheet-section-title">Abilities</h4>
     <div class="abilities-grid">
-        <div class="ability-box"><span>STR</span> {{ character.strength }} <button class="roll-button" data-roll-type="stat" data-stat-name="Strength" data-stat-value="{{ character.strength }}">🎲</button></div>
-        <div class="ability-box"><span>DEX</span> {{ character.dexterity }} <button class="roll-button" data-roll-type="stat" data-stat-name="Dexterity" data-stat-value="{{ character.dexterity }}">🎲</button></div>
-        <div class="ability-box"><span>CON</span> {{ character.constitution }} <button class="roll-button" data-roll-type="stat" data-stat-name="Constitution" data-stat-value="{{ character.constitution }}">🎲</button></div>
-        <div class="ability-box"><span>INT</span> {{ character.intelligence }} <button class="roll-button" data-roll-type="stat" data-stat-name="Intelligence" data-stat-value="{{ character.intelligence }}">🎲</button></div>
-        <div class="ability-box"><span>WIS</span> {{ character.wisdom }} <button class="roll-button" data-roll-type="stat" data-stat-name="Wisdom" data-stat-value="{{ character.wisdom }}">🎲</button></div>
-        <div class="ability-box"><span>CHA</span> {{ character.charisma }} <button class="roll-button" data-roll-type="stat" data-stat-name="Charisma" data-stat-value="{{ character.charisma }}">🎲</button></div>
+        {% for ability_name_iter in ability_names_full %}
+            {% set ability_attr_iter = ability_name_iter.lower() %}
+            {% set ability_score_iter = getattr(character, ability_attr_iter) %}
+            {% set modifier_iter = ((ability_score_iter - 10) // 2) %}
+            <div class="ability-box">
+                <span>{{ ability_name_iter[:3].upper() }}</span> {{ ability_score_iter }}
+                <button class="roll-button" 
+                        data-roll-type="stat" 
+                        data-roll-name="{{ ability_name_iter }} Check"
+                        data-dice-formula="1d20"
+                        data-modifier="{{ modifier_iter }}">🎲</button>
+            </div>
+        {% endfor %}
     </div>
     
-    <h4 class="sheet-section-title">Skills (Example)</h4>
-    <div class="skills-list">
-         <p>Athletics: +3 <button class="roll-button" data-roll-type="skill" data-skill-name="Athletics" data-skill-modifier="+3">🎲</button></p>
-         <!-- Add more skills here if available from character data -->
+    <h4 class="sheet-section-title">Saving Throws</h4>
+    <div class="saving-throws-list">
+        {% for ability_name_full in ability_names_full %}
+            {% set ability_attr = ability_name_full.lower() %}
+            {% set ability_abbr = ability_name_full[:3].upper() %}
+            {% set ability_score = getattr(character, ability_attr) %}
+            {% set modifier = ((ability_score - 10) // 2) %}
+            {% set is_proficient = ability_abbr in proficient_saving_throws %}
+            {% set final_modifier = modifier + proficiency_bonus if is_proficient else modifier %}
+            <p>
+                <span class="prof-indicator">{{ '●' if is_proficient else '○' }}</span>
+                <span class="ability-name">{{ ability_name_full }}</span>
+                <span class="modifier">{% if final_modifier >= 0 %}+{% endif %}{{ final_modifier }}</span>
+                <button class="roll-button" 
+                        data-roll-type="save" 
+                        data-roll-name="{{ ability_name_full }} Save"
+                        data-dice-formula="1d20"
+                        data-modifier="{{ final_modifier }}">🎲</button>
+            </p>
+        {% endfor %}
     </div>
+
+    <h4 class="sheet-section-title">Skills</h4>
+    <div class="skills-list">
+        {% for skill_name_iter, skill_ability_abbr_iter in all_skills_list %}
+            {% set ability_attr_skill = '' %}
+            {% if skill_ability_abbr_iter == 'STR' %}{% set ability_attr_skill = 'strength' %}
+            {% elif skill_ability_abbr_iter == 'DEX' %}{% set ability_attr_skill = 'dexterity' %}
+            {% elif skill_ability_abbr_iter == 'CON' %}{% set ability_attr_skill = 'constitution' %}
+            {% elif skill_ability_abbr_iter == 'INT' %}{% set ability_attr_skill = 'intelligence' %}
+            {% elif skill_ability_abbr_iter == 'WIS' %}{% set ability_attr_skill = 'wisdom' %}
+            {% elif skill_ability_abbr_iter == 'CHA' %}{% set ability_attr_skill = 'charisma' %}
+            {% endif %}
+            {% set ability_score_skill = getattr(character, ability_attr_skill) %}
+            {% set modifier_skill_base = ((ability_score_skill - 10) // 2) %}
+            {% set is_proficient_skill = skill_name_iter in proficient_skills %}
+            {% set final_modifier_skill = modifier_skill_base + proficiency_bonus if is_proficient_skill else modifier_skill_base %}
+            <p>
+                <span class="prof-indicator">{{ '●' if is_proficient_skill else '○' }}</span>
+                <span class="skill-name">{{ skill_name_iter }}</span>
+                <span class="skill-ability-abbr">({{ skill_ability_abbr_iter }})</span>
+                <span class="modifier">{% if final_modifier_skill >= 0 %}+{% endif %}{{ final_modifier_skill }}</span>
+                <button class="roll-button" 
+                        data-roll-type="skill" 
+                        data-roll-name="{{ skill_name_iter }}"
+                        data-dice-formula="1d20"
+                        data-modifier="{{ final_modifier_skill }}">🎲</button>
+            </p>
+        {% endfor %}
+    </div>
+    
+    {% if proficient_armor %}
+    <h4 class="sheet-section-title">Armor Proficiencies</h4>
+    <div class="proficiencies-list"><ul>{% for item in proficient_armor %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    {% endif %}
+
+    {% if proficient_weapons %}
+    <h4 class="sheet-section-title">Weapon Proficiencies</h4>
+    <div class="proficiencies-list"><ul>{% for item in proficient_weapons %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    {% endif %}
+
+    {% if proficient_tools %}
+    <h4 class="sheet-section-title">Tool Proficiencies</h4>
+    <div class="proficiencies-list"><ul>{% for item in proficient_tools %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    {% endif %}
+
+    {% if proficient_languages %}
+    <h4 class="sheet-section-title">Languages</h4>
+    <div class="proficiencies-list"><ul>{% for item in proficient_languages %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    {% endif %}
+
+    {% if equipment_list %}
+    <h4 class="sheet-section-title">Equipment</h4>
+    <div class="equipment-list"><ul>{% for item in equipment_list %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    {% endif %}
+    
+    {% if cantrips %}
+    <h4 class="sheet-section-title">Cantrips</h4>
+    <div class="spells-list"><ul>{% for spell in cantrips %}<li>{{ spell.name }}</li>{% endfor %}</ul></div>
+    {% endif %}
+
+    {% if level_1_spells %}
+    <h4 class="sheet-section-title">Level 1 Spells</h4>
+    <div class="spells-list"><ul>{% for spell in level_1_spells %}<li>{{ spell.name }}</li>{% endfor %}</ul></div>
+    {% endif %}
 
     <button id="close-sheet-button">Close</button>
 </div>
@@ -142,29 +235,44 @@ document.addEventListener('DOMContentLoaded', function() {
             event.preventDefault();
 
             const rollType = this.dataset.rollType;
-            let rollString = "Rolling ";
+            const rollName = this.dataset.rollName;
+            const diceFormula = this.dataset.diceFormula || '1d20';
+            const modifier = parseInt(this.dataset.modifier || '0');
 
-            if (rollType === 'stat') {
-                const statName = this.dataset.statName;
-                const statValue = parseInt(this.dataset.statValue);
-                const modifier = Math.floor((statValue - 10) / 2);
-
-                rollString += `${statName} check: 1d20`;
-                if (modifier >= 0) { // Show +0 or actual positive modifier
-                    rollString += ` + ${modifier}`;
-                } else { // Show negative modifier
-                    rollString += ` - ${Math.abs(modifier)}`;
+            fetch("{{ url_for('main.roll_dice_from_sheet') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', },
+                body: JSON.stringify({
+                    roll_type: rollType,
+                    roll_name: rollName,
+                    dice_formula: diceFormula,
+                    modifier: modifier
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    appendMessage(`Error rolling dice: ${data.error}`, 'dm');
+                    return;
                 }
-            } else if (rollType === 'skill') {
-                const skillName = this.dataset.skillName;
-                const skillModifier = this.dataset.skillModifier; 
-
-                rollString += `${skillName} skill check: 1d20 ${skillModifier}`;
-            }
-            
-            // Instead of directly putting to chatInput, send it as a user message
-            sendMessage(rollString); 
-            characterSheetOverlay.style.display = 'none'; // Close sheet after preparing roll
+                
+                let message = `Rolling ${data.roll_name} (${data.dice_formula}`;
+                if (data.modifier !== 0) { // Only show modifier if it's not zero
+                    message += (data.modifier > 0 ? `+${data.modifier}` : `${data.modifier}`);
+                }
+                message += `): Rolled [${data.rolls.join(', ')}]`;
+                if (data.modifier !== 0) { // Show modifier in sum only if it's not zero
+                     message += (data.modifier > 0 ? ` + ${data.modifier}` : ` - ${Math.abs(data.modifier)}`);
+                }
+                message += ` = **${data.total}**`;
+                
+                appendMessage(message, 'user'); 
+                characterSheetOverlay.style.display = 'none'; 
+            })
+            .catch(error => {
+                console.error('Dice roll error:', error);
+                appendMessage('Error performing dice roll.', 'dm');
+            });
         });
     });
 
