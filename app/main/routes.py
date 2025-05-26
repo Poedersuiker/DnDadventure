@@ -1180,8 +1180,12 @@ def send_chat_message(character_id):
             f"Character Alignment: {character.alignment or 'Not specified'}. "
             f"Character Background: {character.background_name or 'Not specified'}. "
             f"Key Skills: {skills_string}. "
-            f"Please start our adventure. Ask me some engaging questions about what kind of story or challenges I'm looking for. "
-            f"Make your response immersive and welcoming. Keep your initial questions concise, perhaps 2-3 short questions to get started."
+            # New instructions for dice rolls:
+            "When the player sends a message that clearly states a dice roll result (e.g., 'Rolling Strength Check (1d20+2): Rolled [15] + 2 = 17'), you should acknowledge this roll and incorporate its outcome into your narrative response. For example, if they roll high on a persuasion check, describe how the NPC is convinced. If they roll low on an attack, describe how their attack misses or is parried. "
+            "As a Dungeon Master, you should also pay attention to the context of the roll. If a player states they are making a roll that seems inappropriate for the current situation (e.g., rolling for damage before an attack roll has been made and confirmed to hit, or rolling a skill check that doesn't fit the narrative or your last request), gently point this out. Explain what kind of roll you were expecting or why their stated roll might not be suitable right now. Ask them to make the correct roll or to clarify their action. Your goal is to guide the player and ensure the game flows logically, but do so in a helpful and immersive way. Don't be overly strict if the player is just learning or if the roll could be creatively interpreted. "
+            # Original instructions continue:
+            "Please start our adventure. Ask me some engaging questions about what kind of story or challenges I'm looking for. "
+            "Make your response immersive and welcoming. Keep your initial questions concise, perhaps 2-3 short questions to get started."
         )
     else:
         prompt_text = user_message

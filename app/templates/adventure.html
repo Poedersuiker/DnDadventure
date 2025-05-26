@@ -237,18 +237,31 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
                 
-                let message = `Rolling ${data.roll_name} (${data.dice_formula}`;
-                if (data.modifier !== 0) { // Only show modifier if it's not zero
-                    message += (data.modifier > 0 ? `+${data.modifier}` : `${data.modifier}`);
+                let rollDetailsForUser = `Rolling ${data.roll_name} (${data.dice_formula}`;
+                if (data.modifier > 0) {
+                    rollDetailsForUser += `+${data.modifier}`;
+                } else if (data.modifier < 0) {
+                    rollDetailsForUser += `${data.modifier}`; // Negative sign is inherent
                 }
-                message += `): Rolled [${data.rolls.join(', ')}]`;
-                if (data.modifier !== 0) { // Show modifier in sum only if it's not zero
-                     message += (data.modifier > 0 ? ` + ${data.modifier}` : ` - ${Math.abs(data.modifier)}`);
+                rollDetailsForUser += `): Rolled [${data.rolls.join(', ')}]`;
+
+                // Show calculation if there's a modifier or multiple dice
+                if (data.modifier !== 0 || data.rolls.length > 1) {
+                    // This part of the logic seems to duplicate the modifier in the sum
+                    // The subtotal already includes all dice rolls. We just need to add the modifier.
+                    // Corrected logic for sum part:
+                    if (data.modifier > 0) {
+                        rollDetailsForUser += ` + ${data.modifier}`;
+                    } else if (data.modifier < 0) {
+                        rollDetailsForUser += ` - ${Math.abs(data.modifier)}`;
+                    }
                 }
-                message += ` = **${data.total}**`;
+                rollDetailsForUser += ` = **${data.total}**`;
                 
-                appendMessage(message, 'user'); 
-                characterSheetOverlay.style.display = 'none'; 
+                // Use this rollDetailsForUser for both appendMessage and sendMessage
+                appendMessage(rollDetailsForUser, 'user');
+                characterSheetOverlay.style.display = 'none';
+                sendMessage(rollDetailsForUser);
             })
             .catch(error => {
                 console.error('Dice roll error:', error);
