@@ -240,19 +240,36 @@ class TestMainRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         actual_prompt = mock_chat_instance.send_message.call_args[0][0]
         
-        # Assertions for general prompt structure (can remain)
-        self.assertIn("If the character description or background is 'Not specified' or very brief", actual_prompt)
-        self.assertIn("When a situation requires a dice roll, please ask me to make a specific roll", actual_prompt)
-        self.assertIn("If I state I am making a roll that seems inappropriate", actual_prompt) 
-        self.assertIn("When you need information from me, please ask only one question at a time", actual_prompt) # General rule
-        self.assertIn("You will also need to keep track of my character's experience points (XP)", actual_prompt)
+        # New, comprehensive assertions based on the restructured prompt:
+
+        # Core DM Persona & D&D 5e Consistency
+        self.assertIn("You are a Dungeon Master for a Dungeons & Dragons 5th Edition (D&D 5e) style game.", actual_prompt)
+        self.assertIn("All events, locations, characters, and lore you introduce *must* be consistent with a standard D&D 5e fantasy setting", actual_prompt)
+
+        # Handling Player Background (D&D Adaptation)
+        self.assertIn("adapt these inspirations *into* the D&D 5e world", actual_prompt)
+        self.assertIn("Do *not* directly reference real-world locations", actual_prompt)
+        self.assertIn("D&D-appropriate equivalents", actual_prompt) # Check for part of this phrase
+
+        # Character Introduction (basic check)
+        self.assertIn(f"My character is named {self.character.name}", actual_prompt)
+        self.assertIn("If the character description or background is 'Not specified' or very brief, please ask me some questions", actual_prompt)
+
+        # Starting the Adventure - Sequential Questions
+        self.assertIn("as your *very first interaction requiring a response from me*, ask me *one* engaging question about the general type of story or challenges", actual_prompt)
+        self.assertIn("in your *very next message to me*, you *must* then ask me: 'Do you prefer a game where I, as the DM, provide more guidance and steer the story, or would you prefer more freedom to explore and make your own decisions independently?'", actual_prompt)
         
-        # Updated assertions for sequential initial questions:
-        self.assertIn("To begin, ask me *one* engaging question about what kind of story or challenges I'm looking for.", actual_prompt)
-        self.assertIn("After I've responded to that, in your next message, you can then ask me whether I prefer a game with more DM guidance or more player freedom.", actual_prompt)
-        self.assertIn("this applies to these initial questions too", actual_prompt)
-        # Ensure the old simultaneous way of asking is NOT present if it was too specific
-        self.assertNotIn("Also, let me know if you prefer a game where I, as the DM, provide more guidance and steer the story, or if you'd prefer more freedom to explore and make decisions independently. Make your response immersive and welcoming. Keep your initial questions concise", actual_prompt)
+        # Level 1 Adventure Scaling
+        self.assertIn("the adventure you design *must* be suitable for a Level 1 character", actual_prompt)
+        self.assertIn("starting with low-stakes, local problems", actual_prompt)
+        self.assertIn("Avoid grand, world-ending threats", actual_prompt)
+
+        # General DMing Rules (Consolidated)
+        self.assertIn("Throughout our game, remember these important rules:", actual_prompt)
+        self.assertIn("One Question at a Time:", actual_prompt) 
+        self.assertIn("Dice Rolls:", actual_prompt)             
+        self.assertIn("XP Tracking:", actual_prompt)            
+        self.assertIn("Maintain D&D 5e Tone:", actual_prompt)
 
 
     @patch('app.gemini.Setting.query') 
