@@ -885,9 +885,9 @@ def send_chat_message(character_id):
     ai_response = ""
 
     # API Key Configuration
-    api_key = current_app.config.get('GOOGLE_API_KEY')
+    api_key = current_app.config.get('GEMINI_API_KEY')
     if not api_key:
-        current_app.logger.error("Gemini API key (GOOGLE_API_KEY) not configured.")
+        current_app.logger.error("Gemini API key (GEMINI_API_KEY) not configured.")
         return jsonify(error=_("The Dungeon Master's connection to the ethereal plane is disrupted. (API key missing). Please try again later.")), 500
     
     try:
@@ -903,7 +903,15 @@ def send_chat_message(character_id):
         {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
     ]
-    model = genai.GenerativeModel(model_name="gemini-1.5-flash", safety_settings=safety_settings)
+    
+    default_model_name = current_app.config.get('DEFAULT_GEMINI_MODEL')
+    if not default_model_name:
+        current_app.logger.error("DEFAULT_GEMINI_MODEL is not configured in current_app.config.")
+        # Fallback to a common default model if not configured, and log a warning.
+        default_model_name = "gemini-1.5-flash" 
+        current_app.logger.warning(f"Using fallback Gemini model: {default_model_name} due to missing configuration.")
+    
+    model = genai.GenerativeModel(model_name=default_model_name, safety_settings=safety_settings)
 
     # Chat History for Gemini
     gemini_history = []
