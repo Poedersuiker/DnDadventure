@@ -40,51 +40,33 @@
     
     <h4 class="sheet-section-title">Saving Throws</h4>
     <div class="saving-throws-list">
-        {% for ability_name_full in ability_names_full %}
-            {% set ability_attr = ability_name_full.lower() %}
-            {% set ability_abbr = ability_name_full[:3].upper() %}
-            {% set ability_score = getattr(character, ability_attr) %}
-            {% set modifier = ((ability_score - 10) // 2) %}
-            {% set is_proficient = ability_abbr in proficient_saving_throws %}
-            {% set final_modifier = modifier + proficiency_bonus if is_proficient else modifier %}
+        {% for save_info in saving_throws_data %}
             <p>
-                <span class="prof-indicator">{{ '●' if is_proficient else '○' }}</span>
-                <span class="ability-name">{{ ability_name_full }}</span>
-                <span class="modifier">{% if final_modifier >= 0 %}+{% endif %}{{ final_modifier }}</span>
+                <span class="prof-indicator">{% if save_info.is_proficient %}●{% else %}○{% endif %}</span>
+                <span class="ability-name">{{ save_info.name }}</span>
+                <span class="modifier">{% if save_info.modifier >= 0 %}+{% endif %}{{ save_info.modifier }}</span>
                 <button class="roll-button" 
                         data-roll-type="save" 
-                        data-roll-name="{{ ability_name_full }} Save"
+                        data-roll-name="{{ save_info.name }} Save"
                         data-dice-formula="1d20"
-                        data-modifier="{{ final_modifier }}">🎲</button>
+                        data-modifier="{{ save_info.modifier }}">🎲</button>
             </p>
         {% endfor %}
     </div>
 
     <h4 class="sheet-section-title">Skills</h4>
     <div class="skills-list">
-        {% for skill_name_iter, skill_ability_abbr_iter in all_skills_list %}
-            {% set ability_attr_skill = '' %}
-            {% if skill_ability_abbr_iter == 'STR' %}{% set ability_attr_skill = 'strength' %}
-            {% elif skill_ability_abbr_iter == 'DEX' %}{% set ability_attr_skill = 'dexterity' %}
-            {% elif skill_ability_abbr_iter == 'CON' %}{% set ability_attr_skill = 'constitution' %}
-            {% elif skill_ability_abbr_iter == 'INT' %}{% set ability_attr_skill = 'intelligence' %}
-            {% elif skill_ability_abbr_iter == 'WIS' %}{% set ability_attr_skill = 'wisdom' %}
-            {% elif skill_ability_abbr_iter == 'CHA' %}{% set ability_attr_skill = 'charisma' %}
-            {% endif %}
-            {% set ability_score_skill = getattr(character, ability_attr_skill) %}
-            {% set modifier_skill_base = ((ability_score_skill - 10) // 2) %}
-            {% set is_proficient_skill = skill_name_iter in proficient_skills %}
-            {% set final_modifier_skill = modifier_skill_base + proficiency_bonus if is_proficient_skill else modifier_skill_base %}
+        {% for skill_info in skills_data %}
             <p>
-                <span class="prof-indicator">{{ '●' if is_proficient_skill else '○' }}</span>
-                <span class="skill-name">{{ skill_name_iter }}</span>
-                <span class="skill-ability-abbr">({{ skill_ability_abbr_iter }})</span>
-                <span class="modifier">{% if final_modifier_skill >= 0 %}+{% endif %}{{ final_modifier_skill }}</span>
+                <span class="prof-indicator">{% if skill_info.is_proficient %}●{% else %}○{% endif %}</span>
+                <span class="skill-name">{{ skill_info.name }}</span>
+                <span class="skill-ability-abbr">({{ skill_info.ability_abbr }})</span>
+                <span class="modifier">{% if skill_info.modifier >= 0 %}+{% endif %}{{ skill_info.modifier }}</span>
                 <button class="roll-button" 
                         data-roll-type="skill" 
-                        data-roll-name="{{ skill_name_iter }}"
+                        data-roll-name="{{ skill_info.name }}"
                         data-dice-formula="1d20"
-                        data-modifier="{{ final_modifier_skill }}">🎲</button>
+                        data-modifier="{{ skill_info.modifier }}">🎲</button>
             </p>
         {% endfor %}
     </div>

@@ -920,7 +920,7 @@ def adventure(character_id):
     # --- Data Preparation for Character Sheet ---
     proficiency_bonus = (character.level - 1) // 4 + 2
 
-    # Parse Proficiencies
+    # Parse Proficiencies (proficient_skills and proficient_saving_throws are used below and also for AI prompt context)
     proficiencies_data = {}
     try:
         proficiencies_data = json.loads(character.current_proficiencies or '{}')
@@ -952,25 +952,73 @@ def adventure(character_id):
     # Filter Spells
     cantrips = [spell for spell in character.known_spells if spell.level == 0]
     level_1_spells = [spell for spell in character.known_spells if spell.level == 1]
-    # For future, could add: level_2_spells = [spell for spell in character.known_spells if spell.level == 2] etc.
 
+    # Prepare Saving Throws Data
+    saving_throws_data = []
+    # ABILITY_NAMES_FULL = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma']
+    # proficient_saving_throws is a list like ["STR", "DEX"]
+    for ability_name_full in ABILITY_NAMES_FULL:
+        ability_attr_lower = ability_name_full.lower() # e.g. "strength"
+        ability_attr_short = ability_name_full[:3].upper() # e.g. "STR"
+        
+        base_score = getattr(character, ability_attr_lower, 10) 
+        base_modifier = (base_score - 10) // 2
+        is_proficient = ability_attr_short in proficient_saving_throws
+        final_modifier = base_modifier + proficiency_bonus if is_proficient else base_modifier
+        saving_throws_data.append({
+            "name": ability_name_full,
+            "attribute_short": ability_attr_short, 
+            "modifier": final_modifier,
+            "is_proficient": is_proficient
+        })
+
+    # Prepare Skills Data
+    skills_data = []
+    # ALL_SKILLS_LIST = [("Acrobatics", "DEX"), ...]
+    # proficient_skills is a list like ["Acrobatics", "Stealth"]
+    ability_abbr_to_attr_lower = {
+        "STR": "strength", "DEX": "dexterity", "CON": "constitution",
+        "INT": "intelligence", "WIS": "wisdom", "CHA": "charisma"
+    }
+    for skill_name, skill_ability_abbr in ALL_SKILLS_LIST:
+        ability_attr_lower = ability_abbr_to_attr_lower.get(skill_ability_abbr)
+        if not ability_attr_lower:
+            current_app.logger.error(f"Unknown ability abbreviation '{skill_ability_abbr}' for skill '{skill_name}'. Defaulting score to 10.")
+            base_score = 10
+        else:
+            base_score = getattr(character, ability_attr_lower, 10)
+            
+        base_modifier = (base_score - 10) // 2
+        is_proficient = skill_name in proficient_skills
+        final_modifier = base_modifier + proficiency_bonus if is_proficient else base_modifier
+        skills_data.append({
+            "name": skill_name,
+            "ability_abbr": skill_ability_abbr,
+            "modifier": final_modifier,
+            "is_proficient": is_proficient
+        })
+    
     return render_template('adventure.html', 
                            title=_('Adventure'),
                            character=character, 
                            log_entries=log_entries,
                            # Character Sheet Data:
-                           all_skills_list=ALL_SKILLS_LIST,
-                           ability_names_full=ABILITY_NAMES_FULL,
+                           all_skills_list=ALL_SKILLS_LIST, # Still useful for other things or reference
+                           ability_names_full=ABILITY_NAMES_FULL, # Still useful for other things or reference
                            proficiency_bonus=proficiency_bonus,
-                           proficient_skills=proficient_skills,
+                           # proficient_skills and proficient_saving_throws are still used for the AI prompt context, so keep them.
+                           proficient_skills=proficient_skills, 
+                           proficient_saving_throws=proficient_saving_throws,
                            proficient_tools=proficient_tools,
                            proficient_languages=proficient_languages,
                            proficient_armor=proficient_armor,
                            proficient_weapons=proficient_weapons,
-                           proficient_saving_throws=proficient_saving_throws,
                            equipment_list=equipment_list,
                            cantrips=cantrips,
-                           level_1_spells=level_1_spells
+                           level_1_spells=level_1_spells,
+                           # New pre-calculated data for template:
+                           saving_throws_data=saving_throws_data,
+                           skills_data=skills_data
                            )
 
 @bp.route('/roll_dice_from_sheet', methods=['POST'])
