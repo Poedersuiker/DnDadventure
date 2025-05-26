@@ -58,10 +58,6 @@ app.logger.info('Application logging configured to file.')
 # Store log file path in app config for easy access in routes
 app.config['APP_LOG_FILE'] = log_file_path
 
-# These can remain if not intended to be overridden by root/instance config.py by default,
-# or they can be moved to config.py as well. For now, keeping them here.
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///dndadventure.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 migrate = Migrate(app, db) # Initialized Flask-Migrate
 
@@ -78,8 +74,6 @@ from . import models # models is already imported above for User, keep for db re
 # Function to load/initialize settings from DB
 def load_and_initialize_settings(current_app):
     with current_app.app_context():
-        # db.create_all() # This is in run.py; avoid redundant calls unless structure demands it.
-        
         default_model_key = 'DEFAULT_GEMINI_MODEL'
         try:
             db_setting = Setting.query.filter_by(key=default_model_key).first()
