@@ -1,12 +1,13 @@
 import json
 import os
-import google.generativeai as genai
+# import google.generativeai as genai # Removed
 from flask import render_template, redirect, url_for, flash, request, session, get_flashed_messages, jsonify, current_app
 from flask_babel import _
 from flask_login import login_required, current_user
 from app import db
-from app.models import User, Character, Race, Class, Spell, Setting # Add Setting import
+from app.models import User, Character, Race, Class, Spell # Setting removed
 from app.utils import roll_dice
+from app.gemini import geminiai # Added import
 from app.main import bp
 
 # Placeholder for Gemini API Key Configuration
@@ -1087,136 +1088,31 @@ def roll_dice_from_sheet():
 @bp.route('/send_chat_message/<int:character_id>', methods=['POST'])
 @login_required
 def send_chat_message(character_id):
-    character = Character.query.get_or_404(character_id)
-    if character.user_id != current_user.id:
-        return jsonify(error=_("Unauthorized. This character does not belong to you.")), 403
+    # Authorization check for character ownership is now inside geminiai
+    # User must be logged in due to @login_required
 
     data = request.get_json()
+    if not data:
+        # It's good practice to ensure data is not None before trying to get 'message'
+        return jsonify(error=_("No data provided in request.")), 400
+        
     user_message = data.get('message')
+    # geminiai function itself will check if user_message is None or empty
+    # and return an appropriate error dictionary and status code.
 
-    if not user_message:
-        return jsonify(error=_("No message provided.")), 400
+    # Call the refactored function from app.gemini
+    # It's important that current_user is valid here due to @login_required
+    # The geminiai function expects current_user.id
+    result = geminiai(character_id, user_message, current_user.id)
 
-    try:
-        log_entries = json.loads(character.adventure_log or '[]')
-        if not isinstance(log_entries, list):
-            log_entries = []
-    except json.JSONDecodeError:
-        log_entries = []
-        # print(f"Warning: Adventure log for character {character_id} was malformed and has been reset before new message.")
-        # For an API endpoint, returning an error or a specific message might be appropriate
-        # if the corruption prevents processing the current request.
-        # However, for resilience, we'll proceed with an empty history for this interaction.
-
-    ai_response = ""
-
-    # API Key Configuration
-    api_key = current_app.config.get('GEMINI_API_KEY')
-    if not api_key:
-        current_app.logger.error("Gemini API key (GEMINI_API_KEY) not configured.")
-        return jsonify(error=_("The Dungeon Master's connection to the ethereal plane is disrupted. (API key missing). Please try again later.")), 500
-    
-    try:
-        genai.configure(api_key=api_key)
-    except Exception as e:
-        current_app.logger.error(f"Error configuring Gemini API: {str(e)}")
-        return jsonify(error=_("There was an issue configuring the connection to the ethereal plane. Please try again later.")), 500
-
-    # Initialize Model
-    safety_settings = [
-        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-    ]
-    
-    # New logic to query the database for DEFAULT_GEMINI_MODEL
-    db_setting = Setting.query.filter_by(key='DEFAULT_GEMINI_MODEL').first()
-    if db_setting and db_setting.value:
-        model_to_use = db_setting.value
-        # current_app.logger.info(f"Using DEFAULT_GEMINI_MODEL '{model_to_use}' from database.") # Optional: use debug
+    # geminiai returns a tuple (response_dict, status_code) for errors that include a status code,
+    # or just response_dict for success (implying 200 OK from geminiai's perspective).
+    if isinstance(result, tuple) and len(result) == 2:
+        response_data, status_code = result
+        return jsonify(response_data), status_code
+    elif isinstance(result, dict): # Success case where only dict is returned
+        return jsonify(result), 200
     else:
-        # Fallback to config file's value if not in DB (should be rare due to init logic)
-        model_to_use = current_app.config.get('DEFAULT_GEMINI_MODEL')
-        if not model_to_use: # If still not found (e.g. not in config.py either)
-            current_app.logger.error("DEFAULT_GEMINI_MODEL not found in database or config.py.")
-            model_to_use = "gemini-1.5-flash" # Ultimate fallback
-            current_app.logger.warning(f"Critial: Using hardcoded fallback Gemini model: {model_to_use}.")
-        else:
-            current_app.logger.warning(f"Using DEFAULT_GEMINI_MODEL '{model_to_use}' from config.py (not found in DB or DB value empty).")
-    
-    model = genai.GenerativeModel(model_name=model_to_use, safety_settings=safety_settings)
-
-    # Chat History for Gemini
-    gemini_history = []
-    for entry in log_entries:
-        role = 'user' if entry['sender'] == 'user' else 'model'
-        gemini_history.append({'role': role, 'parts': [{'text': entry['text']}]})
-
-    chat = model.start_chat(history=gemini_history)
-    
-    prompt_text = ""
-    is_initial_adventure_prompt = False
-
-    if not gemini_history and user_message == "__START_ADVENTURE__":
-        is_initial_adventure_prompt = True
-        
-        skills_list = []
-        if character.current_proficiencies:
-            try:
-                prof_data = json.loads(character.current_proficiencies)
-                if isinstance(prof_data, dict) and isinstance(prof_data.get('skills'), list):
-                    skills_list = prof_data.get('skills', [])
-            except json.JSONDecodeError:
-                current_app.logger.warning(f"Malformed current_proficiencies JSON for character {character_id}: {character.current_proficiencies}")
-                # skills_list remains empty, will default to "Not specified"
-        
-        skills_string = ", ".join(skills_list) if skills_list else "Not specified"
-
-        prompt_text = (
-            f"You are a Dungeon Master for a D&D 5e style game. I am your player. "
-            f"My character is named {character.name}, a level {character.level} {character.race.name} {character.char_class.name}. "
-            f"Character Description: {character.description or 'Not specified'}. "
-            f"Character Alignment: {character.alignment or 'Not specified'}. "
-            f"Character Background: {character.background_name or 'Not specified'}. "
-            f"Key Skills: {skills_string}. "
-            # New instructions for dice rolls:
-            "When the player sends a message that clearly states a dice roll result (e.g., 'Rolling Strength Check (1d20+2): Rolled [15] + 2 = 17'), you should acknowledge this roll and incorporate its outcome into your narrative response. For example, if they roll high on a persuasion check, describe how the NPC is convinced. If they roll low on an attack, describe how their attack misses or is parried. "
-            "As a Dungeon Master, you should also pay attention to the context of the roll. If a player states they are making a roll that seems inappropriate for the current situation (e.g., rolling for damage before an attack roll has been made and confirmed to hit, or rolling a skill check that doesn't fit the narrative or your last request), gently point this out. Explain what kind of roll you were expecting or why their stated roll might not be suitable right now. Ask them to make the correct roll or to clarify their action. Your goal is to guide the player and ensure the game flows logically, but do so in a helpful and immersive way. Don't be overly strict if the player is just learning or if the roll could be creatively interpreted. "
-            # Original instructions continue:
-            "Please start our adventure. Ask me some engaging questions about what kind of story or challenges I'm looking for. "
-            "Make your response immersive and welcoming. Keep your initial questions concise, perhaps 2-3 short questions to get started."
-        )
-    else:
-        prompt_text = user_message
-
-    ai_response_text = ""
-    try:
-        response = chat.send_message(prompt_text)
-        ai_response_text = response.text
-    except Exception as e:
-        current_app.logger.error(f"Error sending message to Gemini: {str(e)}")
-        ai_response_text = _("The Dungeon Master seems to be lost in thought and couldn't quite catch that. Could you try again?")
-        # Do not save user message if AI fails to respond, so they can retry the same message.
-        # Or, save user message and this error as DM response. For now, let's just return the error.
-        # However, if it's the initial prompt, we do want to save the DM error.
-        if is_initial_adventure_prompt:
-            log_entries.append({"sender": "dm", "text": ai_response_text})
-            character.adventure_log = json.dumps(log_entries)
-            db.session.commit()
-        return jsonify(reply=ai_response_text)
-
-
-    # Save messages
-    if user_message == "__START_ADVENTURE__":
-        # This was the initial trigger, only log DM's response
-        log_entries.append({"sender": "dm", "text": ai_response_text})
-    else:
-        # Regular message exchange, log both user and DM
-        log_entries.append({"sender": "user", "text": user_message}) # Log the actual user message
-        log_entries.append({"sender": "dm", "text": ai_response_text})
-
-    character.adventure_log = json.dumps(log_entries)
-    db.session.commit()
-
-    return jsonify(reply=ai_response_text)
+        # Fallback for unexpected result type from geminiai
+        current_app.logger.error(f"Unexpected result type from geminiai: {type(result)}")
+        return jsonify(error="An unexpected error occurred processing the chat message."), 500
