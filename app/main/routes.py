@@ -955,11 +955,9 @@ def adventure(character_id):
 
     # Prepare Saving Throws Data
     saving_throws_data = []
-    # ABILITY_NAMES_FULL = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma']
-    # proficient_saving_throws is a list like ["STR", "DEX"]
     for ability_name_full in ABILITY_NAMES_FULL:
-        ability_attr_lower = ability_name_full.lower() # e.g. "strength"
-        ability_attr_short = ability_name_full[:3].upper() # e.g. "STR"
+        ability_attr_lower = ability_name_full.lower() 
+        ability_attr_short = ability_name_full[:3].upper() 
         
         base_score = getattr(character, ability_attr_lower, 10) 
         base_modifier = (base_score - 10) // 2
@@ -974,8 +972,6 @@ def adventure(character_id):
 
     # Prepare Skills Data
     skills_data = []
-    # ALL_SKILLS_LIST = [("Acrobatics", "DEX"), ...]
-    # proficient_skills is a list like ["Acrobatics", "Stealth"]
     ability_abbr_to_attr_lower = {
         "STR": "strength", "DEX": "dexterity", "CON": "constitution",
         "INT": "intelligence", "WIS": "wisdom", "CHA": "charisma"
@@ -997,16 +993,32 @@ def adventure(character_id):
             "modifier": final_modifier,
             "is_proficient": is_proficient
         })
+
+    # Prepare Abilities Data
+    abilities_data = []
+    ability_full_to_short_map = {
+        'Strength': 'STR', 'Dexterity': 'DEX', 'Constitution': 'CON',
+        'Intelligence': 'INT', 'Wisdom': 'WIS', 'Charisma': 'CHA'
+    }
+    for ability_name_full in ABILITY_NAMES_FULL:
+        attr_lower = ability_name_full.lower() 
+        score = getattr(character, attr_lower, 10) 
+        modifier = (score - 10) // 2
+        abilities_data.append({
+            "name_full": ability_name_full,
+            "name_short": ability_full_to_short_map.get(ability_name_full, "UNK"), 
+            "score": score,
+            "modifier": modifier
+        })
     
     return render_template('adventure.html', 
                            title=_('Adventure'),
                            character=character, 
                            log_entries=log_entries,
                            # Character Sheet Data:
-                           all_skills_list=ALL_SKILLS_LIST, # Still useful for other things or reference
-                           ability_names_full=ABILITY_NAMES_FULL, # Still useful for other things or reference
+                           all_skills_list=ALL_SKILLS_LIST, 
+                           ability_names_full=ABILITY_NAMES_FULL, 
                            proficiency_bonus=proficiency_bonus,
-                           # proficient_skills and proficient_saving_throws are still used for the AI prompt context, so keep them.
                            proficient_skills=proficient_skills, 
                            proficient_saving_throws=proficient_saving_throws,
                            proficient_tools=proficient_tools,
@@ -1018,7 +1030,8 @@ def adventure(character_id):
                            level_1_spells=level_1_spells,
                            # New pre-calculated data for template:
                            saving_throws_data=saving_throws_data,
-                           skills_data=skills_data
+                           skills_data=skills_data,
+                           abilities_data=abilities_data
                            )
 
 @bp.route('/roll_dice_from_sheet', methods=['POST'])

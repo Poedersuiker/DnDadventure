@@ -23,17 +23,16 @@
 
     <h4 class="sheet-section-title">Abilities</h4>
     <div class="abilities-grid">
-        {% for ability_name_iter in ability_names_full %}
-            {% set ability_attr_iter = ability_name_iter.lower() %}
-            {% set ability_score_iter = getattr(character, ability_attr_iter) %}
-            {% set modifier_iter = ((ability_score_iter - 10) // 2) %}
+        {% for ability in abilities_data %}
             <div class="ability-box">
-                <span>{{ ability_name_iter[:3].upper() }}</span> {{ ability_score_iter }}
+                <span class="ability-label">{{ ability.name_short }}</span>
+                <span class="ability-score">{{ ability.score }}</span>
+                <span class="ability-modifier">({% if ability.modifier >=0 %}+{% endif %}{{ ability.modifier }})</span>
                 <button class="roll-button" 
                         data-roll-type="stat" 
-                        data-roll-name="{{ ability_name_iter }} Check"
+                        data-roll-name="{{ ability.name_full }} Check"
                         data-dice-formula="1d20"
-                        data-modifier="{{ modifier_iter }}">🎲</button>
+                        data-modifier="{{ ability.modifier }}">🎲</button>
             </div>
         {% endfor %}
     </div>
