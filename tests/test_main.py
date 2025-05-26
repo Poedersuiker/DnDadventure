@@ -240,13 +240,20 @@ class TestMainRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         actual_prompt = mock_chat_instance.send_message.call_args[0][0]
         
+        # Assertions for general prompt structure (can remain)
         self.assertIn("If the character description or background is 'Not specified' or very brief", actual_prompt)
         self.assertIn("When a situation requires a dice roll, please ask me to make a specific roll", actual_prompt)
         self.assertIn("If I state I am making a roll that seems inappropriate", actual_prompt) 
-        self.assertIn("When you need information from me, please ask only one question at a time", actual_prompt)
+        self.assertIn("When you need information from me, please ask only one question at a time", actual_prompt) # General rule
         self.assertIn("You will also need to keep track of my character's experience points (XP)", actual_prompt)
-        # New assertion for playstyle preference question:
-        self.assertIn("Also, let me know if you prefer a game where I, as the DM, provide more guidance and steer the story, or if you'd prefer more freedom to explore and make decisions independently.", actual_prompt)
+        
+        # Updated assertions for sequential initial questions:
+        self.assertIn("To begin, ask me *one* engaging question about what kind of story or challenges I'm looking for.", actual_prompt)
+        self.assertIn("After I've responded to that, in your next message, you can then ask me whether I prefer a game with more DM guidance or more player freedom.", actual_prompt)
+        self.assertIn("this applies to these initial questions too", actual_prompt)
+        # Ensure the old simultaneous way of asking is NOT present if it was too specific
+        self.assertNotIn("Also, let me know if you prefer a game where I, as the DM, provide more guidance and steer the story, or if you'd prefer more freedom to explore and make decisions independently. Make your response immersive and welcoming. Keep your initial questions concise", actual_prompt)
+
 
     @patch('app.gemini.Setting.query') 
     @patch('app.gemini.genai')         
