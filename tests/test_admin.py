@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 from app import app, db, User  # Assuming User is directly accessible from app
-from flask import current_app, session
+from flask import current_app, session, url_for # Added url_for
 
 class AdminTestCase(unittest.TestCase):
     def setUp(self):
@@ -241,6 +241,30 @@ class AdminTestCase(unittest.TestCase):
             flashed_messages = dict(sess.get('_flashes', []))
             self.assertIn('success', flashed_messages)
             self.assertIn("Log file cleared successfully.", flashed_messages['success'])
+        self.logout()
+
+    # Step 7: Tests for Admin Panel link visibility on homepage
+    def test_homepage_renders_admin_link_for_admin_user(self):
+        self.login(self.admin_user.email) # Use the email of the admin user created in setUp
+        # Assuming 'main.index' is the endpoint for your homepage
+        homepage_url = url_for('main.index')
+        response = self.client.get(homepage_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Admin Panel', response.data)
+        
+        admin_dashboard_url = url_for('admin.admin_dashboard')
+        # The link in base.html is to admin.admin_dashboard.
+        # The actual href rendered might be /admin/ or /admin/general if there's a redirect.
+        # We should check for the direct link target from url_for.
+        self.assertIn(f'href="{admin_dashboard_url}"'.encode(), response.data)
+        self.logout()
+
+    def test_homepage_does_not_render_admin_link_for_non_admin_user(self):
+        self.login(self.non_admin_user.email) # Use the email of the non-admin user
+        homepage_url = url_for('main.index')
+        response = self.client.get(homepage_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b'Admin Panel', response.data)
         self.logout()
 
 if __name__ == '__main__':
