@@ -363,3 +363,152 @@ footer {
     font-family: 'Merriweather', serif;
     font-size: 0.85em;
 }
+
+/* Adventure Page Specific Styles */
+
+/* Character Sheet Overlay */
+#character-sheet-overlay {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80%;
+    max-width: 500px;
+    background-color: #fff9e6; /* Light parchment */
+    border: 3px solid #5D4037; /* Dark brown border */
+    padding: 20px;
+    box-shadow: 5px 5px 15px rgba(0,0,0,0.5);
+    z-index: 1000;
+    border-radius: 5px;
+    overflow-y: auto; /* Scroll if content is too long */
+    max-height: 90vh; /* Max height to prevent overflow on small screens */
+}
+
+#character-sheet-overlay h3 {
+    margin-top: 0;
+    color: #8B0000; /* Match other h3 */
+}
+
+#character-sheet-overlay h4 {
+    margin-top: 10px;
+    margin-bottom: 5px;
+    color: #8B0000; /* Match other h4 */
+}
+
+#character-sheet-overlay p {
+    margin-bottom: 5px;
+    font-size: 0.9em;
+}
+
+#character-sheet-overlay button { /* Style for close button inside overlay */
+    display: block; /* Make it a block to center it or position easily */
+    margin: 15px auto 0; /* Center the button */
+    background-color: #8B4513; /* Match general button style */
+    color: #f5e8c3;
+    padding: 6px 12px;
+    border: 2px solid #5D4037;
+    border-top-color: #A0522D;
+    border-left-color: #A0522D;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: 'Merriweather', serif;
+    font-size: 0.9em;
+}
+#character-sheet-overlay button:hover {
+    background-color: #A0522D;
+}
+
+
+/* Chat Window Elements */
+#chat-messages {
+    height: 300px;
+    overflow-y: scroll;
+    border: 1px solid #A0522D; /* Sienna border, like form inputs */
+    padding: 10px;
+    margin-bottom: 10px;
+    background-color: #fffdf5; /* Slightly off-white, like character cards */
+    border-radius: 3px;
+}
+
+#chat-input {
+    width: calc(100% - 100px); /* Adjust width considering the send button */
+    padding: 8px 10px; /* Increased padding */
+    margin-right: 5px;
+    border: 1px solid #A0522D;
+    border-radius: 4px;
+    background-color: #fff9e6;
+    color: #3B2F2F;
+    font-family: 'Merriweather', serif;
+    font-size: 0.95em;
+    box-sizing: border-box; /* Include padding and border in the element's total width and height */
+}
+#chat-input:focus {
+    border-color: #5D4037; 
+    box-shadow: 0 0 5px rgba(93, 64, 55, 0.3); 
+    outline: none; 
+}
+
+
+#send-button { /* Assuming general .button styling is applied or can be used as base */
+    width: 90px; /* Fixed width for send button */
+    padding: 8px 0; /* Adjust padding for consistent height with input */
+    /* Ensure it aligns nicely with the input field. Vertical-align might be needed if they are inline-block */
+    vertical-align: top; /* Or middle, depending on desired alignment with input */
+    /* Uses .button styling from above for consistency */
+}
+
+/* Character Sheet Button (Scroll Icon) */
+/* Positioned via inline style in HTML, but can add more here if needed */
+#character-sheet-button {
+    font-size: 1.5em; /* Make icon larger */
+    padding: 5px 10px;
+    background-color: #f5e8c3; /* Parchment color */
+    border: 1px solid #A0522D; /* Sienna border */
+    color: #5D4037; /* Dark brown icon color */
+    /* Other styles like border-radius, cursor will be inherited from .button or can be added */
+}
+#character-sheet-button:hover {
+    background-color: #fff9e6; /* Lighter parchment on hover */
+    border-color: #5D4037;
+}
+
+/* Roll Buttons on Character Sheet */
+.roll-button {
+    font-size: 0.8em;
+    padding: 2px 6px;
+    margin-left: 8px;
+    background-color: #e0e0e0; /* Light grey, less prominent */
+    color: #333;
+    border: 1px solid #999;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: 'Merriweather', serif;
+}
+
+.roll-button:hover {
+    background-color: #ccc;
+    border-color: #777;
+}
+
+/* Chat Messages Styling */
+.message {
+    padding: 5px 8px;
+    margin-bottom: 5px;
+    border-radius: 4px;
+    line-height: 1.4;
+    font-size: 0.95em;
+}
+
+.message-user {
+    background-color: #e1f5fe; /* Light blue */
+    text-align: right;
+    margin-left: 20%; /* Push user messages to the right */
+    border: 1px solid #b3e5fc;
+}
+
+.message-dm {
+    background-color: #fce4ec; /* Light pink/parchment-like */
+    text-align: left;
+    margin-right: 20%; /* Push DM messages to the left */
+    border: 1px solid #f8bbd0;
+}

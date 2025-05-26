@@ -1,12 +1,17 @@
-import json # Added json import
-import json # Added json import (already present but good to ensure)
-import json # Added json import (already present but good to ensure)
-from flask import render_template, redirect, url_for, flash, request, session
+import json
+import os
+import google.generativeai as genai
+from flask import render_template, redirect, url_for, flash, request, session, get_flashed_messages, jsonify, current_app
+from flask_babel import _
 from flask_login import login_required, current_user
 from app import db
-from app.models import User, Character, Race, Class, Spell
-from app.utils import roll_dice # Added roll_dice import
+from app.models import User, Character, Race, Class, Spell # Character is already imported
+from app.utils import roll_dice
 from app.main import bp
+
+# Placeholder for Gemini API Key Configuration
+# GEMINI_API_KEY = "YOUR_API_KEY" # Load this from environment variables in a real app
+# genai.configure(api_key=GEMINI_API_KEY)
 
 @bp.route('/')
 @bp.route('/index')
@@ -832,3 +837,140 @@ def creation_review():
                            submitted_name=char_data.get('character_name_draft',''), # For repopulating if user goes back
                            submitted_alignment=char_data.get('alignment_draft',''),
                            submitted_description=char_data.get('description_draft',''))
+
+
+@bp.route('/<int:character_id>/adventure', methods=['GET', 'POST'])
+@login_required
+def adventure(character_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        flash(_('This character does not belong to you.'))
+        return redirect(url_for('main.index'))
+    try:
+        log_entries = json.loads(character.adventure_log or '[]')
+        if not isinstance(log_entries, list):
+            log_entries = []
+    except json.JSONDecodeError:
+        log_entries = []
+        # Optional: flash('Warning: Chat history was corrupted and has been reset.', 'warning')
+        # print(f"Warning: Adventure log for character {character_id} was malformed and has been reset.")
+    return render_template('adventure.html', title=_('Adventure'),
+                           character=character, log_entries=log_entries)
+
+
+@bp.route('/send_chat_message/<int:character_id>', methods=['POST'])
+@login_required
+def send_chat_message(character_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(error=_("Unauthorized. This character does not belong to you.")), 403
+
+    data = request.get_json()
+    user_message = data.get('message')
+
+    if not user_message:
+        return jsonify(error=_("No message provided.")), 400
+
+    try:
+        log_entries = json.loads(character.adventure_log or '[]')
+        if not isinstance(log_entries, list):
+            log_entries = []
+    except json.JSONDecodeError:
+        log_entries = []
+        # print(f"Warning: Adventure log for character {character_id} was malformed and has been reset before new message.")
+        # For an API endpoint, returning an error or a specific message might be appropriate
+        # if the corruption prevents processing the current request.
+        # However, for resilience, we'll proceed with an empty history for this interaction.
+
+    ai_response = ""
+
+    # API Key Configuration
+    api_key = current_app.config.get('GOOGLE_API_KEY')
+    if not api_key:
+        current_app.logger.error("Gemini API key (GOOGLE_API_KEY) not configured.")
+        return jsonify(error=_("The Dungeon Master's connection to the ethereal plane is disrupted. (API key missing). Please try again later.")), 500
+    
+    try:
+        genai.configure(api_key=api_key)
+    except Exception as e:
+        current_app.logger.error(f"Error configuring Gemini API: {str(e)}")
+        return jsonify(error=_("There was an issue configuring the connection to the ethereal plane. Please try again later.")), 500
+
+    # Initialize Model
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+    ]
+    model = genai.GenerativeModel(model_name="gemini-1.5-flash", safety_settings=safety_settings)
+
+    # Chat History for Gemini
+    gemini_history = []
+    for entry in log_entries:
+        role = 'user' if entry['sender'] == 'user' else 'model'
+        gemini_history.append({'role': role, 'parts': [{'text': entry['text']}]})
+
+    chat = model.start_chat(history=gemini_history)
+    
+    prompt_text = ""
+    is_initial_adventure_prompt = False
+
+    if not gemini_history and user_message == "__START_ADVENTURE__":
+        is_initial_adventure_prompt = True
+        
+        skills_list = []
+        if character.current_proficiencies:
+            try:
+                prof_data = json.loads(character.current_proficiencies)
+                if isinstance(prof_data, dict) and isinstance(prof_data.get('skills'), list):
+                    skills_list = prof_data.get('skills', [])
+            except json.JSONDecodeError:
+                current_app.logger.warning(f"Malformed current_proficiencies JSON for character {character_id}: {character.current_proficiencies}")
+                # skills_list remains empty, will default to "Not specified"
+        
+        skills_string = ", ".join(skills_list) if skills_list else "Not specified"
+
+        prompt_text = (
+            f"You are a Dungeon Master for a D&D 5e style game. I am your player. "
+            f"My character is named {character.name}, a level {character.level} {character.race.name} {character.char_class.name}. "
+            f"Character Description: {character.description or 'Not specified'}. "
+            f"Character Alignment: {character.alignment or 'Not specified'}. "
+            f"Character Background: {character.background_name or 'Not specified'}. "
+            f"Key Skills: {skills_string}. "
+            f"Please start our adventure. Ask me some engaging questions about what kind of story or challenges I'm looking for. "
+            f"Make your response immersive and welcoming. Keep your initial questions concise, perhaps 2-3 short questions to get started."
+        )
+    else:
+        prompt_text = user_message
+
+    ai_response_text = ""
+    try:
+        response = chat.send_message(prompt_text)
+        ai_response_text = response.text
+    except Exception as e:
+        current_app.logger.error(f"Error sending message to Gemini: {str(e)}")
+        ai_response_text = _("The Dungeon Master seems to be lost in thought and couldn't quite catch that. Could you try again?")
+        # Do not save user message if AI fails to respond, so they can retry the same message.
+        # Or, save user message and this error as DM response. For now, let's just return the error.
+        # However, if it's the initial prompt, we do want to save the DM error.
+        if is_initial_adventure_prompt:
+            log_entries.append({"sender": "dm", "text": ai_response_text})
+            character.adventure_log = json.dumps(log_entries)
+            db.session.commit()
+        return jsonify(reply=ai_response_text)
+
+
+    # Save messages
+    if user_message == "__START_ADVENTURE__":
+        # This was the initial trigger, only log DM's response
+        log_entries.append({"sender": "dm", "text": ai_response_text})
+    else:
+        # Regular message exchange, log both user and DM
+        log_entries.append({"sender": "user", "text": user_message}) # Log the actual user message
+        log_entries.append({"sender": "dm", "text": ai_response_text})
+
+    character.adventure_log = json.dumps(log_entries)
+    db.session.commit()
+
+    return jsonify(reply=ai_response_text)

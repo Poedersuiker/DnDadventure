@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div id="character-sheet-overlay" style="display: none;">
+    <h3>{{ character.name }}</h3>
+    <p>Race: {{ character.race.name }} | Class: {{ character.char_class.name }} | Level: {{ character.level }}</p>
+    <p>HP: {{ character.hp }}/{{ character.max_hp }} | AC: {{ character.armor_class }} | Speed: {{ character.speed }}</p>
+    <h4>Abilities</h4>
+    <p>STR: {{ character.strength }} <button class="roll-button" data-roll-type="stat" data-stat-name="Strength" data-stat-value="{{ character.strength }}">🎲 Roll</button></p>
+    <p>DEX: {{ character.dexterity }} <button class="roll-button" data-roll-type="stat" data-stat-name="Dexterity" data-stat-value="{{ character.dexterity }}">🎲 Roll</button></p>
+    <p>CON: {{ character.constitution }} <button class="roll-button" data-roll-type="stat" data-stat-name="Constitution" data-stat-value="{{ character.constitution }}">🎲 Roll</button></p>
+    <p>INT: {{ character.intelligence }} <button class="roll-button" data-roll-type="stat" data-stat-name="Intelligence" data-stat-value="{{ character.intelligence }}">🎲 Roll</button></p>
+    <p>WIS: {{ character.wisdom }} <button class="roll-button" data-roll-type="stat" data-stat-name="Wisdom" data-stat-value="{{ character.wisdom }}">🎲 Roll</button></p>
+    <p>CHA: {{ character.charisma }} <button class="roll-button" data-roll-type="stat" data-stat-name="Charisma" data-stat-value="{{ character.charisma }}">🎲 Roll</button></p>
+    
+    <!-- Placeholder for Skills -->
+    <h4>Skills (Example)</h4>
+    <p>Athletics: +3 <button class="roll-button" data-roll-type="skill" data-skill-name="Athletics" data-skill-modifier="+3">🎲 Roll</button></p>
+
+    <button id="close-sheet-button">Close</button>
+</div>
+
+<div style="position: absolute; top: 10px; right: 10px;">
+    <button id="character-sheet-button" title="Character Sheet">📜</button>
+</div>
+
+<h1>{{ character.name }}'s Adventure</h1>
+
+<div id="chat-messages">
+    <!-- Chat messages will appear here -->
+</div>
+
+<input type="text" id="chat-input" placeholder="Type your message...">
+<button id="send-button">Send</button>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const characterSheetOverlay = document.getElementById('character-sheet-overlay');
+    const characterSheetButton = document.getElementById('character-sheet-button');
+    const closeSheetButton = document.getElementById('close-sheet-button');
+    const chatInput = document.getElementById('chat-input');
+    const sendButton = document.getElementById('send-button');
+    const chatMessagesDiv = document.getElementById('chat-messages');
+    const rollButtons = document.querySelectorAll('.roll-button');
+    const characterId = {{ character.id }}; // Get character ID from template
+    const initialLogEntries = {{ log_entries|tojson }};
+
+    function appendMessage(text, sender) {
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message');
+        const formattedText = text.replace(/\n/g, '<br>');
+        if (sender === 'user') {
+            messageDiv.classList.add('message-user');
+            messageDiv.innerHTML = 'You: ' + formattedText;
+        } else {
+            messageDiv.classList.add('message-dm');
+            messageDiv.innerHTML = 'DM: ' + formattedText;
+        }
+        chatMessagesDiv.appendChild(messageDiv);
+        chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight; // Scroll to bottom
+    }
+
+    async function sendMessage(messageText) {
+        if (!messageText && messageText !== null) { // Allow null for initial message
+             const textFromInput = chatInput.value.trim();
+             if (!textFromInput) return;
+             messageText = textFromInput;
+             appendMessage(messageText, 'user');
+             chatInput.value = '';
+        } else if (messageText === null) { // Special case for initial message
+            // Don't append a "You: null" message
+        } else {
+            // This case is for pre-defined messages that are not from user input
+            // but should still be displayed as if the user sent them (e.g. "Rolling ...")
+             appendMessage(messageText, 'user');
+        }
+
+
+        try {
+            const response = await fetch(`/send_chat_message/${characterId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ message: messageText === null ? "__START_ADVENTURE__" : messageText }) 
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                appendMessage(`Error: ${errorData.error || response.statusText}`, 'dm');
+                return;
+            }
+
+            const data = await response.json();
+            if (data.reply) {
+                appendMessage(data.reply, 'dm');
+            }
+        } catch (error) {
+            console.error('Error sending message:', error);
+            appendMessage('Error connecting to the Dungeon Master. Please check your connection.', 'dm');
+        }
+    }
+
+    sendButton.addEventListener('click', () => sendMessage());
+    chatInput.addEventListener('keypress', function(event) {
+        if (event.key === 'Enter') {
+            sendMessage();
+        }
+    });
+
+    characterSheetButton.addEventListener('click', function() {
+        if (characterSheetOverlay.style.display === 'none') {
+            characterSheetOverlay.style.display = 'block';
+        } else {
+            characterSheetOverlay.style.display = 'none';
+        }
+    });
+
+    closeSheetButton.addEventListener('click', function() {
+        characterSheetOverlay.style.display = 'none';
+    });
+
+    rollButtons.forEach(button => {
+        button.addEventListener('click', function(event) {
+            event.preventDefault();
+
+            const rollType = this.dataset.rollType;
+            let rollString = "Rolling ";
+
+            if (rollType === 'stat') {
+                const statName = this.dataset.statName;
+                const statValue = parseInt(this.dataset.statValue);
+                const modifier = Math.floor((statValue - 10) / 2);
+
+                rollString += `${statName} check: 1d20`;
+                if (modifier >= 0) { // Show +0 or actual positive modifier
+                    rollString += ` + ${modifier}`;
+                } else { // Show negative modifier
+                    rollString += ` - ${Math.abs(modifier)}`;
+                }
+            } else if (rollType === 'skill') {
+                const skillName = this.dataset.skillName;
+                const skillModifier = this.dataset.skillModifier; 
+
+                rollString += `${skillName} skill check: 1d20 ${skillModifier}`;
+            }
+            
+            // Instead of directly putting to chatInput, send it as a user message
+            sendMessage(rollString); 
+            characterSheetOverlay.style.display = 'none'; // Close sheet after preparing roll
+        });
+    });
+
+    // Load historical messages
+    if (initialLogEntries && initialLogEntries.length > 0) {
+        initialLogEntries.forEach(entry => {
+            appendMessage(entry.text, entry.sender);
+        });
+    } else {
+        // Send initial message to trigger DM's intro only if no history
+        sendMessage(null); 
+    }
+
+});
+</script>
+{% endblock %}

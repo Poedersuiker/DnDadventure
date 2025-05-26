@@ -38,6 +38,7 @@ class Character(db.Model):
     background_name = db.Column(db.String(100), nullable=True)
     background_proficiencies = db.Column(db.Text, nullable=True)  # JSON
     background_equipment = db.Column(db.Text, nullable=True)  # JSON
+    adventure_log = db.Column(db.Text, nullable=True) # JSON chat history
 
     race = db.relationship('Race', backref='characters')
     char_class = db.relationship('Class', backref='characters')
