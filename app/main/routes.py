@@ -1411,30 +1411,39 @@ def send_chat_message(character_id):
 def add_item_to_inventory(character_id):
     character = Character.query.get_or_404(character_id)
     if character.user_id != current_user.id:
-        flash('You do not have permission to modify this character.', 'error')
-        return redirect(url_for('main.adventure', character_id=character_id))
+        return jsonify(status="error", message="Unauthorized: You do not own this character."), 403
 
-    item_name = request.form.get('item_name', '').strip().title()
-    item_description = request.form.get('item_description', '').strip()
+    data = request.json
+    if not data:
+        return jsonify(status="error", message="No data provided."), 400
+
+    item_name = data.get('item_name', '').strip().title()
+    item_description = data.get('item_description', '').strip()
+    
     try:
-        item_quantity = int(request.form.get('item_quantity', 1))
+        item_quantity_str = data.get('item_quantity')
+        if item_quantity_str is None: # Field not sent
+            return jsonify(status="error", message="Item quantity is required."), 400
+        item_quantity = int(item_quantity_str)
     except ValueError:
-        flash('Invalid quantity. Please enter a number.', 'error')
-        return redirect(url_for('main.adventure', character_id=character_id))
+        return jsonify(status="error", message="Invalid quantity format. Must be a number."), 400
+    except TypeError: # Handles if item_quantity_str is None and int() fails (already caught by check above but good for safety)
+        return jsonify(status="error", message="Item quantity must be a valid number."), 400
 
     if not item_name:
-        flash('Item name cannot be empty.', 'error')
-        return redirect(url_for('main.adventure', character_id=character_id))
+        return jsonify(status="error", message="Item name cannot be empty."), 400
     
     if item_quantity <= 0:
-        flash('Item quantity must be positive.', 'error')
-        return redirect(url_for('main.adventure', character_id=character_id))
+        return jsonify(status="error", message="Item quantity must be positive."), 400
 
     existing_item = Item.query.filter_by(character_id=character.id, name=item_name).first()
+    item_for_response = None
+    status_code = 200 # Default to 200 (OK)
 
     if existing_item:
         existing_item.quantity += item_quantity
-        flash(f'{item_quantity} {item_name}(s) added. You now have {existing_item.quantity}.', 'success')
+        item_for_response = existing_item
+        message = f'{item_quantity} {item_name}(s) added. You now have {existing_item.quantity}.'
     else:
         new_item = Item(
             name=item_name,
@@ -1443,10 +1452,34 @@ def add_item_to_inventory(character_id):
             character_id=character.id
         )
         db.session.add(new_item)
-        flash(f'{item_name} (x{item_quantity}) added to inventory.', 'success')
+        # We need to flush to get the ID for the new_item if we want to return it
+        # However, if we commit here, a rollback for a potential outer transaction might be an issue.
+        # For now, let's assume this is an atomic operation. If not, we might need to adjust.
+        # A common pattern is to commit and then query the item, or ensure the ORM populates the ID after add+flush.
+        # For simplicity, we'll commit and then use the new_item object.
+        # db.session.flush() # Or commit later, see note below
+        item_for_response = new_item
+        message = f'{item_name} (x{item_quantity}) added to inventory.'
+        status_code = 201 # 201 (Created) for new resource
     
-    db.session.commit()
-    return redirect(url_for('main.adventure', character_id=character_id) + "#character-sheet-overlay")
+    try:
+        db.session.commit()
+        # Ensure item_for_response is populated for the JSON, especially its ID after commit
+        # If it was a new_item, its ID is now populated.
+        return jsonify(
+            status="success", 
+            message=message,
+            item={
+                'id': item_for_response.id,
+                'name': item_for_response.name,
+                'quantity': item_for_response.quantity,
+                'description': item_for_response.description
+            }
+        ), status_code
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error adding/updating item for character {character_id}: {str(e)}")
+        return jsonify(status="error", message="An internal error occurred while saving the item."), 500
 
 
 @bp.route('/character/<int:character_id>/inventory/remove_item/<int:item_id>', methods=['POST'])
@@ -1475,32 +1508,36 @@ def remove_item_from_inventory(character_id, item_id):
 def update_coinage_for_character(character_id):
     character = Character.query.get_or_404(character_id)
     if character.user_id != current_user.id:
-        flash('You do not have permission to modify this character\'s coinage.', 'error')
-        return redirect(url_for('main.adventure', character_id=character_id))
+        return jsonify(status="error", message="Unauthorized: You do not own this character."), 403
 
-    coin_types = {
-        "Gold": "Gold Pieces",
-        "Silver": "Silver Pieces",
-        "Copper": "Copper Pieces"
+    data = request.json
+    if not data:
+        return jsonify(status="error", message="No data provided."), 400
+
+    coin_quantities = {}
+    coin_keys = ["gold_quantity", "silver_quantity", "copper_quantity"]
+    db_coin_names = {
+        "gold_quantity": "Gold Pieces",
+        "silver_quantity": "Silver Pieces",
+        "copper_quantity": "Copper Pieces"
     }
+
+    for key in coin_keys:
+        if key not in data:
+            return jsonify(status="error", message=f"Missing '{key}' in request."), 400
+        try:
+            quantity = int(data[key])
+            if quantity < 0:
+                return jsonify(status="error", message=f"Quantity for {db_coin_names[key]} must be non-negative."), 400
+            coin_quantities[key] = quantity
+        except (ValueError, TypeError):
+            return jsonify(status="error", message=f"Invalid quantity for {db_coin_names[key]}. Must be an integer."), 400
     
     updated_any = False
+    updated_coin_details = [] # To send back the state of coins after update
 
-    for form_key, db_name in coin_types.items():
-        try:
-            quantity_str = request.form.get(f'{form_key.lower()}_quantity', '0')
-            # Treat empty string as 0, or if user types non-numeric, catch ValueError
-            quantity = int(quantity_str) if quantity_str.strip() else 0 
-            if quantity < 0: # Negative quantities not allowed
-                flash(f'Invalid quantity for {db_name}. Must be zero or positive.', 'error')
-                # Potentially redirect here or collect all errors
-                continue 
-
-        except ValueError:
-            flash(f'Invalid quantity format for {db_name}. Please enter a number.', 'error')
-            # Potentially redirect here or collect all errors
-            continue 
-
+    for key, quantity in coin_quantities.items():
+        db_name = db_coin_names[key]
         existing_coinage = Coinage.query.filter_by(character_id=character.id, name=db_name).first()
 
         if existing_coinage:
@@ -1508,26 +1545,47 @@ def update_coinage_for_character(character_id):
                 if existing_coinage.quantity != quantity:
                     existing_coinage.quantity = quantity
                     updated_any = True
-            else: # quantity is 0 or less (already handled negative)
+                updated_coin_details.append({'name': db_name, 'quantity': existing_coinage.quantity})
+            else: # quantity is 0
                 db.session.delete(existing_coinage)
                 updated_any = True
+                # No details to append for deleted coin, or could append with quantity 0
         elif quantity > 0: # No existing record, but new quantity is positive
             new_coinage_entry = Coinage(name=db_name, quantity=quantity, character_id=character.id)
             db.session.add(new_coinage_entry)
             updated_any = True
+            # To get ID, we'd need to flush or commit. For now, just return name/qty.
+            updated_coin_details.append({'name': db_name, 'quantity': new_coinage_entry.quantity})
             
     if updated_any:
         try:
             db.session.commit()
-            flash('Coinage updated successfully.', 'success')
+            # Re-fetch to ensure all data is current, especially if new items were added.
+            # This is a bit inefficient but ensures data consistency for the response.
+            # A more optimized way might involve only adding/updating specific items in updated_coin_details.
+            final_coinage_state = []
+            for _, db_name_iter in db_coin_names.items():
+                coin_obj = Coinage.query.filter_by(character_id=character.id, name=db_name_iter).first()
+                if coin_obj:
+                    final_coinage_state.append({'name': coin_obj.name, 'quantity': coin_obj.quantity})
+                else: # Ensure all types are represented, even if 0
+                    final_coinage_state.append({'name': db_name_iter, 'quantity': 0})
+
+            return jsonify(status="success", message="Coinage updated successfully.", coinage=final_coinage_state), 200
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error updating coinage for character {character_id}: {str(e)}")
-            flash('An error occurred while updating coinage.', 'error')
+            return jsonify(status="error", message="An internal error occurred while updating coinage."), 500
     else:
-        flash('No changes detected in coinage amounts.', 'info')
-
-    return redirect(url_for('main.adventure', character_id=character_id) + "#character-sheet-overlay")
+        # Even if no changes, return current state for consistency
+        current_coinage_state = []
+        for _, db_name_iter in db_coin_names.items():
+            coin_obj = Coinage.query.filter_by(character_id=character.id, name=db_name_iter).first()
+            if coin_obj:
+                current_coinage_state.append({'name': coin_obj.name, 'quantity': coin_obj.quantity})
+            else:
+                current_coinage_state.append({'name': db_name_iter, 'quantity': 0})
+        return jsonify(status="success", message="No changes detected in coinage amounts.", coinage=current_coinage_state), 200
 
 
 @bp.route('/character/<int:character_id>/inventory/edit_item/<int:item_id>', methods=['POST'])

@@ -120,29 +120,30 @@
         {# Use 'equipment-list' class for consistent styling with other lists #}
         <div class="equipment-list"> 
             <h5>Coinage:</h5>
-            <form method="POST" action="{{ url_for('main.update_coinage_for_character', character_id=character.id) }}">
-                {# Prepare a dictionary to easily access current coinage values in the template #}
-                {% set current_coins = {} %}
-                {% for coin in character_coinage %}
-                    {% if coin.name == "Gold Pieces" %}{% set _ = current_coins.update({'Gold': coin.quantity}) %}{% endif %}
-                    {% if coin.name == "Silver Pieces" %}{% set _ = current_coins.update({'Silver': coin.quantity}) %}{% endif %}
-                    {% if coin.name == "Copper Pieces" %}{% set _ = current_coins.update({'Copper': coin.quantity}) %}{% endif %}
-                {% endfor %}
+            {# Form tag removed for AJAX submission #}
+            {# Prepare a dictionary to easily access current coinage values in the template #}
+            {% set current_coins = {} %}
+            {% for coin in character_coinage %}
+                {% if coin.name == "Gold Pieces" %}{% set _ = current_coins.update({'Gold': coin.quantity}) %}{% endif %}
+                {% if coin.name == "Silver Pieces" %}{% set _ = current_coins.update({'Silver': coin.quantity}) %}{% endif %}
+                {% if coin.name == "Copper Pieces" %}{% set _ = current_coins.update({'Copper': coin.quantity}) %}{% endif %}
+            {% endfor %}
 
-                <div style="margin-bottom: 5px;">
-                    <label for="gold_quantity" style="font-size:0.8em; display:inline-block; width:50px;">Gold:</label>
-                    <input type="number" id="gold_quantity" name="gold_quantity" value="{{ current_coins.get('Gold', 0) }}" min="0" style="font-size:0.8em; padding:3px; width:70px; display:inline-block;"> GP
+            <div class="coinage-inputs-container">
+                <div class="coinage-input-group">
+                    <label for="gold_quantity">Gold:</label>
+                    <input type="number" id="gold_quantity" name="gold_quantity" value="{{ current_coins.get('Gold', 0) }}" min="0"> GP
                 </div>
-                <div style="margin-bottom: 5px;">
-                    <label for="silver_quantity" style="font-size:0.8em; display:inline-block; width:50px;">Silver:</label>
-                    <input type="number" id="silver_quantity" name="silver_quantity" value="{{ current_coins.get('Silver', 0) }}" min="0" style="font-size:0.8em; padding:3px; width:70px; display:inline-block;"> SP
+                <div class="coinage-input-group">
+                    <label for="silver_quantity">Silver:</label>
+                    <input type="number" id="silver_quantity" name="silver_quantity" value="{{ current_coins.get('Silver', 0) }}" min="0"> SP
                 </div>
-                <div style="margin-bottom: 5px;">
-                    <label for="copper_quantity" style="font-size:0.8em; display:inline-block; width:50px;">Copper:</label>
-                    <input type="number" id="copper_quantity" name="copper_quantity" value="{{ current_coins.get('Copper', 0) }}" min="0" style="font-size:0.8em; padding:3px; width:70px; display:inline-block;"> CP
+                <div class="coinage-input-group">
+                    <label for="copper_quantity">Copper:</label>
+                    <input type="number" id="copper_quantity" name="copper_quantity" value="{{ current_coins.get('Copper', 0) }}" min="0"> CP
                 </div>
-                <input type="submit" value="Update Coinage" class="button-small" style="margin-top:8px;">
-            </form>
+            </div>
+            <span id="coinage-save-status" class="save-status-message"></span>
         </div>
     {% endif %}
     
@@ -471,7 +472,76 @@ document.addEventListener('DOMContentLoaded', function() {
     const modalItemNameInput = document.getElementById('modal-item-name');
     const modalItemQuantityInput = document.getElementById('modal-item-quantity');
     const modalItemDescriptionInput = document.getElementById('modal-item-description');
-    const saveItemBtn = document.getElementById('save-item-btn'); // For future use with AJAX
+    const saveItemBtn = document.getElementById('save-item-btn'); 
+
+    // Coinage Auto-Update Elements
+    const goldQuantityInput = document.getElementById('gold_quantity');
+    const silverQuantityInput = document.getElementById('silver_quantity');
+    const copperQuantityInput = document.getElementById('copper_quantity');
+    const coinageSaveStatus = document.getElementById('coinage-save-status');
+
+    let coinageUpdateTimeout = null;
+
+    async function handleCoinageUpdate() {
+        if (!goldQuantityInput || !silverQuantityInput || !copperQuantityInput || !coinageSaveStatus) {
+            console.error("Coinage input fields or status span not found.");
+            return;
+        }
+
+        const gold = parseInt(goldQuantityInput.value);
+        const silver = parseInt(silverQuantityInput.value);
+        const copper = parseInt(copperQuantityInput.value);
+
+        if (isNaN(gold) || gold < 0 || isNaN(silver) || silver < 0 || isNaN(copper) || copper < 0) {
+            coinageSaveStatus.textContent = 'Invalid quantities.';
+            coinageSaveStatus.style.color = 'red';
+            if(coinageUpdateTimeout) clearTimeout(coinageUpdateTimeout);
+            coinageUpdateTimeout = setTimeout(() => { coinageSaveStatus.textContent = ''; }, 3000);
+            return;
+        }
+
+        coinageSaveStatus.textContent = 'Saving...';
+        coinageSaveStatus.style.color = 'orange';
+
+        try {
+            const response = await fetch(`{{ url_for('main.update_coinage_for_character', character_id=character.id) }}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token() if csrf_token else "" }}' // Add CSRF token if your app uses it
+                },
+                body: JSON.stringify({
+                    gold_quantity: gold,
+                    silver_quantity: silver,
+                    copper_quantity: copper
+                })
+            });
+
+            const responseData = await response.json();
+
+            if (response.ok && responseData.status === 'success') {
+                coinageSaveStatus.textContent = responseData.message || 'Saved!';
+                coinageSaveStatus.style.color = 'green';
+            } else {
+                coinageSaveStatus.textContent = responseData.message || 'Error saving coinage.';
+                coinageSaveStatus.style.color = 'red';
+            }
+        } catch (error) {
+            console.error('Error updating coinage:', error);
+            coinageSaveStatus.textContent = 'Network error.';
+            coinageSaveStatus.style.color = 'red';
+        } finally {
+            if(coinageUpdateTimeout) clearTimeout(coinageUpdateTimeout);
+            coinageUpdateTimeout = setTimeout(() => { coinageSaveStatus.textContent = ''; }, 3000);
+        }
+    }
+
+    if (goldQuantityInput && silverQuantityInput && copperQuantityInput) {
+        [goldQuantityInput, silverQuantityInput, copperQuantityInput].forEach(input => {
+            input.addEventListener('blur', handleCoinageUpdate);
+        });
+    }
+
 
     function openAddItemModal() {
         modalTitle.textContent = 'Add New Item';
