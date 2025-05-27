@@ -99,25 +99,68 @@
                 <h5>Items:</h5>
                 <ul>
                     {% for item in character_items %}
-                        <li>
-                            {{ item.name }} (x{{ item.quantity }})
-                            {% if item.description and item.description != "Starting equipment" and item.description != "From background" %}
-                                <small><em>- {{ item.description }}</em></small>
-                            {% endif %}
+                        <li style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span>
+                                {{ item.name }} (x{{ item.quantity }})
+                                {% if item.description and item.description != "Starting equipment" and item.description != "From background" %}
+                                    <small><em>- {{ item.description }}</em></small>
+                                {% endif %}
+                            </span>
+                            <form method="POST" action="{{ url_for('main.remove_item_from_inventory', character_id=character.id, item_id=item.id) }}" style="display: inline; margin-left: 10px;">
+                                <input type="submit" value="Remove" class="button-small" onclick="return confirm('Are you sure you want to remove this item?');">
+                            </form>
                         </li>
                     {% endfor %}
                 </ul>
+                {# Add Item Form #}
+                <div style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
+                    <h6>Add New Item:</h6>
+                    <form method="POST" action="{{ url_for('main.add_item_to_inventory', character_id=character.id) }}">
+                        <div>
+                            <label for="item_name" style="font-size:0.8em; display:inline-block; width:auto; margin-right:5px;">Name:</label>
+                            <input type="text" id="item_name" name="item_name" required style="font-size:0.8em; padding:3px; width: 150px; display:inline-block;">
+                        </div>
+                        <div style="margin-top:5px;">
+                            <label for="item_quantity" style="font-size:0.8em; display:inline-block; width:auto; margin-right:5px;">Qty:</label>
+                            <input type="number" id="item_quantity" name="item_quantity" value="1" min="1" required style="font-size:0.8em; padding:3px; width:60px; display:inline-block;">
+                        </div>
+                        <div style="margin-top:5px;">
+                            <label for="item_description" style="font-size:0.8em; display:inline-block; width:auto; margin-right:5px;">Desc (opt.):</label>
+                            <input type="text" id="item_description" name="item_description" style="font-size:0.8em; padding:3px; width: 150px; display:inline-block;">
+                        </div>
+                        <input type="submit" value="Add Item" class="button-small" style="margin-top:8px;">
+                    </form>
+                </div>
             </div>
         {% endif %}
 
         {% if character_coinage %}
-            <div class="coinage-list">
+            {# Use 'equipment-list' class for consistent styling with other lists #}
+            <div class="equipment-list">
                 <h5>Coinage:</h5>
-                <ul>
+                <form method="POST" action="{{ url_for('main.update_coinage_for_character', character_id=character.id) }}">
+                    {# Prepare a dictionary to easily access current coinage values in the template #}
+                    {% set current_coins = {} %}
                     {% for coin in character_coinage %}
-                        <li>{{ coin.quantity }} {{ coin.name }}</li>
+                        {% if coin.name == "Gold Pieces" %}{% set _ = current_coins.update({'Gold': coin.quantity}) %}{% endif %}
+                        {% if coin.name == "Silver Pieces" %}{% set _ = current_coins.update({'Silver': coin.quantity}) %}{% endif %}
+                        {% if coin.name == "Copper Pieces" %}{% set _ = current_coins.update({'Copper': coin.quantity}) %}{% endif %}
                     {% endfor %}
-                </ul>
+
+                    <div style="margin-bottom: 5px;">
+                        <label for="gold_quantity" style="font-size:0.8em; display:inline-block; width:50px;">Gold:</label>
+                        <input type="number" id="gold_quantity" name="gold_quantity" value="{{ current_coins.get('Gold', 0) }}" min="0" style="font-size:0.8em; padding:3px; width:70px; display:inline-block;"> GP
+                    </div>
+                    <div style="margin-bottom: 5px;">
+                        <label for="silver_quantity" style="font-size:0.8em; display:inline-block; width:50px;">Silver:</label>
+                        <input type="number" id="silver_quantity" name="silver_quantity" value="{{ current_coins.get('Silver', 0) }}" min="0" style="font-size:0.8em; padding:3px; width:70px; display:inline-block;"> SP
+                    </div>
+                    <div style="margin-bottom: 5px;">
+                        <label for="copper_quantity" style="font-size:0.8em; display:inline-block; width:50px;">Copper:</label>
+                        <input type="number" id="copper_quantity" name="copper_quantity" value="{{ current_coins.get('Copper', 0) }}" min="0" style="font-size:0.8em; padding:3px; width:70px; display:inline-block;"> CP
+                    </div>
+                    <input type="submit" value="Update Coinage" class="button-small" style="margin-top:8px;">
+                </form>
             </div>
         {% endif %}
     {% else %}

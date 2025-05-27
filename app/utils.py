@@ -53,16 +53,29 @@ def list_gemini_models():
         logging.error(f"Error listing Gemini models: {e}")
         return []
 
-def _parse_gold(text_content: str) -> int:
+def parse_coinage(text_content: str) -> dict:
     """
-    Parses a string to find and return an amount of gold (gp).
-    Returns 0 if no gold amount is found.
+    Parses a string to find and return amounts of gold (gp), silver (sp), and copper (cp).
+    Returns a dictionary with keys 'Gold', 'Silver', 'Copper' and their respective amounts.
+    Amounts default to 0 if not found.
     """
+    coins = {'Gold': 0, 'Silver': 0, 'Copper': 0}
     if not text_content or not isinstance(text_content, str):
-        return 0
-    # Regex to find numbers followed by "gp", "gold pieces", "gold"
-    # It handles optional spaces and common abbreviations.
-    match = re.search(r'(\d+)\s*(gp|gold\s*pieces?|g)', text_content, re.IGNORECASE)
-    if match:
-        return int(match.group(1))
-    return 0
+        return coins
+
+    # Regex for gold: number followed by "gp", "gold pieces", or "g" (case insensitive)
+    gold_match = re.search(r'(\d+)\s*(gp|gold\s*pieces?|g)\b', text_content, re.IGNORECASE)
+    if gold_match:
+        coins['Gold'] = int(gold_match.group(1))
+
+    # Regex for silver: number followed by "sp" or "silver pieces" (case insensitive)
+    silver_match = re.search(r'(\d+)\s*(sp|silver\s*pieces?)\b', text_content, re.IGNORECASE)
+    if silver_match:
+        coins['Silver'] = int(silver_match.group(1))
+
+    # Regex for copper: number followed by "cp" or "copper pieces" (case insensitive)
+    copper_match = re.search(r'(\d+)\s*(cp|copper\s*pieces?)\b', text_content, re.IGNORECASE)
+    if copper_match:
+        coins['Copper'] = int(copper_match.group(1))
+        
+    return coins

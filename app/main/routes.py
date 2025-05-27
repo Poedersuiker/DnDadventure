@@ -8,7 +8,7 @@ from flask_babel import _
 from flask_login import login_required, current_user
 from app import db
 from app.models import User, Character, Race, Class, Spell, Setting, Item, Coinage
-from app.utils import roll_dice, _parse_gold # Imported _parse_gold
+from app.utils import roll_dice, parse_coinage # Changed import to parse_coinage
 from app.gemini import geminiai, GEMINI_DM_SYSTEM_RULES
 from app.main import bp
 
@@ -796,7 +796,7 @@ def creation_review():
     all_language_proficiencies = set(char_data.get('background_languages', []))
     # (Future: add racial languages if they were stored separately and aren't just text descriptions)
 
-    # _parse_gold is now imported from app.utils
+    # parse_coinage is now imported from app.utils
 
     if request.method == 'POST':
         character_name = request.form.get('character_name')
@@ -876,11 +876,14 @@ def creation_review():
         final_equipment_from_session = char_data.get('final_equipment', [])
         background_equipment_str = char_data.get('background_equipment', '') # This is a string
 
-        # Parse gold from background equipment string first
-        gold_amount = _parse_gold(background_equipment_str)
-        if gold_amount > 0:
-            coin = Coinage(name="Gold Pieces", quantity=gold_amount, character_id=new_char.id)
-            db.session.add(coin)
+        # Parse all coinage from background equipment string
+        parsed_coins = parse_coinage(background_equipment_str)
+        for coin_type, quantity in parsed_coins.items():
+            if quantity > 0:
+                # Construct a descriptive name like "Gold Pieces", "Silver Pieces"
+                coin_name = f"{coin_type.title()} Pieces" 
+                coin_entry = Coinage(name=coin_name, quantity=quantity, character_id=new_char.id)
+                db.session.add(coin_entry)
         
         # Process items from final_equipment (class choices / fixed items from class)
         # and items from background_equipment_str (excluding gold)
@@ -913,30 +916,52 @@ def creation_review():
             else:
                 all_item_strings_to_parse.append(item_string_from_session)
 
-        # Process all collected item strings
+        # Process all collected item strings with aggregation
+        aggregated_items = {} # To store {normalized_name: {'quantity': Q, 'description': D}}
+
         for item_string in all_item_strings_to_parse:
-            item_name = item_string
+            item_name_raw = item_string
             quantity = 1
-            description = "Starting equipment" # Default description
+            # Default description, can be updated if a more specific one is parsed
+            description = "Starting equipment" 
 
             # Basic parsing for quantity like "Item Name (xN)" or "N Item Name"
             qty_match_suffix = re.match(r'^(.*?)\s*\(x(\d+)\)$', item_string) # "Shield (x1)"
             qty_match_prefix = re.match(r'(\d+)\s+(.*)', item_string)    # "5 sticks of incense"
 
             if qty_match_suffix:
-                item_name = qty_match_suffix.group(1).strip()
+                item_name_raw = qty_match_suffix.group(1).strip()
                 quantity = int(qty_match_suffix.group(2))
             elif qty_match_prefix:
                 quantity = int(qty_match_prefix.group(1))
-                item_name = qty_match_prefix.group(2).strip()
+                item_name_raw = qty_match_prefix.group(2).strip()
             
-            # Avoid adding empty item names
-            if not item_name:
+            # Normalize item name (e.g., title case and strip whitespace)
+            # More advanced normalization (e.g., singularization) could be added here if needed.
+            normalized_item_name = item_name_raw.strip().title() # Using title case for consistency
+
+            if not normalized_item_name: # Avoid adding empty item names
                 continue
 
-            item = Item(name=item_name, quantity=quantity, character_id=new_char.id, description=description)
-            db.session.add(item)
+            if normalized_item_name in aggregated_items:
+                aggregated_items[normalized_item_name]['quantity'] += quantity
+                # Description handling: keep the first one, or implement more complex logic
+                # For now, if a more generic "Starting equipment" is already there,
+                # and a more specific one comes along (e.g. "From background"), prefer the more specific.
+                # This is a simple heuristic.
+                if aggregated_items[normalized_item_name]['description'] == "Starting equipment" and description != "Starting equipment":
+                    aggregated_items[normalized_item_name]['description'] = description
+            else:
+                aggregated_items[normalized_item_name] = {
+                    'quantity': quantity,
+                    'description': description 
+                }
         
+        # Create Item objects from the aggregated list
+        for name, data in aggregated_items.items():
+            item = Item(name=name, quantity=data['quantity'], character_id=new_char.id, description=data['description'])
+            db.session.add(item)
+
         # Assign spells
         chosen_spell_ids = char_data.get('chosen_cantrip_ids', []) + char_data.get('chosen_level_1_spell_ids', [])
         if chosen_spell_ids:
@@ -1379,3 +1404,127 @@ def send_chat_message(character_id):
         current_app.logger.warning(f"Received no text and no error from geminiai for char {character_id}. User message: '{user_message}'")
         # Return a generic "DM is pondering" message rather than an error, as it might not be a hard error.
         return jsonify(reply=_("The Dungeon Master ponders your words but remains silent for now...")), 200
+
+
+@bp.route('/character/<int:character_id>/inventory/add_item', methods=['POST'])
+@login_required
+def add_item_to_inventory(character_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        flash('You do not have permission to modify this character.', 'error')
+        return redirect(url_for('main.adventure', character_id=character_id))
+
+    item_name = request.form.get('item_name', '').strip().title()
+    item_description = request.form.get('item_description', '').strip()
+    try:
+        item_quantity = int(request.form.get('item_quantity', 1))
+    except ValueError:
+        flash('Invalid quantity. Please enter a number.', 'error')
+        return redirect(url_for('main.adventure', character_id=character_id))
+
+    if not item_name:
+        flash('Item name cannot be empty.', 'error')
+        return redirect(url_for('main.adventure', character_id=character_id))
+    
+    if item_quantity <= 0:
+        flash('Item quantity must be positive.', 'error')
+        return redirect(url_for('main.adventure', character_id=character_id))
+
+    existing_item = Item.query.filter_by(character_id=character.id, name=item_name).first()
+
+    if existing_item:
+        existing_item.quantity += item_quantity
+        flash(f'{item_quantity} {item_name}(s) added. You now have {existing_item.quantity}.', 'success')
+    else:
+        new_item = Item(
+            name=item_name,
+            description=item_description,
+            quantity=item_quantity,
+            character_id=character.id
+        )
+        db.session.add(new_item)
+        flash(f'{item_name} (x{item_quantity}) added to inventory.', 'success')
+    
+    db.session.commit()
+    return redirect(url_for('main.adventure', character_id=character_id) + "#character-sheet-overlay")
+
+
+@bp.route('/character/<int:character_id>/inventory/remove_item/<int:item_id>', methods=['POST'])
+@login_required
+def remove_item_from_inventory(character_id, item_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        flash('You do not have permission to modify this character.', 'error')
+        return redirect(url_for('main.adventure', character_id=character_id))
+
+    item_to_remove = Item.query.filter_by(id=item_id, character_id=character.id).first()
+
+    if item_to_remove:
+        item_name = item_to_remove.name
+        db.session.delete(item_to_remove)
+        db.session.commit()
+        flash(f'{item_name} removed from inventory.', 'success')
+    else:
+        flash('Item not found or does not belong to this character.', 'error')
+        
+    return redirect(url_for('main.adventure', character_id=character_id) + "#character-sheet-overlay")
+
+
+@bp.route('/character/<int:character_id>/inventory/update_coinage', methods=['POST'])
+@login_required
+def update_coinage_for_character(character_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        flash('You do not have permission to modify this character\'s coinage.', 'error')
+        return redirect(url_for('main.adventure', character_id=character_id))
+
+    coin_types = {
+        "Gold": "Gold Pieces",
+        "Silver": "Silver Pieces",
+        "Copper": "Copper Pieces"
+    }
+    
+    updated_any = False
+
+    for form_key, db_name in coin_types.items():
+        try:
+            quantity_str = request.form.get(f'{form_key.lower()}_quantity', '0')
+            # Treat empty string as 0, or if user types non-numeric, catch ValueError
+            quantity = int(quantity_str) if quantity_str.strip() else 0 
+            if quantity < 0: # Negative quantities not allowed
+                flash(f'Invalid quantity for {db_name}. Must be zero or positive.', 'error')
+                # Potentially redirect here or collect all errors
+                continue 
+
+        except ValueError:
+            flash(f'Invalid quantity format for {db_name}. Please enter a number.', 'error')
+            # Potentially redirect here or collect all errors
+            continue 
+
+        existing_coinage = Coinage.query.filter_by(character_id=character.id, name=db_name).first()
+
+        if existing_coinage:
+            if quantity > 0:
+                if existing_coinage.quantity != quantity:
+                    existing_coinage.quantity = quantity
+                    updated_any = True
+            else: # quantity is 0 or less (already handled negative)
+                db.session.delete(existing_coinage)
+                updated_any = True
+        elif quantity > 0: # No existing record, but new quantity is positive
+            new_coinage_entry = Coinage(name=db_name, quantity=quantity, character_id=character.id)
+            db.session.add(new_coinage_entry)
+            updated_any = True
+            
+    if updated_any:
+        try:
+            db.session.commit()
+            flash('Coinage updated successfully.', 'success')
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error updating coinage for character {character_id}: {str(e)}")
+            flash('An error occurred while updating coinage.', 'error')
+    else:
+        flash('No changes detected in coinage amounts.', 'info')
+
+    return redirect(url_for('main.adventure', character_id=character_id) + "#character-sheet-overlay")

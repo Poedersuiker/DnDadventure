@@ -1,8 +1,7 @@
 import unittest
-import unittest
 from unittest.mock import patch, MagicMock
 from app import app # Your Flask app instance
-from app.utils import list_gemini_models, _parse_gold # Imported _parse_gold
+from app.utils import list_gemini_models, parse_coinage # Updated import
 # If google.generativeai is not easily importable for error types,
 # you can mock a generic Exception for the API error test.
 
@@ -76,30 +75,47 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(result, [])
         mock_logging.error.assert_called_with(f"Error listing Gemini models: {simulated_error_message}")
 
-class TestParseGold(unittest.TestCase):
-    def test_parse_gold_various_formats(self):
-        self.assertEqual(_parse_gold("pouch containing 15 gp."), 15)
-        self.assertEqual(_parse_gold("10 Gold Pieces and some lint"), 10)
-        self.assertEqual(_parse_gold("5g in pocket"), 5)
-        self.assertEqual(_parse_gold("Received 100 gold"), 100) # "gold" alone
-        self.assertEqual(_parse_gold("No gold here!"), 0)
-        self.assertEqual(_parse_gold("A note mentioning 50gp but it's fake."), 50)
-        self.assertEqual(_parse_gold("25 gp"), 25)
-        self.assertEqual(_parse_gold("0gp"), 0)
+class TestParseCoinage(unittest.TestCase): # Renamed class
+    def test_parse_coinage_gold_only(self):
+        self.assertEqual(parse_coinage("pouch containing 15 gp."), {'Gold': 15, 'Silver': 0, 'Copper': 0})
+        self.assertEqual(parse_coinage("10 Gold Pieces and some lint"), {'Gold': 10, 'Silver': 0, 'Copper': 0})
+        self.assertEqual(parse_coinage("5g in pocket"), {'Gold': 5, 'Silver': 0, 'Copper': 0})
+        self.assertEqual(parse_coinage("Received 100 gold"), {'Gold': 100, 'Silver': 0, 'Copper': 0})
+        self.assertEqual(parse_coinage("A note mentioning 50gp but it's fake."), {'Gold': 50, 'Silver': 0, 'Copper': 0})
+        self.assertEqual(parse_coinage("25 gp"), {'Gold': 25, 'Silver': 0, 'Copper': 0})
+        self.assertEqual(parse_coinage("0gp"), {'Gold': 0, 'Silver': 0, 'Copper': 0})
 
-    def test_parse_gold_no_gold(self):
-        self.assertEqual(_parse_gold("Some silver pieces (10 sp)"), 0)
-        self.assertEqual(_parse_gold("A pouch with nothing in it."), 0)
-        self.assertEqual(_parse_gold("Just some copper."), 0)
+    def test_parse_coinage_silver_only(self):
+        self.assertEqual(parse_coinage("Some silver pieces (10 sp)"), {'Gold': 0, 'Silver': 10, 'Copper': 0})
+        self.assertEqual(parse_coinage("20 silver"), {'Gold': 0, 'Silver': 20, 'Copper': 0})
+        self.assertEqual(parse_coinage("100 SP"), {'Gold': 0, 'Silver': 100, 'Copper': 0})
 
-    def test_parse_gold_edge_cases(self):
-        self.assertEqual(_parse_gold(""), 0)
-        self.assertEqual(_parse_gold(None), 0)
-        self.assertEqual(_parse_gold("100"), 0) # No "gp" or "gold"
-        self.assertEqual(_parse_gold("gp 100"), 0) # Number must come first
-        self.assertEqual(_parse_gold("My horse cost 200 gold pieces."), 200)
-        self.assertEqual(_parse_gold("A treasure map leading to 1000 Gold."), 1000)
+    def test_parse_coinage_copper_only(self):
+        self.assertEqual(parse_coinage("Just 5 copper."), {'Gold': 0, 'Silver': 0, 'Copper': 5})
+        self.assertEqual(parse_coinage("Bag of 200 cp"), {'Gold': 0, 'Silver': 0, 'Copper': 200})
+        self.assertEqual(parse_coinage("1 copper piece"), {'Gold': 0, 'Silver': 0, 'Copper': 1})
+        
+    def test_parse_coinage_mixed_denominations(self):
+        self.assertEqual(parse_coinage("10gp, 5sp, 20cp"), {'Gold': 10, 'Silver': 5, 'Copper': 20})
+        self.assertEqual(parse_coinage("5 silver pieces and 100 gold"), {'Gold': 100, 'Silver': 5, 'Copper': 0})
+        self.assertEqual(parse_coinage("A pouch with 15 g, 25 sP, and 50 Copper Pieces."), {'Gold': 15, 'Silver': 25, 'Copper': 50})
+        self.assertEqual(parse_coinage("20 cp and 5 gp."), {'Gold': 5, 'Silver': 0, 'Copper': 20}) # Order doesn't matter
+        self.assertEqual(parse_coinage("1 gold, 1 silver, 1 copper"), {'Gold': 1, 'Silver': 1, 'Copper': 1})
 
+    def test_parse_coinage_no_coins(self):
+        self.assertEqual(parse_coinage("No coins here!"), {'Gold': 0, 'Silver': 0, 'Copper': 0})
+        self.assertEqual(parse_coinage("A pouch with nothing in it."), {'Gold': 0, 'Silver': 0, 'Copper': 0})
+
+    def test_parse_coinage_edge_cases(self):
+        self.assertEqual(parse_coinage(""), {'Gold': 0, 'Silver': 0, 'Copper': 0})
+        self.assertEqual(parse_coinage(None), {'Gold': 0, 'Silver': 0, 'Copper': 0})
+        self.assertEqual(parse_coinage("100"), {'Gold': 0, 'Silver': 0, 'Copper': 0}) # No currency type
+        self.assertEqual(parse_coinage("gp 100"), {'Gold': 0, 'Silver': 0, 'Copper': 0}) # Number must come first
+        self.assertEqual(parse_coinage("My horse cost 200 gold pieces."), {'Gold': 200, 'Silver': 0, 'Copper': 0})
+        self.assertEqual(parse_coinage("A treasure map leading to 1000 Gold."), {'Gold': 1000, 'Silver': 0, 'Copper': 0})
+        self.assertEqual(parse_coinage("1g p 2 s p 3 c p"), {'Gold': 1, 'Silver': 2, 'Copper': 3}) # Spaced out
+        self.assertEqual(parse_coinage("1gp2sp3cp"), {'Gold': 1, 'Silver': 2, 'Copper': 3}) # No spaces
+        self.assertEqual(parse_coinage("1gold2silver3copper"), {'Gold': 1, 'Silver': 2, 'Copper': 3})
 
 if __name__ == '__main__':
     unittest.main()

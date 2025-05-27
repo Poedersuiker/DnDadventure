@@ -213,7 +213,7 @@ a:hover {
 /* Links in nav have their own color */
 
 /* Button Styling (Beveled Look) */
-.button, input[type="submit"] {
+.button, input[type="submit"], .button-small {
     display: inline-block;
     background-color: #8B4513;
     color: #f5e8c3;
@@ -233,7 +233,12 @@ a:hover {
     margin-bottom: 5px;
 }
 
-.button:hover, input[type="submit"]:hover {
+.button-small { /* Specific styling for smaller buttons */
+    padding: 3px 8px;
+    font-size: 0.8em;
+}
+
+.button:hover, input[type="submit"]:hover, .button-small:hover {
     background-color: #A0522D;
     color: #f5e8c3; /* Explicitly set light text color for hover state */
     border-color: #3B2F2F;
@@ -242,7 +247,7 @@ a:hover {
     box-shadow: 1px 1px 3px rgba(0,0,0,0.5);
 }
 
-.button:active, input[type="submit"]:active {
+.button:active, input[type="submit"]:active, .button-small:active {
     background-color: #5D4037;
     color: #f5e8c3; /* Ensure text remains readable on active state */
     border-style: inset;
