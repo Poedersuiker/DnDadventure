@@ -512,7 +512,7 @@ form textarea {
 .coinage-input-group input[type="number"] {
     font-size: 0.8em;
     padding: 3px;
-    width: 50px; /* Compact width for the number input */
+    width: 40px; /* Compact width for the number input */
     margin-right: 3px; /* Space between input and unit (GP/SP/CP) */
 }
 
