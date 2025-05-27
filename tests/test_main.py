@@ -548,6 +548,153 @@ class TestMainRoutes(unittest.TestCase):
         self.assertEqual(Item.query.filter_by(character_id=char_to_clear.id).count(), 0)
         self.assertEqual(Coinage.query.filter_by(character_id=char_to_clear.id).count(), 0)
 
+    def test_edit_item_success(self):
+        user, char = self._create_character_with_inventory() # Sword (id=item1.id), Rope (id=item2.id)
+        item_to_edit = Item.query.filter_by(character_id=char.id, name="Sword").first()
+        self.assertIsNotNone(item_to_edit)
+
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = user.id
+            sess['_fresh'] = True
+        
+        edit_data = {
+            'item_name': 'Magic Sword',
+            'item_quantity': 2,
+            'item_description': 'Glows faintly.'
+        }
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
+            json=edit_data
+        )
+        self.assertEqual(response.status_code, 200)
+        json_response = response.get_json()
+        self.assertEqual(json_response['status'], 'success')
+        self.assertEqual(json_response['item']['name'], 'Magic Sword')
+        self.assertEqual(json_response['item']['quantity'], 2)
+        self.assertEqual(json_response['item']['description'], 'Glows faintly.')
+
+        db.session.refresh(item_to_edit) # Ensure we get the latest from DB
+        self.assertEqual(item_to_edit.name, 'Magic Sword')
+        self.assertEqual(item_to_edit.quantity, 2)
+        self.assertEqual(item_to_edit.description, 'Glows faintly.')
+
+    def test_edit_item_validation_errors(self):
+        user, char = self._create_character_with_inventory()
+        item_to_edit = Item.query.filter_by(character_id=char.id, name="Sword").first()
+        original_name = item_to_edit.name
+        original_quantity = item_to_edit.quantity
+        original_description = item_to_edit.description
+
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = user.id
+            sess['_fresh'] = True
+
+        # Empty Name
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
+            json={'item_name': '', 'item_quantity': 1, 'item_description': 'No name'}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['message'], 'Item name cannot be empty.')
+        db.session.refresh(item_to_edit)
+        self.assertEqual(item_to_edit.name, original_name) # Check no change
+
+        # Invalid Quantity (0)
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
+            json={'item_name': 'Valid Name', 'item_quantity': 0, 'item_description': 'Qty 0'}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['message'], 'Item quantity must be positive. To remove an item, use the remove function.')
+        db.session.refresh(item_to_edit)
+        self.assertEqual(item_to_edit.quantity, original_quantity) # Check no change
+        
+        # Invalid Quantity (negative)
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
+            json={'item_name': 'Valid Name', 'item_quantity': -5, 'item_description': 'Qty -5'}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['message'], 'Item quantity must be positive. To remove an item, use the remove function.')
+
+        # Invalid Quantity (non-integer string)
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
+            json={'item_name': 'Valid Name', 'item_quantity': 'abc', 'item_description': 'Qty abc'}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['message'], 'Invalid quantity format. Must be a number.')
+        
+        # Missing quantity field
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
+            json={'item_name': 'Valid Name', 'item_description': 'Missing Qty'}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['message'], 'Item quantity is required.')
+
+
+    def test_edit_item_authorization_and_not_found(self):
+        user1, char1 = self._create_character_with_inventory(user_id_offset=10, char_id_offset=10)
+        item1 = Item.query.filter_by(character_id=char1.id).first()
+        
+        user2, char2 = self._create_character_with_inventory(user_id_offset=11, char_id_offset=11)
+        item2 = Item.query.filter_by(character_id=char2.id).first()
+
+        # Log in as user1
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = user1.id
+            sess['_fresh'] = True
+        
+        valid_payload = {'item_name': 'New Name', 'item_quantity': 1, 'item_description': 'New Desc'}
+
+        # Attempt to edit item of char2 (character not owned by user1)
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char2.id, item_id=item2.id),
+            json=valid_payload
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.get_json()['message'], 'Unauthorized: You do not own this character.')
+
+        # Attempt to edit item2 but attribute it to char1 (item not owned by character)
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char1.id, item_id=item2.id),
+            json=valid_payload
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json()['message'], 'Item not found or does not belong to this character.')
+
+        # Attempt to edit non-existent item_id for char1
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char1.id, item_id=99999),
+            json=valid_payload
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json()['message'], 'Item not found or does not belong to this character.')
+
+    def test_edit_item_bad_payload(self):
+        user, char = self._create_character_with_inventory()
+        item_to_edit = Item.query.filter_by(character_id=char.id).first()
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = user.id
+            sess['_fresh'] = True
+
+        # Non-JSON payload
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
+            data="this is not json"
+        )
+        self.assertEqual(response.status_code, 400) # Flask typically returns 400 for malformed JSON
+        self.assertIn('No data provided', response.get_json()['message']) # Or similar, depending on Flask's exact error
+
+        # JSON payload missing required fields (e.g. item_name)
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
+            json={'item_quantity': 5, 'item_description': 'Only qty and desc'}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['message'], 'Item name cannot be empty.')
+
 
 if __name__ == '__main__':
     unittest.main()

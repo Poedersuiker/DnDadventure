@@ -1528,3 +1528,62 @@ def update_coinage_for_character(character_id):
         flash('No changes detected in coinage amounts.', 'info')
 
     return redirect(url_for('main.adventure', character_id=character_id) + "#character-sheet-overlay")
+
+
+@bp.route('/character/<int:character_id>/inventory/edit_item/<int:item_id>', methods=['POST'])
+@login_required
+def edit_item_in_inventory(character_id, item_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(status="error", message="Unauthorized: You do not own this character."), 403
+
+    item_to_edit = Item.query.filter_by(id=item_id, character_id=character.id).first()
+    if not item_to_edit:
+        return jsonify(status="error", message="Item not found or does not belong to this character."), 404
+
+    data = request.json
+    if not data:
+        return jsonify(status="error", message="No data provided."), 400
+
+    new_name = data.get('item_name', '').strip().title()
+    new_description = data.get('item_description', '').strip()
+    
+    try:
+        new_quantity_str = data.get('item_quantity')
+        if new_quantity_str is None: # Field not sent
+             return jsonify(status="error", message="Item quantity is required."), 400
+        new_quantity = int(new_quantity_str)
+    except ValueError:
+        return jsonify(status="error", message="Invalid quantity format. Must be a number."), 400
+    except TypeError: # Handles if new_quantity_str is None and int() fails
+        return jsonify(status="error", message="Item quantity must be a valid number."), 400
+
+
+    if not new_name:
+        return jsonify(status="error", message="Item name cannot be empty."), 400
+    
+    if new_quantity <= 0:
+        # If quantity is zero or less, client should use remove_item route.
+        # For edit, we expect a positive quantity.
+        return jsonify(status="error", message="Item quantity must be positive. To remove an item, use the remove function."), 400
+
+    item_to_edit.name = new_name
+    item_to_edit.description = new_description
+    item_to_edit.quantity = new_quantity
+
+    try:
+        db.session.commit()
+        return jsonify(
+            status="success", 
+            message="Item updated successfully!", 
+            item={
+                'id': item_to_edit.id,
+                'name': item_to_edit.name,
+                'quantity': item_to_edit.quantity,
+                'description': item_to_edit.description
+            }
+        ), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating item {item_id} for character {character_id}: {str(e)}")
+        return jsonify(status="error", message="An internal error occurred while updating the item."), 500
