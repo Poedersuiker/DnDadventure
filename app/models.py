@@ -22,6 +22,7 @@ class Character(db.Model):
     race_id = db.Column(db.Integer, db.ForeignKey('race.id'), nullable=False)
     class_id = db.Column(db.Integer, db.ForeignKey('class.id'), nullable=False)
     level = db.Column(db.Integer, default=1)
+    xp = db.Column(db.Integer, default=0)
     strength = db.Column(db.Integer, default=10)
     dexterity = db.Column(db.Integer, default=10)
     constitution = db.Column(db.Integer, default=10)
