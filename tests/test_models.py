@@ -111,6 +111,53 @@ class TestModelCreation(BasicAppTests):
         self.assertIn(spell1, queried_char.known_spells)
         self.assertIn(spell2, queried_char.known_spells)
 
+    def test_character_xp(self):
+        # 1. Create User
+        user = User(google_id="xp_test_user_google_id", email="xp_test_user@example.com")
+        db.session.add(user)
+        db.session.commit()
+
+        # 2. Create Race
+        race = Race(name="Test Human for XP", speed=30, 
+                    ability_score_increases='[{"name": "STR", "bonus": 1}]', 
+                    languages='["Common"]')
+        db.session.add(race)
+        db.session.commit()
+
+        # 3. Create Class
+        dnd_class = Class(name="Test Monk for XP", hit_die="d8",
+                          proficiency_saving_throws='["STR", "DEX"]',
+                          skill_proficiencies_option_count=2,
+                          skill_proficiencies_options='["Acrobatics", "Stealth"]',
+                          starting_equipment='[]')
+        db.session.add(dnd_class)
+        db.session.commit()
+
+        # 4. Create Character
+        char = Character(
+            name="XP Test Character",
+            user_id=user.id,
+            race_id=race.id,
+            class_id=dnd_class.id,
+            # xp should default to 0 as per model definition
+            level=1, strength=12, dexterity=12, constitution=12,
+            intelligence=12, wisdom=12, charisma=12,
+            max_hp=10, hp=10, armor_class=10
+        )
+        db.session.add(char)
+        db.session.commit()
+
+        # 5. Assert default xp
+        self.assertEqual(char.xp, 0)
+
+        # 6. Set xp to a new value
+        char.xp = 100
+        db.session.commit()
+
+        # 7. Assert updated xp
+        queried_char = Character.query.get(char.id)
+        self.assertEqual(queried_char.xp, 100)
+
 
 if __name__ == '__main__':
     unittest.main()
