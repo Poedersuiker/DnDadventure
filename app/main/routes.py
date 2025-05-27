@@ -1,13 +1,14 @@
 import json
 import os
 # import google.generativeai as genai # Removed
+import google.generativeai as genai # Re-add import
 from flask import render_template, redirect, url_for, flash, request, session, get_flashed_messages, jsonify, current_app
 from flask_babel import _
 from flask_login import login_required, current_user
 from app import db
-from app.models import User, Character, Race, Class, Spell # Setting removed
+from app.models import User, Character, Race, Class, Spell, Setting # Re-add Setting import
 from app.utils import roll_dice
-from app.gemini import geminiai # Added import
+from app.gemini import geminiai, GEMINI_DM_SYSTEM_RULES 
 from app.main import bp
 
 # Placeholder for Gemini API Key Configuration
@@ -920,39 +921,128 @@ def adventure(character_id):
 
     # If adventure log is empty, trigger initial DM message
     if not log_entries:
-        # Call geminiai to get the initial adventure prompt
-        # current_user is available here due to @login_required
-        gemini_response = geminiai(character_id=character.id, 
-                                   user_message="__START_ADVENTURE__", 
-                                   current_user_id=current_user.id)
-        
-        # geminiai returns a dict on success, or (dict, status_code) on error
-        ai_reply_text = None
-        if isinstance(gemini_response, dict) and 'reply' in gemini_response:
-            ai_reply_text = gemini_response['reply']
-        elif isinstance(gemini_response, tuple) and len(gemini_response) == 2:
-            # This means geminiai returned an error (e.g., API key issue)
-            # For __START_ADVENTURE__, this is an issue. Log it.
-            # The page will render with an empty log for the user.
-            error_details = gemini_response[0].get('error', 'Unknown error from geminiai')
-            current_app.logger.error(f"Failed to get initial DM message for char {character_id}: {error_details}")
-            # Potentially flash a message to the user if desired, but problem asks for non-interactive
-        else:
-            # Unexpected response type from geminiai
-            current_app.logger.error(f"Unexpected response type from geminiai during initial message fetch: {type(gemini_response)}")
+        dm_chat_session = None  # Initialize session variable
 
-        if ai_reply_text:
-            log_entries.append({"sender": "dm", "text": ai_reply_text})
-            character.adventure_log = json.dumps(log_entries)
+        # Step A: Send System Rules to Gemini
+        current_app.logger.info(f"Attempting to send system rules to Gemini for new adventure (char_id: {character_id}).")
+        rules_response_text, dm_chat_session, rules_error = geminiai(
+            prompt_text_to_send=GEMINI_DM_SYSTEM_RULES,
+            existing_chat_session=None
+        )
+
+        if rules_error:
+            current_app.logger.error(f"Error sending system rules to Gemini for char {character_id}: {rules_error}")
+            flash(_("The Dungeon Master is currently unavailable due to a configuration error. Please try again later."), 'error')
+            # Render with empty log or redirect. For now, page will render with empty log.
+        elif rules_response_text is not None:
+            # Log AI's ack of rules if any text is returned. Usually, this might be empty or a simple "OK".
+            current_app.logger.info(f"System rules sent. Gemini ack/response: {rules_response_text[:200]}") # Log snippet
+        else: # No error, but no text response (might be normal for system prompt)
+            current_app.logger.info(f"System rules sent to Gemini, no explicit text response received (char_id: {character_id}). Session established.")
+
+        # Proceed only if rules step was okay (no error and session established)
+        if not rules_error and dm_chat_session is not None:
+            # Step B: Prepare Character Sheet Information
+            # Proficiencies and equipment are loaded later for the template, ensure they are available here.
+            # The existing code populates these variables (proficient_skills, equipment_list etc.)
+            # *after* this 'if not log_entries:' block. This needs reordering or recalculation here.
+            
+            # For safety, let's re-calculate/re-fetch necessary character sheet details here or ensure they are loaded before this block.
+            # Assuming proficiencies_data, proficient_*, equipment_list are available from the later part of the route.
+            # This is a structural dependency that needs care. For now, let's assume they are available.
+            # If not, they would need to be calculated here.
+            # For now, I will just use the variables that are already populated later in the function.
+            # This part of the code will be run *before* the existing proficiency/equipment parsing.
+            # So I must duplicate that logic here or move it up.
+            # Let's duplicate minimally for now for clarity of this step.
+
+            temp_proficiencies_data = {}
             try:
-                db.session.commit()
-            except Exception as e:
-                current_app.logger.error(f"Failed to commit initial DM message to DB for char {character_id}: {str(e)}")
-                db.session.rollback() # Rollback on error
-                # If commit fails, log_entries on the page might not reflect the DB state for this request.
-                # For simplicity, we'll proceed to render with the in-memory log_entries.
+                temp_proficiencies_data = json.loads(character.current_proficiencies or '{}')
+                if not isinstance(temp_proficiencies_data, dict): temp_proficiencies_data = {}
+            except json.JSONDecodeError: pass
+            
+            temp_skills_str = ", ".join(temp_proficiencies_data.get('skills', [])) or "None"
+            temp_saving_throws_str = ", ".join(temp_proficiencies_data.get('saving_throws', [])) or "None"
+            temp_armor_prof_str = ", ".join(temp_proficiencies_data.get('armor', [])) or "None"
+            temp_weapon_prof_str = ", ".join(temp_proficiencies_data.get('weapons', [])) or "None"
+            temp_tool_prof_str = ", ".join(temp_proficiencies_data.get('tools', [])) or "None"
+            temp_languages_str = ", ".join(temp_proficiencies_data.get('languages', [])) or "None"
 
-    # --- Data Preparation for Character Sheet ---
+            temp_equipment_list = []
+            try:
+                temp_equipment_list = json.loads(character.current_equipment or '[]')
+                if not isinstance(temp_equipment_list, list): temp_equipment_list = []
+            except json.JSONDecodeError: pass
+            temp_equipment_str = "\n".join([f"- {item}" for item in temp_equipment_list]) if temp_equipment_list else "None"
+
+            xp_thresholds = {1: 300, 2: 900, 3: 2700, 4: 6500, 5: 14000, 6: 23000, 7: 34000, 8: 48000, 9: 64000, 10: 85000, 11: 100000, 12: 120000, 13: 140000, 14: 165000, 15: 195000, 16: 225000, 17: 265000, 18: 305000, 19: 355000}
+            xp_for_next = xp_thresholds.get(character.level, "N/A for current level")
+
+            character_sheet_prompt = (
+                f"PLAYER CHARACTER SHEET:\n"
+                f"Name: {character.name}\n"
+                f"Race: {character.race.name if character.race else 'N/A'}\n"
+                f"Class: {character.char_class.name if character.char_class else 'N/A'}\n"
+                f"Level: {character.level}\n\n"
+                f"Ability Scores:\n"
+                f"  Strength: {character.strength}\n"
+                f"  Dexterity: {character.dexterity}\n"
+                f"  Constitution: {character.constitution}\n"
+                f"  Intelligence: {character.intelligence}\n"
+                f"  Wisdom: {character.wisdom}\n"
+                f"  Charisma: {character.charisma}\n\n"
+                f"Proficiencies:\n"
+                f"  Skills: {temp_skills_str}\n"
+                f"  Saving Throws: {temp_saving_throws_str}\n"
+                f"  Armor: {temp_armor_prof_str}\n"
+                f"  Weapons: {temp_weapon_prof_str}\n"
+                f"  Tools: {temp_tool_prof_str}\n"
+                f"  Languages: {temp_languages_str}\n\n"
+                f"Equipment:\n{temp_equipment_str}\n\n"
+                f"Background: {character.background_name or 'N/A'}\n"
+                f"Description: {character.description or 'Not specified'}\n"
+                f"Alignment: {character.alignment or 'Not specified'}\n\n"
+                f"Experience Points:\n"
+                f"  Current XP: {character.xp or 0}\n"
+                f"  XP for Next Level: {xp_for_next}\n\n"
+                f"The above is my character sheet. Please confirm you have received it, and then proceed with the initial setup questions as outlined in your system rules (ask about story/challenges first, then playstyle preference in a separate, subsequent message)."
+            )
+            current_app.logger.info(f"Sending character sheet to Gemini for char {character_id}.")
+            # Step C: Send Character Sheet to Gemini
+            first_dm_message, dm_chat_session, char_sheet_error = geminiai(
+                prompt_text_to_send=character_sheet_prompt,
+                existing_chat_session=dm_chat_session 
+            )
+
+            if char_sheet_error:
+                current_app.logger.error(f"Error sending char sheet to Gemini for char {character_id}: {char_sheet_error}")
+                flash(_("The Dungeon Master had trouble reading your character sheet. Please try again later."), 'error')
+            elif first_dm_message:
+                current_app.logger.info(f"Received first DM message for char {character_id}: {first_dm_message[:200]}")
+                # Step D: Save and Display First Message
+                # Log the character sheet prompt as a user message BEFORE the DM's first actual adventure message
+                log_entries.append({"sender": "user", "text": character_sheet_prompt})
+                log_entries.append({"sender": "dm", "text": first_dm_message})
+                character.adventure_log = json.dumps(log_entries)
+                # The chat session object (dm_chat_session) is not stored in the DB.
+                # It will be reconstructed from log_entries in the send_chat_message route.
+                try:
+                    db.session.commit()
+                except Exception as e:
+                    current_app.logger.error(f"Failed to commit initial DM message (after char sheet) to DB for char {character_id}: {str(e)}")
+                    db.session.rollback()
+                    flash(_("An error occurred saving your adventure's start. Please try again."), 'error')
+            else: # No error, but no message
+                current_app.logger.error(f"Received no message from Gemini after sending character sheet for char {character_id}.")
+                flash(_("The Dungeon Master seems to be at a loss for words after seeing your character sheet! Please try again."), 'error')
+        elif dm_chat_session is None and not rules_error : # Rules step failed to establish a session but didn't set rules_error
+             current_app.logger.error(f"Gemini session not established after system rules, cannot proceed for char {character_id}.")
+             flash(_("The Dungeon Master is currently unavailable. Please try again later."), 'error')
+
+
+    # --- Data Preparation for Character Sheet (for template rendering) ---
+    # This part needs to run regardless of whether the log was empty or not.
     proficiency_bonus = (character.level - 1) // 4 + 2
 
     # Parse Proficiencies (proficient_skills and proficient_saving_throws are used below and also for AI prompt context)
@@ -1122,31 +1212,93 @@ def roll_dice_from_sheet():
 @bp.route('/send_chat_message/<int:character_id>', methods=['POST'])
 @login_required
 def send_chat_message(character_id):
-    # Authorization check for character ownership is now inside geminiai
-    # User must be logged in due to @login_required
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(error=_("Unauthorized. This character does not belong to you.")), 403
 
     data = request.get_json()
     if not data:
-        # It's good practice to ensure data is not None before trying to get 'message'
         return jsonify(error=_("No data provided in request.")), 400
         
     user_message = data.get('message')
-    # geminiai function itself will check if user_message is None or empty
-    # and return an appropriate error dictionary and status code.
+    if not user_message:
+        return jsonify(error=_("No message provided.")), 400
 
-    # Call the refactored function from app.gemini
-    # It's important that current_user is valid here due to @login_required
-    # The geminiai function expects current_user.id
-    result = geminiai(character_id, user_message, current_user.id)
+    try:
+        log_entries = json.loads(character.adventure_log or '[]')
+        if not isinstance(log_entries, list):
+            log_entries = []
+    except json.JSONDecodeError:
+        log_entries = []
+        current_app.logger.warning(f"Adventure log for char {character_id} was malformed, starting fresh for this turn.")
 
-    # geminiai returns a tuple (response_dict, status_code) for errors that include a status code,
-    # or just response_dict for success (implying 200 OK from geminiai's perspective).
-    if isinstance(result, tuple) and len(result) == 2:
-        response_data, status_code = result
-        return jsonify(response_data), status_code
-    elif isinstance(result, dict): # Success case where only dict is returned
-        return jsonify(result), 200
+    gemini_history_list = []
+    for entry in log_entries:
+        role = 'user' if entry['sender'] == 'user' else 'model'
+        gemini_history_list.append({'role': role, 'parts': [{'text': entry['text']}]})
+
+    # --- Model Initialization and Configuration ---
+    # API key configuration is handled by the geminiai wrapper function.
+    # Safety settings are also handled by the geminiai wrapper function's model init if no session is passed.
+    # However, if we start the chat here, we need to define them here for THIS model instance.
+    
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+    ]
+    
+    db_setting = db.session.query(Setting).filter_by(key='DEFAULT_GEMINI_MODEL').first()
+    model_to_use = ""
+    if db_setting and db_setting.value:
+        model_to_use = db_setting.value
     else:
-        # Fallback for unexpected result type from geminiai
-        current_app.logger.error(f"Unexpected result type from geminiai: {type(result)}")
-        return jsonify(error="An unexpected error occurred processing the chat message."), 500
+        model_to_use = current_app.config.get('DEFAULT_GEMINI_MODEL')
+        if not model_to_use: # Ultimate fallback
+            current_app.logger.error("DEFAULT_GEMINI_MODEL not found in DB or config, using hardcoded fallback.")
+            model_to_use = "gemini-1.5-flash" 
+    # --- End Model Initialization ---
+    
+    chat_session = None
+    try:
+        model = genai.GenerativeModel(
+            model_name=model_to_use, 
+            safety_settings=safety_settings, 
+            system_instruction=GEMINI_DM_SYSTEM_RULES
+        )
+        # Start chat with the constructed history from adventure_log
+        chat_session = model.start_chat(history=gemini_history_list)
+        current_app.logger.info(f"Chat session started for char {character_id} with {len(gemini_history_list)} history entries.")
+
+    except Exception as e:
+        current_app.logger.error(f"Failed to initialize Gemini model or chat session in send_chat_message for char {character_id}: {str(e)}")
+        return jsonify(error=_("The Dungeon Master is currently re-reading the ancient texts (model/session init failed).")), 500
+
+    # Call the refactored geminiai function
+    ai_response_text, _, error_from_geminiai = geminiai(
+        prompt_text_to_send=user_message,
+        existing_chat_session=chat_session # Pass the session that includes history and system instruction
+    )
+
+    if error_from_geminiai:
+        current_app.logger.error(f"Error from geminiai function for char {character_id}: {error_from_geminiai}")
+        # error_from_geminiai is already a user-facing translated string
+        return jsonify(reply=error_from_geminiai), 200 # Return 200 so client displays it as a DM message
+
+    if ai_response_text:
+        log_entries.append({"sender": "user", "text": user_message})
+        log_entries.append({"sender": "dm", "text": ai_response_text})
+        character.adventure_log = json.dumps(log_entries)
+        try:
+            db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to commit chat message to DB for char {character_id}: {str(e)}")
+            db.session.rollback()
+            return jsonify(error=_("An error occurred saving your conversation to the chronicles.")), 500
+        return jsonify(reply=ai_response_text), 200
+    else:
+        # This case implies geminiai returned (None, session, None) which means no error but no text.
+        current_app.logger.warning(f"Received no text and no error from geminiai for char {character_id}. User message: '{user_message}'")
+        # Return a generic "DM is pondering" message rather than an error, as it might not be a hard error.
+        return jsonify(reply=_("The Dungeon Master ponders your words but remains silent for now...")), 200
