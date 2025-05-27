@@ -426,6 +426,16 @@ footer {
 }
 
 /* Adventure Page Specific Styles */
+#adventure-container h1 {
+    /* Overrides for the main adventure title to make it smaller */
+    font-size: 2.2em; /* Reduced from global h1 3.0em */
+    margin-top: 0.3em; /* Reduced from global h1 0.5em */
+    margin-bottom: 0.3em; /* Reduced from global h1 0.5em */
+    letter-spacing: 0.03em; /* Reduced from global h1 0.05em */
+    padding-bottom: 0; /* Removed padding from global h1 */
+    /* Inherits font-family, color, weight, text-transform, text-align from global h1 */
+}
+
 
 /* Character Sheet Overlay - D&D PHB Style */
 #character-sheet-overlay {
@@ -651,10 +661,10 @@ footer {
 #chat-messages {
     flex-grow: 1; /* Allows chat messages to take up available vertical space */
     overflow-y: auto; /* Changed from scroll to auto for better behavior */
-    border: 1px solid #A0522D; /* Sienna border, like form inputs */
+    border: 1px solid #A0522D; /* Sienna border, like form inputs - Kept */
     padding: 10px;
     margin-bottom: 10px;
-    background-color: #fffdf5; /* Slightly off-white, like character cards */
+    background-color: #fdf5e6; /* Changed from #fffdf5 to match character sheet overlay parchment */
     border-radius: 3px;
 }
 
@@ -719,23 +729,25 @@ footer {
 
 /* Chat Messages Styling (remains the same) */
 .message {
-    padding: 5px 8px;
-    margin-bottom: 5px;
+    padding: 3px 6px; /* Reduced from 5px 8px */
+    margin-bottom: 3px; /* Reduced from 5px */
     border-radius: 4px;
-    line-height: 1.4;
-    font-size: 0.95em;
+    line-height: 1.35; /* Reduced from 1.4 */
+    font-size: 0.9em; /* Reduced from 0.95em */
 }
 
 .message-user {
-    background-color: #e1f5fe; /* Light blue */
+    background-color: #fff9e6; /* Was light blue, now very light parchment (container bg) */
     text-align: right;
     margin-left: 20%; /* Push user messages to the right */
-    border: 1px solid #b3e5fc;
+    border: 1px solid #d8c8a8; /* Was light blue border, now soft desaturated tan */
+    color: #3B2F2F; /* Explicitly set text color */
 }
 
 .message-dm {
-    background-color: #fce4ec; /* Light pink/parchment-like */
+    background-color: #f5efdc; /* Was light pink, now slightly darker/yellowish parchment */
     text-align: left;
     margin-right: 20%; /* Push DM messages to the left */
-    border: 1px solid #f8bbd0;
+    border: 1px solid #c8bdaE; /* Was light pink border, now medium desaturated brown/tan */
+    color: #3B2F2F; /* Explicitly set text color */
 }
