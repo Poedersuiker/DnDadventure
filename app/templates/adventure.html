@@ -133,67 +133,91 @@ document.addEventListener('DOMContentLoaded', function() {
     const sendButton = document.getElementById('send-button');
     const chatMessagesDiv = document.getElementById('chat-messages');
     const rollButtons = document.querySelectorAll('.roll-button');
-    const characterId = {{ character.id }}; // Get character ID from template
+    const characterId = {{ character.id }};
     const initialLogEntries = {{ log_entries|tojson }};
 
-    function appendMessage(text, sender) {
+    let ellipsisInterval = null; // Declare globally in this scope for clearInterval
+
+    function appendMessage(text, sender, messageId = null) {
         const messageDiv = document.createElement('div');
+        if (messageId) messageDiv.id = messageId;
         messageDiv.classList.add('message');
         const formattedText = text.replace(/\n/g, '<br>');
         if (sender === 'user') {
             messageDiv.classList.add('message-user');
             messageDiv.innerHTML = 'You: ' + formattedText;
-        } else {
-            messageDiv.classList.add('message-dm');
-            messageDiv.innerHTML = 'DM: ' + formattedText;
+        } else { // 'dm' or 'system' for thinking indicator
+            messageDiv.classList.add('message-dm'); // Style thinking indicator as DM message
+            messageDiv.innerHTML = (sender === 'dm' ? 'DM: ' : '') + formattedText;
         }
         chatMessagesDiv.appendChild(messageDiv);
-        chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight; // Scroll to bottom
+        chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
+        return messageDiv; // Return the created element
     }
 
-    // Revised sendMessage function
     async function sendMessage(messageContent, isSystemMessageNoEcho = false) {
-        let textForBackend = messageContent; // For system messages (like dice rolls) or programmatic user messages to be echoed.
+        let textForBackend = messageContent;
+        let userMessageAppended = false;
 
         if (!isSystemMessageNoEcho) {
-            // This branch handles messages that should be echoed in the chat as "You: ..."
             if (messageContent === undefined || messageContent === null) { 
-                // Message is from the chat input box by the user
                 const textFromInput = chatInput.value.trim();
-                if (!textFromInput) return; // Don't send empty messages from input
+                if (!textFromInput) return; 
                 textForBackend = textFromInput;
-                appendMessage(textForBackend, 'user'); // Append typed message
+                appendMessage(textForBackend, 'user');
+                userMessageAppended = true;
                 chatInput.value = '';
             } else {
-                // This is a programmatic message that should still be shown as from user
-                // (e.g. if we had a button "Say Hello", it would call sendMessage("Hello", false))
                 appendMessage(textForBackend, 'user');
+                userMessageAppended = true;
             }
         }
-        // If isSystemMessageNoEcho is true, messageContent is used directly as textForBackend,
-        // and no appendMessage happens here for the user's turn (it's pre-appended for dice rolls).
-
-        // Special handling for the very first message to start the adventure
-        if (messageContent === null && isSystemMessageNoEcho === false) { 
+        
+        if (messageContent === null && initialLogEntries.length === 0 && !userMessageAppended) { 
             textForBackend = "__START_ADVENTURE__";
         }
         
-        if (textForBackend === undefined) { 
-            // This case should ideally not be reached if logic is sound.
-            // It implies messageContent was undefined AND isSystemMessageNoEcho was true.
-            console.error("sendMessage called with undefined message and no echo flag.");
+        if (textForBackend === undefined || textForBackend === null) { 
+            // This case should not be reached if called from event listeners or initial load.
+            // It implies messageContent was null/undefined and isSystemMessageNoEcho was true,
+            // or initialLogEntries was not empty but messageContent was null.
+            console.error("sendMessage: textForBackend is undefined or null. Aborting.");
             return; 
         }
-        // Note: textForBackend can be null if initialLogEntries is empty, then it's set to __START_ADVENTURE__
+
+        let thinkingIndicatorElement = null;
+        // Show thinking indicator only for user-initiated actions that send to backend
+        // (typed messages or dice rolls which set isSystemMessageNoEcho=true and have content)
+        // and not for the automatic __START_ADVENTURE__ on empty log load.
+        const shouldShowThinkingIndicator = (textForBackend !== "__START_ADVENTURE__" || (messageContent !== null && textForBackend === "__START_ADVENTURE__")) && textForBackend;
+
+
+        if (shouldShowThinkingIndicator) {
+            thinkingIndicatorElement = appendMessage('DM is thinking.', 'system', 'thinking-indicator');
+            chatInput.disabled = true;
+            sendButton.disabled = true;
+
+            let dotCount = 1;
+            ellipsisInterval = setInterval(() => {
+                thinkingIndicatorElement.textContent = 'DM is thinking' + '.'.repeat(dotCount);
+                dotCount = (dotCount % 3) + 1;
+            }, 500);
+        }
 
         try {
             const response = await fetch(`/send_chat_message/${characterId}`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: textForBackend }) 
             });
+
+            if (ellipsisInterval) clearInterval(ellipsisInterval);
+            if (thinkingIndicatorElement) thinkingIndicatorElement.remove();
+            
+            chatInput.disabled = false;
+            sendButton.disabled = false;
+            if (shouldShowThinkingIndicator) chatInput.focus();
+
 
             if (!response.ok) {
                 const errorData = await response.json();
@@ -206,24 +230,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 appendMessage(data.reply, 'dm');
             }
         } catch (error) {
+            if (ellipsisInterval) clearInterval(ellipsisInterval); // Ensure cleanup on network error too
+            if (thinkingIndicatorElement) thinkingIndicatorElement.remove();
+            chatInput.disabled = false;
+            sendButton.disabled = false;
+            if (shouldShowThinkingIndicator) chatInput.focus();
+
             console.error('Error sending message:', error);
             appendMessage('Error connecting to the Dungeon Master. Please check your connection.', 'dm');
         }
     }
 
-    sendButton.addEventListener('click', () => sendMessage()); // isSystemMessageNoEcho defaults to false
+    sendButton.addEventListener('click', () => sendMessage()); 
     chatInput.addEventListener('keypress', function(event) {
         if (event.key === 'Enter') {
-            sendMessage(); // isSystemMessageNoEcho defaults to false
+            sendMessage(); 
         }
     });
 
     characterSheetButton.addEventListener('click', function() {
-        if (characterSheetOverlay.style.display === 'none') {
-            characterSheetOverlay.style.display = 'block';
-        } else {
-            characterSheetOverlay.style.display = 'none';
-        }
+        characterSheetOverlay.style.display = (characterSheetOverlay.style.display === 'none' ? 'block' : 'none');
     });
 
     closeSheetButton.addEventListener('click', function() {
@@ -233,8 +259,6 @@ document.addEventListener('DOMContentLoaded', function() {
     rollButtons.forEach(button => {
         button.addEventListener('click', function(event) {
             event.preventDefault();
-
-            const rollType = this.dataset.rollType;
             const rollName = this.dataset.rollName;
             const diceFormula = this.dataset.diceFormula || '1d20';
             const modifier = parseInt(this.dataset.modifier || '0');
@@ -243,10 +267,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', },
                 body: JSON.stringify({
-                    roll_type: rollType,
-                    roll_name: rollName,
-                    dice_formula: diceFormula,
-                    modifier: modifier
+                    roll_name: rollName, dice_formula: diceFormula, modifier: modifier
                 })
             })
             .then(response => response.json())
@@ -255,27 +276,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     appendMessage(`Error rolling dice: ${data.error}`, 'dm');
                     return;
                 }
-                
-                let rollDetailsForUser = `Rolling ${data.roll_name} (${data.dice_formula}`;
-                if (data.modifier > 0) {
-                    rollDetailsForUser += `+${data.modifier}`;
-                } else if (data.modifier < 0) {
-                    rollDetailsForUser += `${data.modifier}`; // Negative sign is inherent
-                }
-                rollDetailsForUser += `): Rolled [${data.rolls.join(', ')}]`;
-
+                let rollDetails = `Rolling ${data.roll_name} (${data.dice_formula}`;
+                if (data.modifier > 0) rollDetails += `+${data.modifier}`;
+                else if (data.modifier < 0) rollDetails += `${data.modifier}`;
+                rollDetails += `): Rolled [${data.rolls.join(', ')}]`;
                 if (data.modifier !== 0 || data.rolls.length > 1) {
-                    if (data.modifier > 0) {
-                        rollDetailsForUser += ` + ${data.modifier}`;
-                    } else if (data.modifier < 0) {
-                        rollDetailsForUser += ` - ${Math.abs(data.modifier)}`;
-                    }
+                    if (data.modifier > 0) rollDetails += ` + ${data.modifier}`;
+                    else if (data.modifier < 0) rollDetails += ` - ${Math.abs(data.modifier)}`;
                 }
-                rollDetailsForUser += ` = **${data.total}**`;
+                rollDetails += ` = **${data.total}**`;
                 
-                appendMessage(rollDetailsForUser, 'user'); // Display the roll to the user
+                appendMessage(rollDetails, 'user'); 
                 characterSheetOverlay.style.display = 'none';
-                sendMessage(rollDetailsForUser, true); // Send to AI, isSystemMessageNoEcho = true
+                sendMessage(rollDetails, true); // Send to AI, isSystemMessageNoEcho = true
             })
             .catch(error => {
                 console.error('Dice roll error:', error);
@@ -284,44 +297,36 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Load historical messages
     if (initialLogEntries && initialLogEntries.length > 0) {
-        initialLogEntries.forEach(entry => {
-            appendMessage(entry.text, entry.sender);
-        });
+        initialLogEntries.forEach(entry => appendMessage(entry.text, entry.sender));
     } else {
-        // Send initial message to trigger DM's intro only if no history
-        sendMessage(null); // isSystemMessageNoEcho defaults to false
+        // Call sendMessage with null to trigger the __START_ADVENTURE__ if log is empty.
+        // The "thinking" indicator logic in sendMessage will decide if it should be shown.
+        // Based on current logic, it won't show for this initial automatic call.
+        sendMessage(null, false); 
     }
 
     // Draggable Character Sheet Logic
     if (sheetDragHandle) {
         let isDragging = false;
         let offsetX, offsetY;
-
         sheetDragHandle.addEventListener('mousedown', function(e) {
             isDragging = true;
-            
             const rect = characterSheetOverlay.getBoundingClientRect();
-            
             characterSheetOverlay.style.left = rect.left + 'px';
             characterSheetOverlay.style.top = rect.top + 'px';
             characterSheetOverlay.style.transform = 'none'; 
-
             offsetX = e.clientX - rect.left;
             offsetY = e.clientY - rect.top;
-
             sheetDragHandle.style.cursor = 'grabbing'; 
             e.preventDefault(); 
         });
-
         document.addEventListener('mousemove', function(e) {
             if (isDragging) {
                 characterSheetOverlay.style.left = (e.clientX - offsetX) + 'px';
                 characterSheetOverlay.style.top = (e.clientY - offsetY) + 'px';
             }
         });
-
         document.addEventListener('mouseup', function() {
             if (isDragging) {
                 isDragging = false;
