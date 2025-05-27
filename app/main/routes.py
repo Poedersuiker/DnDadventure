@@ -2,13 +2,14 @@ import json
 import os
 # import google.generativeai as genai # Removed
 import google.generativeai as genai # Re-add import
+import re # Added for gold parsing
 from flask import render_template, redirect, url_for, flash, request, session, get_flashed_messages, jsonify, current_app
 from flask_babel import _
 from flask_login import login_required, current_user
 from app import db
-from app.models import User, Character, Race, Class, Spell, Setting # Re-add Setting import
-from app.utils import roll_dice
-from app.gemini import geminiai, GEMINI_DM_SYSTEM_RULES 
+from app.models import User, Character, Race, Class, Spell, Setting, Item, Coinage
+from app.utils import roll_dice, _parse_gold # Imported _parse_gold
+from app.gemini import geminiai, GEMINI_DM_SYSTEM_RULES
 from app.main import bp
 
 # Placeholder for Gemini API Key Configuration
@@ -95,8 +96,13 @@ def clear_character_progress(character_id):
     
     # current_equipment and current_proficiencies are assumed to be the L1 state as per creation_review logic.
 
+    # Clear items and coinage
+    Item.query.filter_by(character_id=character.id).delete()
+    Coinage.query.filter_by(character_id=character.id).delete()
+    # Note: Re-adding L1 equipment/coinage is deferred for simplicity in this step.
+
     db.session.commit()
-    flash('Adventure progress cleared. Your character has been reset to level 1.', 'success')
+    flash('Adventure progress cleared. Your character has been reset to level 1. Inventory and coinage have been cleared.', 'success')
     return redirect(url_for('main.index'))
 
 # Character Creation Step 1: Race Selection
@@ -790,6 +796,7 @@ def creation_review():
     all_language_proficiencies = set(char_data.get('background_languages', []))
     # (Future: add racial languages if they were stored separately and aren't just text descriptions)
 
+    # _parse_gold is now imported from app.utils
 
     if request.method == 'POST':
         character_name = request.form.get('character_name')
@@ -847,7 +854,7 @@ def creation_review():
                 char_data.get('background_tool_proficiencies', []) +
                 char_data.get('background_languages', [])
             ),
-            background_equipment=json.dumps(char_data.get('background_equipment', '')), # Stored as string from background
+            # background_equipment field is removed from Character model
             current_proficiencies=json.dumps({
                 'skills': list(current_skills_set),
                 'tools': list(current_tools_set),
@@ -855,10 +862,81 @@ def creation_review():
                 'armor': char_data.get('armor_proficiencies', []),
                 'weapons': char_data.get('weapon_proficiencies', []),
                 'saving_throws': char_data.get('saving_throw_proficiencies', [])
-            }),
-            current_equipment=json.dumps(char_data.get('final_equipment', []))
+            })
+            # current_equipment field is removed from Character model
         )
 
+        db.session.add(new_char)
+        db.session.flush() # Flush to get new_char.id for foreign key relationships
+
+        # Process Equipment and Coinage
+        # final_equipment from session is a list of strings like "Shield (x1)", "Dagger"
+        # background_equipment from session is a single string like "Acolyte's pack (holy symbol, ... 15 gp)"
+        
+        final_equipment_from_session = char_data.get('final_equipment', [])
+        background_equipment_str = char_data.get('background_equipment', '') # This is a string
+
+        # Parse gold from background equipment string first
+        gold_amount = _parse_gold(background_equipment_str)
+        if gold_amount > 0:
+            coin = Coinage(name="Gold Pieces", quantity=gold_amount, character_id=new_char.id)
+            db.session.add(coin)
+        
+        # Process items from final_equipment (class choices / fixed items from class)
+        # and items from background_equipment_str (excluding gold)
+        
+        # Consolidate all item strings to parse
+        all_item_strings_to_parse = []
+        if background_equipment_str:
+            # Add parts of the background equipment string, attempting to split by common delimiters
+            # and excluding already processed gold parts.
+            potential_bg_items = re.split(r',\s*|\s+and\s+', background_equipment_str)
+            for p_item in potential_bg_items:
+                p_item_clean = p_item.strip()
+                if "gp" in p_item_clean.lower() or "gold pieces" in p_item_clean.lower() or "gold" in p_item_clean.lower():
+                    continue # Gold already handled
+                if p_item_clean and not p_item_clean.lower().startswith("a pouch containing"): # Avoid adding the pouch itself if it only contained gold
+                    all_item_strings_to_parse.append(p_item_clean)
+        
+        # Add items from class equipment choices (which might include "Background: full string" if not careful in previous step)
+        for item_string_from_session in final_equipment_from_session:
+            if item_string_from_session.lower().startswith("background:"):
+                # If the full background string was added to final_equipment, parse it similarly
+                actual_bg_items_str = item_string_from_session.replace("Background: ", "", 1)
+                potential_bg_items_from_final = re.split(r',\s*|\s+and\s+', actual_bg_items_str)
+                for p_item in potential_bg_items_from_final:
+                    p_item_clean = p_item.strip()
+                    if "gp" in p_item_clean.lower() or "gold pieces" in p_item_clean.lower() or "gold" in p_item_clean.lower():
+                        continue
+                    if p_item_clean and not p_item_clean.lower().startswith("a pouch containing"):
+                         all_item_strings_to_parse.append(p_item_clean)
+            else:
+                all_item_strings_to_parse.append(item_string_from_session)
+
+        # Process all collected item strings
+        for item_string in all_item_strings_to_parse:
+            item_name = item_string
+            quantity = 1
+            description = "Starting equipment" # Default description
+
+            # Basic parsing for quantity like "Item Name (xN)" or "N Item Name"
+            qty_match_suffix = re.match(r'^(.*?)\s*\(x(\d+)\)$', item_string) # "Shield (x1)"
+            qty_match_prefix = re.match(r'(\d+)\s+(.*)', item_string)    # "5 sticks of incense"
+
+            if qty_match_suffix:
+                item_name = qty_match_suffix.group(1).strip()
+                quantity = int(qty_match_suffix.group(2))
+            elif qty_match_prefix:
+                quantity = int(qty_match_prefix.group(1))
+                item_name = qty_match_prefix.group(2).strip()
+            
+            # Avoid adding empty item names
+            if not item_name:
+                continue
+
+            item = Item(name=item_name, quantity=quantity, character_id=new_char.id, description=description)
+            db.session.add(item)
+        
         # Assign spells
         chosen_spell_ids = char_data.get('chosen_cantrip_ids', []) + char_data.get('chosen_level_1_spell_ids', [])
         if chosen_spell_ids:
@@ -960,7 +1038,9 @@ def adventure(character_id):
             try:
                 temp_proficiencies_data = json.loads(character.current_proficiencies or '{}')
                 if not isinstance(temp_proficiencies_data, dict): temp_proficiencies_data = {}
-            except json.JSONDecodeError: pass
+            except json.JSONDecodeError: 
+                current_app.logger.error(f"Malformed current_proficiencies for char {character.id} in adventure init prompt.")
+                pass # temp_proficiencies_data remains {}
             
             temp_skills_str = ", ".join(temp_proficiencies_data.get('skills', [])) or "None"
             temp_saving_throws_str = ", ".join(temp_proficiencies_data.get('saving_throws', [])) or "None"
@@ -969,13 +1049,14 @@ def adventure(character_id):
             temp_tool_prof_str = ", ".join(temp_proficiencies_data.get('tools', [])) or "None"
             temp_languages_str = ", ".join(temp_proficiencies_data.get('languages', [])) or "None"
 
-            temp_equipment_list = []
-            try:
-                temp_equipment_list = json.loads(character.current_equipment or '[]')
-                if not isinstance(temp_equipment_list, list): temp_equipment_list = []
-            except json.JSONDecodeError: pass
-            temp_equipment_str = "\n".join([f"- {item}" for item in temp_equipment_list]) if temp_equipment_list else "None"
-
+            # Build equipment string from Item and Coinage models for the prompt
+            # character.items and character.coinage should be loaded due to relationship access
+            items_list_for_prompt = [f"{item.name} (x{item.quantity})" + (f" - {item.description}" if item.description else "") for item in character.items]
+            coinage_list_for_prompt = [f"{coin.quantity} {coin.name}" for coin in character.coinage]
+            
+            full_equipment_list_for_prompt = items_list_for_prompt + coinage_list_for_prompt
+            temp_equipment_str = "\n".join([f"- {item_str}" for item_str in full_equipment_list_for_prompt]) if full_equipment_list_for_prompt else "None"
+            
             xp_thresholds = {1: 300, 2: 900, 3: 2700, 4: 6500, 5: 14000, 6: 23000, 7: 34000, 8: 48000, 9: 64000, 10: 85000, 11: 100000, 12: 120000, 13: 140000, 14: 165000, 15: 195000, 16: 225000, 17: 265000, 18: 305000, 19: 355000}
             xp_for_next = xp_thresholds.get(character.level, "N/A for current level")
 
@@ -1063,16 +1144,10 @@ def adventure(character_id):
     proficient_weapons = proficiencies_data.get('weapons', [])
     proficient_saving_throws = proficiencies_data.get('saving_throws', []) # List of ability abbreviations e.g. ["STR", "DEX"]
 
-    # Parse Equipment
-    equipment_list = []
-    try:
-        equipment_list = json.loads(character.current_equipment or '[]')
-        if not isinstance(equipment_list, list): # Ensure it's a list
-            equipment_list = []
-            current_app.logger.warning(f"current_equipment for char {character_id} was not a list, reset to empty.")
-    except json.JSONDecodeError:
-        current_app.logger.error(f"Failed to parse current_equipment JSON for character {character_id}: {character.current_equipment}")
-        equipment_list = [] # Default to empty list if parsing fails
+    # Get Items and Coinage for template rendering
+    # These are now direct relationships from the Character model
+    character_items = character.items # List of Item objects
+    character_coinage = character.coinage # List of Coinage objects
 
     # Filter Spells
     cantrips = [spell for spell in character.known_spells if spell.level == 0]
@@ -1150,7 +1225,9 @@ def adventure(character_id):
                            proficient_languages=proficient_languages,
                            proficient_armor=proficient_armor,
                            proficient_weapons=proficient_weapons,
-                           equipment_list=equipment_list,
+                           # equipment_list is replaced by character_items and character_coinage
+                           character_items=character_items,
+                           character_coinage=character_coinage,
                            cantrips=cantrips,
                            level_1_spells=level_1_spells,
                            # New pre-calculated data for template:

@@ -2,9 +2,9 @@ import unittest
 import json
 from unittest.mock import patch, MagicMock, ANY 
 import google.generativeai as genai # Added for spec=genai.ChatSession
-from flask import current_app, url_for
+from flask import current_app, url_for, session # Added session for test_creation_review
 from app import app, db
-from app.models import User, Character, Race, Class, Setting, Spell 
+from app.models import User, Character, Race, Class, Setting, Spell, Item, Coinage # Added Item, Coinage
 from app.gemini import GEMINI_DM_SYSTEM_RULES # Import the constant for the new test
 
 class TestMainRoutes(unittest.TestCase):
@@ -325,6 +325,132 @@ class TestMainRoutes(unittest.TestCase):
         updated_character = Character.query.get(self.character.id)
         log_entries = json.loads(updated_character.adventure_log)
         self.assertEqual(log_entries, [{"sender": "user", "text": user_message_text}, {"sender": "dm", "text": "Refactored AI says hello!"}])
+
+    def test_creation_review_with_inventory(self):
+        # Simulate session data that would be built up during character creation
+        # This needs to align with what creation_review expects in char_data
+        
+        # Create a new user for this test to avoid conflicts
+        test_creation_user = User(id=3, email="creation_user@example.com", google_id="creation_user_google_id")
+        db.session.add(test_creation_user)
+        db.session.commit()
+
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = test_creation_user.id # Log in as the new user
+            sess['_fresh'] = True
+            sess['new_character_data'] = {
+                'race_id': self.test_race.id,
+                'class_id': self.test_class.id,
+                'ability_scores': {'STR': 15, 'DEX': 14, 'CON': 13, 'INT': 12, 'WIS': 10, 'CHA': 8},
+                'max_hp': 10,
+                'armor_class_base': 12,
+                'speed': 30,
+                'background_name': 'Acolyte',
+                'background_skill_proficiencies': ['Insight', 'Religion'],
+                'background_tool_proficiencies': [],
+                'background_languages': ['Celestial', 'Common'],
+                'background_equipment': "A holy symbol, a prayer book, 5 sticks of incense, vestments, common clothes, and a pouch containing 15 gp.",
+                'class_skill_proficiencies': ['Arcana', 'History'],
+                'armor_proficiencies': ['Light Armor'],
+                'weapon_proficiencies': ['Simple Weapons'],
+                'tool_proficiencies_class_fixed': [],
+                'saving_throw_proficiencies': ['INT', 'WIS'],
+                'final_equipment': [ # From class choices
+                    "Dagger (x1)", 
+                    "Component pouch"
+                ], 
+                'chosen_cantrip_ids': [self.cantrip.id],
+                'chosen_level_1_spell_ids': []
+            }
+
+        response = self.client.post(url_for('main.creation_review'), data={
+            'character_name': 'Adventurer With Stuff',
+            'alignment': 'Lawful Good',
+            'character_description': 'Ready to go!'
+        }, follow_redirects=True)
+        
+        self.assertEqual(response.status_code, 200) # Should redirect to index, then 200
+        self.assertIn(b'Character created successfully!', response.data)
+
+        # Verify character, items, and coinage in DB
+        created_char = Character.query.filter_by(name='Adventurer With Stuff').first()
+        self.assertIsNotNone(created_char)
+        self.assertEqual(created_char.user_id, test_creation_user.id)
+
+        # Check coinage
+        gold = Coinage.query.filter_by(character_id=created_char.id, name="Gold Pieces").first()
+        self.assertIsNotNone(gold)
+        self.assertEqual(gold.quantity, 15)
+
+        # Check items (more complex due to parsing)
+        items = Item.query.filter_by(character_id=created_char.id).all()
+        item_names = {item.name: item.quantity for item in items}
+
+        # Items from 'final_equipment' (class choices)
+        self.assertIn("Dagger", item_names)
+        self.assertEqual(item_names["Dagger"], 1)
+        self.assertIn("Component pouch", item_names)
+        self.assertEqual(item_names["Component pouch"], 1)
+        
+        # Items from 'background_equipment' (parsed string)
+        # Note: The parsing logic in creation_review is simple (splits by comma and 'and')
+        # and might create multiple entries if not careful.
+        # "A holy symbol, a prayer book, 5 sticks of incense, vestments, common clothes, and a pouch containing 15 gp."
+        self.assertIn("A holy symbol", item_names)
+        self.assertIn("a prayer book", item_names) # Check for case sensitivity if issues arise
+        self.assertIn("sticks of incense", item_names) 
+        self.assertEqual(item_names["sticks of incense"], 5)
+        self.assertIn("vestments", item_names)
+        self.assertIn("common clothes", item_names)
+        # "a pouch containing 15 gp" should NOT become an item if parsing is correct (gold handled separately)
+        self.assertNotIn("a pouch containing 15 gp", item_names)
+
+
+    def test_clear_character_progress_clears_inventory(self):
+        # 1. Create a character with items and coinage
+        test_clear_user = User(id=4, email="clear_user@example.com", google_id="clear_user_google_id")
+        db.session.add(test_clear_user)
+        db.session.commit()
+
+        char_to_clear = Character(
+            id=3, name="CharToClear", user_id=test_clear_user.id,
+            race_id=self.test_race.id, class_id=self.test_class.id, level=5,
+            strength=10, dexterity=10, constitution=10,
+            intelligence=10, wisdom=10, charisma=10,
+            hp=30, max_hp=30, armor_class=10, speed=30,
+            adventure_log=json.dumps([{"sender": "dm", "text": "An old log."}]),
+            current_proficiencies='{}', xp=5000
+        )
+        db.session.add(char_to_clear)
+        db.session.commit() # Commit to get char_to_clear.id
+
+        # Add items and coinage
+        item1 = Item(name="Old Sword", quantity=1, character_id=char_to_clear.id)
+        item2 = Item(name="Dusty Shield", quantity=1, character_id=char_to_clear.id)
+        coin = Coinage(name="Copper Pieces", quantity=120, character_id=char_to_clear.id)
+        db.session.add_all([item1, item2, coin])
+        db.session.commit()
+
+        self.assertEqual(Item.query.filter_by(character_id=char_to_clear.id).count(), 2)
+        self.assertEqual(Coinage.query.filter_by(character_id=char_to_clear.id).count(), 1)
+
+        # 2. Log in as the character's user
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = test_clear_user.id
+            sess['_fresh'] = True
+        
+        # 3. Call the clear_character_progress route
+        response = self.client.post(url_for('main.clear_character_progress', character_id=char_to_clear.id), follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Adventure progress cleared. Your character has been reset to level 1. Inventory and coinage have been cleared.', response.data)
+
+        # 4. Verify character is reset and inventory is cleared
+        cleared_char = Character.query.get(char_to_clear.id)
+        self.assertEqual(cleared_char.level, 1)
+        self.assertEqual(cleared_char.adventure_log, '[]')
+        
+        self.assertEqual(Item.query.filter_by(character_id=char_to_clear.id).count(), 0)
+        self.assertEqual(Coinage.query.filter_by(character_id=char_to_clear.id).count(), 0)
 
 
 if __name__ == '__main__':

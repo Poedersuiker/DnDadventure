@@ -1,4 +1,5 @@
 import random
+import re # For _parse_gold
 from flask import current_app
 import google.generativeai as genai
 import logging # For logging errors/warnings
@@ -51,3 +52,17 @@ def list_gemini_models():
     except Exception as e:
         logging.error(f"Error listing Gemini models: {e}")
         return []
+
+def _parse_gold(text_content: str) -> int:
+    """
+    Parses a string to find and return an amount of gold (gp).
+    Returns 0 if no gold amount is found.
+    """
+    if not text_content or not isinstance(text_content, str):
+        return 0
+    # Regex to find numbers followed by "gp", "gold pieces", "gold"
+    # It handles optional spaces and common abbreviations.
+    match = re.search(r'(\d+)\s*(gp|gold\s*pieces?|g)', text_content, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    return 0

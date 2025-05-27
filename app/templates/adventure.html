@@ -90,9 +90,39 @@
     <div class="proficiencies-list"><ul>{% for item in proficient_languages %}<li>{{ item }}</li>{% endfor %}</ul></div>
     {% endif %}
 
-    {% if equipment_list %}
-    <h4 class="sheet-section-title">Equipment</h4>
-    <div class="equipment-list"><ul>{% for item in equipment_list %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    {# New Equipment and Coinage Display #}
+    {% if character_items or character_coinage %}
+        <h4 class="sheet-section-title">Inventory</h4>
+        
+        {% if character_items %}
+            <div class="equipment-list">
+                <h5>Items:</h5>
+                <ul>
+                    {% for item in character_items %}
+                        <li>
+                            {{ item.name }} (x{{ item.quantity }})
+                            {% if item.description and item.description != "Starting equipment" and item.description != "From background" %}
+                                <small><em>- {{ item.description }}</em></small>
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+
+        {% if character_coinage %}
+            <div class="coinage-list">
+                <h5>Coinage:</h5>
+                <ul>
+                    {% for coin in character_coinage %}
+                        <li>{{ coin.quantity }} {{ coin.name }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+    {% else %}
+        <h4 class="sheet-section-title">Inventory</h4>
+        <p>No items or coinage.</p>
     {% endif %}
     
     {% if cantrips %}

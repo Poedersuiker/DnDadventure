@@ -1,7 +1,8 @@
 import unittest
+import unittest
 from unittest.mock import patch, MagicMock
 from app import app # Your Flask app instance
-from app.utils import list_gemini_models
+from app.utils import list_gemini_models, _parse_gold # Imported _parse_gold
 # If google.generativeai is not easily importable for error types,
 # you can mock a generic Exception for the API error test.
 
@@ -74,6 +75,31 @@ class TestUtils(unittest.TestCase):
         mock_genai_module.configure.assert_called_once_with(api_key='fake_valid_key_for_error_test')
         self.assertEqual(result, [])
         mock_logging.error.assert_called_with(f"Error listing Gemini models: {simulated_error_message}")
+
+class TestParseGold(unittest.TestCase):
+    def test_parse_gold_various_formats(self):
+        self.assertEqual(_parse_gold("pouch containing 15 gp."), 15)
+        self.assertEqual(_parse_gold("10 Gold Pieces and some lint"), 10)
+        self.assertEqual(_parse_gold("5g in pocket"), 5)
+        self.assertEqual(_parse_gold("Received 100 gold"), 100) # "gold" alone
+        self.assertEqual(_parse_gold("No gold here!"), 0)
+        self.assertEqual(_parse_gold("A note mentioning 50gp but it's fake."), 50)
+        self.assertEqual(_parse_gold("25 gp"), 25)
+        self.assertEqual(_parse_gold("0gp"), 0)
+
+    def test_parse_gold_no_gold(self):
+        self.assertEqual(_parse_gold("Some silver pieces (10 sp)"), 0)
+        self.assertEqual(_parse_gold("A pouch with nothing in it."), 0)
+        self.assertEqual(_parse_gold("Just some copper."), 0)
+
+    def test_parse_gold_edge_cases(self):
+        self.assertEqual(_parse_gold(""), 0)
+        self.assertEqual(_parse_gold(None), 0)
+        self.assertEqual(_parse_gold("100"), 0) # No "gp" or "gold"
+        self.assertEqual(_parse_gold("gp 100"), 0) # Number must come first
+        self.assertEqual(_parse_gold("My horse cost 200 gold pieces."), 200)
+        self.assertEqual(_parse_gold("A treasure map leading to 1000 Gold."), 1000)
+
 
 if __name__ == '__main__':
     unittest.main()

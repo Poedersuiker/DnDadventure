@@ -7,7 +7,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
 from app import app as main_app, db
-from app.models import User, Race, Class, Spell, Character, character_known_spells
+from app.models import User, Race, Class, Spell, Character, Item, Coinage, character_known_spells # Added Item, Coinage
 
 class BasicAppTests(unittest.TestCase):
     def setUp(self):
@@ -157,6 +157,51 @@ class TestModelCreation(BasicAppTests):
         # 7. Assert updated xp
         queried_char = Character.query.get(char.id)
         self.assertEqual(queried_char.xp, 100)
+
+    def test_create_item_and_relationship(self):
+        user = User(google_id="item_user_google_id", email="item_user@example.com")
+        race = Race(name="Item Test Race", speed=30, ability_score_increases='[]', languages='[]')
+        char_class = Class(name="Item Test Class", hit_die="d8", proficiency_saving_throws='[]', skill_proficiencies_option_count=0, skill_proficiencies_options='[]', starting_equipment='[]')
+        db.session.add_all([user, race, char_class])
+        db.session.commit()
+
+        char = Character(name="Character With Item", user_id=user.id, race_id=race.id, class_id=char_class.id, level=1, strength=10, dexterity=10, constitution=10, intelligence=10, wisdom=10, charisma=10, max_hp=10, hp=10, armor_class=10)
+        db.session.add(char)
+        db.session.commit()
+
+        item = Item(name="Test Sword", description="A shiny test sword.", quantity=1, character_id=char.id)
+        db.session.add(item)
+        db.session.commit()
+
+        self.assertIsNotNone(item.id)
+        queried_item = Item.query.get(item.id)
+        self.assertEqual(queried_item.name, "Test Sword")
+        self.assertEqual(queried_item.character_id, char.id)
+        self.assertIn(queried_item, char.items)
+        self.assertEqual(queried_item.character, char)
+
+    def test_create_coinage_and_relationship(self):
+        user = User(google_id="coin_user_google_id", email="coin_user@example.com")
+        race = Race(name="Coin Test Race", speed=30, ability_score_increases='[]', languages='[]')
+        char_class = Class(name="Coin Test Class", hit_die="d8", proficiency_saving_throws='[]', skill_proficiencies_option_count=0, skill_proficiencies_options='[]', starting_equipment='[]')
+        db.session.add_all([user, race, char_class])
+        db.session.commit()
+
+        char = Character(name="Character With Coins", user_id=user.id, race_id=race.id, class_id=char_class.id, level=1, strength=10, dexterity=10, constitution=10, intelligence=10, wisdom=10, charisma=10, max_hp=10, hp=10, armor_class=10)
+        db.session.add(char)
+        db.session.commit()
+
+        coin = Coinage(name="Gold Pieces", quantity=100, character_id=char.id)
+        db.session.add(coin)
+        db.session.commit()
+
+        self.assertIsNotNone(coin.id)
+        queried_coin = Coinage.query.get(coin.id)
+        self.assertEqual(queried_coin.name, "Gold Pieces")
+        self.assertEqual(queried_coin.quantity, 100)
+        self.assertEqual(queried_coin.character_id, char.id)
+        self.assertIn(queried_coin, char.coinage)
+        self.assertEqual(queried_coin.character, char)
 
 
 if __name__ == '__main__':

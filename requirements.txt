@@ -6,3 +6,4 @@ google-auth-oauthlib
 SQLAlchemy
 Flask-Babel
 google-generativeai
+Flask-Migrate
