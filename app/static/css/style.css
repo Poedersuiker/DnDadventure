@@ -18,25 +18,35 @@ html, body {
 
 body {
     font-family: 'Merriweather', serif;
-    font-size: 15px;
+    font-size: 14px; /* Reduced from 15px */
     /* margin: 0; Already set in html, body */
     margin: 0;
     padding: 0;
-    background-color: #f5e8c3;
+    background-color: #f5e8c3; /* Base parchment color - HSL: approx 40, 55%, 86% */
     color: #3B2F2F;
-    line-height: 1.5;
-    background-image: linear-gradient(rgba(0,0,0,0.02) 1px, transparent 1px),
-                      linear-gradient(90deg, rgba(0,0,0,0.02) 1px, transparent 1px);
-    background-size: 20px 20px;
+    line-height: 1.45; /* Reduced from 1.5 */
+    /* Removed grid background-image and background-size */
+    /* New background-image for parchment texture using CSS gradients */
+    background-image: 
+        /* Subtle, large radial splotches for color variation and texture */
+        /* Variation 1: Slightly lighter, less saturated */
+        radial-gradient(ellipse farthest-corner at 10% 15%, hsla(40, 30%, 90%, 0.3) 0%, hsla(40, 30%, 90%, 0) 70%),
+        /* Variation 2: Slightly darker, less saturated */
+        radial-gradient(ellipse farthest-corner at 85% 80%, hsla(38, 25%, 82%, 0.3) 0%, hsla(38, 25%, 82%, 0) 60%),
+        /* Variation 3: Another lighter spot, different position */
+        radial-gradient(ellipse farthest-corner at 50% 50%, hsla(42, 35%, 88%, 0.25) 0%, hsla(42, 35%, 88%, 0) 50%),
+        /* Variation 4: A very subtle, broader darker patch */
+        radial-gradient(ellipse farthest-corner at center, hsla(35, 20%, 78%, 0.1) 0%, hsla(35, 20%, 78%, 0) 70%);
+    /* Ensure background covers the whole area, no explicit background-size needed for this type of gradient */
     /* height: 100%; Already set in html, body */
 }
 
 .container {
     width: 80%;
     max-width: 960px;
-    margin: 20px auto;
+    margin: 15px auto; /* Reduced from 20px */
     overflow: hidden;
-    padding: 15px 20px;
+    padding: 12px 18px; /* Reduced from 15px 20px */
     background-color: #fff9e6;
     border: 2px solid #5D4037;
     box-shadow: 3px 3px 8px rgba(0,0,0,0.3);
@@ -46,70 +56,113 @@ body {
 /* Paragraphs and Lists */
 p, ul, ol {
     margin-top: 0;
-    margin-bottom: 0.8em;
+    margin-bottom: 0.6em; /* Reduced from 0.8em */
 }
 
 ul, ol {
     padding-left: 25px;
 }
 
+/* Blockquotes / Flavor Text */
+blockquote {
+    font-family: 'Merriweather', serif; /* Or inherit from body */
+    font-style: italic;
+    color: #7A3B2E; /* A darker, slightly desaturated red-brown */
+    margin: 1em 40px; /* Standard blockquote margins */
+    padding: 10px 15px;
+    background-color: #f9f2e8; /* Slightly different parchment shade */
+    border-left: 3px solid #A0522D; /* Sienna accent line */
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
+}
+
+blockquote p {
+    margin-bottom: 0.5em; /* Spacing for paragraphs within blockquote */
+}
+blockquote p:last-child {
+    margin-bottom: 0;
+}
+
+
 /* Headings */
 h1 {
-    font-family: 'MedievalSharp', serif;
-    font-size: 2.6em;
-    color: #8B0000;
-    margin-top: 0.3em;
-    margin-bottom: 0.4em;
-    font-weight: normal;
-    text-align: center;
+    font-family: 'Cinzel', serif; /* Changed from MedievalSharp for a more classic title feel */
+    font-size: 3.0em; /* Increased size */
+    color: #8B0000; /* Dark Red - Kept */
+    font-weight: 700; /* Cinzel bold */
+    text-align: center; /* Kept */
+    text-transform: uppercase; /* Added for title gravitas */
+    letter-spacing: 0.05em; /* Added for title spacing */
+    margin-top: 0.5em; /* Adjusted margin */
+    margin-bottom: 0.5em; /* Adjusted margin */
+    padding-bottom: 0.1em; /* Small padding for balance */
 }
 
 h2 {
-    font-family: 'Cinzel', serif;
-    font-size: 2.0em;
-    color: #8B0000;
-    margin-top: 0.8em;
-    margin-bottom: 0.4em;
-    font-weight: 700;
-    border-bottom: 1px solid #A0522D;
-    padding-bottom: 0.2em;
+    font-family: 'Cinzel', serif; /* Kept */
+    font-size: 2.2em; /* Slightly increased size */
+    color: #8B0000; /* Dark Red - Kept */
+    font-weight: 700; /* Kept */
+    margin-top: 1em; /* Adjusted margin */
+    margin-bottom: 0.4em; /* Kept */
+    border-bottom: 2px solid #5D4037; /* Thicker, dark brown border */
+    padding-bottom: 0.25em; /* Adjusted padding for thicker border */
+    text-transform: uppercase; /* Often seen in Homebrewery for H2 */
+    letter-spacing: 0.03em;
 }
 
 h3 {
-    font-family: 'Cinzel', serif;
-    font-size: 1.6em;
-    color: #8B0000;
-    margin-top: 0.7em;
-    margin-bottom: 0.4em;
-    font-weight: 700;
+    font-family: 'Cinzel', serif; /* Kept */
+    font-size: 1.7em; /* Slightly increased size */
+    color: #8B0000; /* Dark Red - Kept */
+    font-weight: 700; /* Kept */
+    margin-top: 0.8em; /* Adjusted margin */
+    margin-bottom: 0.3em; /* Adjusted margin */
+    border-bottom: 1px solid #A0522D; /* Solid sienna border */
+    padding-bottom: 0.15em; /* Kept */
 }
 
-h4, h5, h6 {
-    font-family: 'Cinzel', serif;
-    font-size: 1.3em; /* h4 */
-    color: #8B0000;
+h4, h5, h6 { /* General style for smaller headings */
+    font-family: 'Cinzel', serif; /* Kept */
+    color: #5D4037; /* Darker Brown for less emphasis than h1-h3 */
     margin-top: 0.6em;
     margin-bottom: 0.3em;
-    font-weight: normal;
+    font-weight: 700; /* Make H4 bold by default */
 }
 
-h5 { font-size: 1.15em; }
-h6 { font-size: 1.0em; }
+h4 {
+    font-size: 1.3em; /* Kept */
+    /* font-weight: 700; Already set in h4,h5,h6 group */
+}
+
+h5 { 
+    font-size: 1.15em; /* Kept */
+    font-weight: 400; /* Normal weight for Cinzel for h5 */
+    font-style: italic; /* Italicize for differentiation */
+    color: #6A4C3F; /* Slightly lighter brown for h5 */
+}
+
+h6 { 
+    font-size: 1.0em; /* Kept */
+    font-weight: 400; /* Normal weight for Cinzel for h6 */
+    color: #7A5B4F; /* Even lighter brown for h6 */
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
 
 /* Horizontal Rules */
 hr {
     border: 0;
-    height: 1px;
-    background-color: #5D4037;
-    margin: 1.5em 0;
+    height: 2px; /* Made slightly thicker */
+    background-color: #5D4037; /* Dark brown, good for thematic line */
+    margin: 1.5em 0; /* Reduced from 2em */
 }
 
 /* Navigation Styling */
 nav {
     background: #5D4037;
     color: #f5e8c3;
-    padding: 8px 0;
-    margin-bottom: 20px;
+    padding: 6px 0; /* Reduced from 8px */
+    margin-bottom: 15px; /* Reduced from 20px */
     border-bottom: 2px solid #A0522D;
     font-family: 'Merriweather', serif;
 }
@@ -363,8 +416,8 @@ ul.flashes li.warning {
 /* Footer Styling */
 footer {
     text-align: center;
-    padding: 15px;
-    margin-top: 20px;
+    padding: 10px; /* Reduced from 15px */
+    margin-top: 15px; /* Reduced from 20px */
     background: #5D4037;
     color: #f5e8c3;
     border-top: 2px solid #A0522D;
@@ -373,6 +426,16 @@ footer {
 }
 
 /* Adventure Page Specific Styles */
+#adventure-container h1 {
+    /* Overrides for the main adventure title to make it smaller */
+    font-size: 2.2em; /* Reduced from global h1 3.0em */
+    margin-top: 0.3em; /* Reduced from global h1 0.5em */
+    margin-bottom: 0.3em; /* Reduced from global h1 0.5em */
+    letter-spacing: 0.03em; /* Reduced from global h1 0.05em */
+    padding-bottom: 0; /* Removed padding from global h1 */
+    /* Inherits font-family, color, weight, text-transform, text-align from global h1 */
+}
+
 
 /* Character Sheet Overlay - D&D PHB Style */
 #character-sheet-overlay {
@@ -383,39 +446,46 @@ footer {
     width: 90%; /* Wider for sheet layout */
     max-width: 600px; /* Max width */
     background-color: #fdf5e6; /* Parchment color */
-    border: 3px double #5D4037; /* Dark brown double border */
-    padding: 15px; /* Slightly reduced padding */
-    box-shadow: 5px 5px 15px rgba(0,0,0,0.4);
+    /* border: 3px double #5D4037; /* Replaced for stain effect */
+    border: 1px solid #D1C7B7; /* A very light border to define the edge subtly before shadow */
+    padding: 12px; /* Reduced from 15px */
+    box-shadow: 
+        /* Inset shadows for "stain" or "ink bleed" effect */
+        inset 0 0 4px rgba(120, 100, 80, 0.2), /* Slightly darker, brownish inset */
+        inset 0 0 10px rgba(120, 100, 80, 0.15),
+        /* Outer shadow for soft lift & diffusion - less prominent than original */
+        3px 3px 7px rgba(0, 0, 0, 0.2), /* Softer drop shadow */
+        0 0 2px rgba(93, 64, 55, 0.15); /* Very subtle diffusion, using a brown hint */
     z-index: 1000;
-    border-radius: 3px; /* Subtle rounding */
+    border-radius: 3px; /* Subtle rounding, can be slightly increased for softer corners */
     overflow-y: auto;
     max-height: 90vh;
     color: #3B2F2F; /* Dark brown text */
     font-family: 'Merriweather', serif;
-    line-height: 1.6; /* Slightly increased line height for readability */
+    line-height: 1.5; /* Reduced from 1.6 */
 }
 
 /* Drag Handle - Character Name area */
 #sheet-drag-handle.sheet-header-title {
     cursor: move;
     text-align: center;
-    margin-bottom: 2px; /* Reduced margin */
+    margin-bottom: 1px; /* Reduced from 2px */
 }
 #sheet-drag-handle.sheet-header-title h3 {
     font-family: 'MedievalSharp', serif;
-    font-size: 2.0em; /* Slightly reduced from 2.2 for space */
+    font-size: 1.8em; /* Reduced from 2.0em */
     color: #8B0000; /* Dark red */
-    margin: 0 0 3px 0; /* Reduced margin */
+    margin: 0 0 2px 0; /* Reduced from 0 0 3px 0 */
     font-weight: normal;
 }
 
 .sheet-subheader {
     text-align: center;
-    margin-bottom: 10px; /* Reduced margin */
+    margin-bottom: 8px; /* Reduced from 10px */
 }
 .sheet-subheader p {
     font-family: 'Merriweather', serif;
-    font-size: 0.8em; /* Slightly smaller */
+    font-size: 0.75em; /* Reduced from 0.8em */
     font-style: italic;
     color: #5D4037;
     margin: 0;
@@ -423,13 +493,13 @@ footer {
 
 .sheet-details {
     text-align: center;
-    font-size: 0.85em;
-    margin-bottom: 10px;
-    padding-bottom: 10px;
+    font-size: 0.8em; /* Reduced from 0.85em */
+    margin-bottom: 8px; /* Reduced from 10px */
+    padding-bottom: 8px; /* Reduced from 10px */
     border-bottom: 1px solid #A0522D; /* Separator line */
 }
 .sheet-details p {
-    margin: 2px 0;
+    margin: 1px 0; /* Reduced from 2px 0 */
     color: #3B2F2F;
 }
 .sheet-details p strong {
@@ -441,18 +511,18 @@ footer {
     display: flex;
     justify-content: space-around;
     flex-wrap: wrap; /* Allow wrapping on smaller screens */
-    gap: 5px; /* Gap between boxes */
-    margin-bottom: 15px; /* Reduced margin */
-    padding-bottom: 10px; /* Reduced padding */
+    gap: 3px; /* Reduced from 5px */
+    margin-bottom: 10px; /* Reduced from 15px */
+    padding-bottom: 8px; /* Reduced from 10px */
     border-bottom: 1px solid #A0522D;
 }
 .attribute-box {
     border: 1px solid #A0522D;
-    padding: 6px; /* Reduced padding */
+    padding: 4px; /* Reduced from 6px */
     text-align: center;
     border-radius: 3px;
     background-color: #fff9e6;
-    min-width: 70px; /* Reduced min-width */
+    min-width: 60px; /* Reduced from 70px */
     box-shadow: 1px 1px 2px rgba(0,0,0,0.1);
     flex-grow: 1; /* Allow boxes to grow */
     flex-basis: 0; /* Distribute space evenly */
@@ -460,25 +530,25 @@ footer {
 .attribute-box div:first-child { /* Label */
     font-family: 'Cinzel', serif;
     font-weight: bold;
-    font-size: 0.8em; /* Smaller label */
+    font-size: 0.75em; /* Reduced from 0.8em */
     color: #8B0000;
-    margin-bottom: 2px;
+    margin-bottom: 1px; /* Reduced from 2px */
 }
 .attribute-box div:last-child { /* Value */
     font-family: 'Merriweather', serif;
-    font-size: 1.0em; /* Slightly smaller value */
+    font-size: 0.9em; /* Reduced from 1.0em */
     font-weight: bold;
     color: #3B2F2F;
 }
 
 .sheet-section-title { /* For H4s like "Abilities", "Skills" */
     font-family: 'Cinzel', serif;
-    font-size: 1.3em; /* Slightly smaller section titles */
+    font-size: 1.2em; /* Reduced from 1.3em */
     color: #8B0000;
     font-weight: 700;
-    margin-top: 12px; /* Reduced margin */
-    margin-bottom: 8px; /* Reduced margin */
-    padding-bottom: 2px; /* Reduced padding */
+    margin-top: 10px; /* Reduced from 12px */
+    margin-bottom: 6px; /* Reduced from 8px */
+    padding-bottom: 1px; /* Reduced from 2px */
     border-bottom: 1px solid #A0522D;
     text-align: left;
 }
@@ -486,44 +556,44 @@ footer {
 .abilities-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); /* More responsive columns */
-    gap: 8px; /* Reduced gap */
-    margin-bottom: 12px; /* Reduced margin */
+    gap: 5px; /* Reduced from 8px */
+    margin-bottom: 10px; /* Reduced from 12px */
 }
 .ability-box { 
     border: 1px solid #A0522D;
-    padding: 8px; /* Reduced padding */
+    padding: 6px; /* Reduced from 8px */
     text-align: center;
     background-color: #fff9e6;
     border-radius: 3px;
     box-shadow: 1px 1px 2px rgba(0,0,0,0.1);
-    font-size: 0.95em; /* Base font size for ability box content */
+    font-size: 0.9em; /* Reduced from 0.95em */
 }
 .ability-box span { /* For STR, DEX labels */
     display: block;
     font-family: 'Cinzel', serif;
     font-weight: bold;
-    font-size: 0.9em; /* Relative to parent .ability-box */
+    font-size: 0.85em; /* Reduced from 0.9em */
     color: #8B0000;
-    margin-bottom: 3px;
+    margin-bottom: 2px; /* Reduced from 3px */
 }
 /* Value and roll button are direct children */
 
 .saving-throws-list p, .skills-list p {
-    font-size: 0.9em;
-    margin-bottom: 5px; /* Consistent spacing */
+    font-size: 0.85em; /* Reduced from 0.9em */
+    margin-bottom: 3px; /* Reduced from 5px */
     display: flex;
     align-items: center;
     border-bottom: 1px solid #eee; /* Light separator for each skill/save */
-    padding-bottom: 3px;
+    padding-bottom: 2px; /* Reduced from 3px */
 }
 .saving-throws-list p:last-child, .skills-list p:last-child {
     border-bottom: none;
 }
 
 .prof-indicator {
-    font-size: 0.8em; /* Smaller circle */
-    margin-right: 6px;
-    width: 15px; /* Fixed width for alignment */
+    font-size: 0.7em; /* Reduced from 0.8em */
+    margin-right: 4px; /* Reduced from 6px */
+    width: 12px; /* Reduced from 15px */
     display: inline-block;
     text-align: center;
     color: #5D4037;
@@ -534,7 +604,7 @@ footer {
     color: #3B2F2F;
 }
 .skill-ability-abbr {
-    font-size: 0.85em;
+    font-size: 0.8em; /* Reduced from 0.85em */
     color: #5D4037;
     margin-left: 4px;
     margin-right: auto; /* Push modifier to the right */
@@ -542,19 +612,19 @@ footer {
 .modifier {
     font-weight: bold;
     margin-left: auto; /* Push to the right, after name/abbr */
-    margin-right: 8px; /* Space before roll button */
-    min-width: 25px; /* Ensure space for modifier */
+    margin-right: 5px; /* Reduced from 8px */
+    min-width: 20px; /* Reduced from 25px */
     text-align: right;
 }
 
 .proficiencies-list ul, .equipment-list ul, .spells-list ul {
     list-style-type: none;
-    padding-left: 10px;
+    padding-left: 8px; /* Reduced from 10px */
     margin: 5px 0 0 0;
-    font-size: 0.9em;
+    font-size: 0.85em; /* Reduced from 0.9em */
 }
 .proficiencies-list li, .equipment-list li, .spells-list li {
-    margin-bottom: 3px;
+    margin-bottom: 2px; /* Reduced from 3px */
     color: #3B2F2F;
 }
 
@@ -562,15 +632,15 @@ footer {
 /* Close Button on Character Sheet */
 #character-sheet-overlay #close-sheet-button {
     display: block;
-    margin: 15px auto 5px; /* Reduced margin */
+    margin: 10px auto 5px; /* Reduced from 15px auto 5px */
     background-color: #A0522D;
     color: #fdf5e6; /* Parchment text */
-    padding: 5px 15px; /* Smaller padding */
+    padding: 4px 12px; /* Reduced from 5px 15px */
     border: 1px solid #5D4037; /* Dark brown border */
     border-radius: 3px;
     cursor: pointer;
     font-family: 'Cinzel', serif; /* Thematic font */
-    font-size: 0.9em;
+    font-size: 0.85em; /* Reduced from 0.9em */
     font-weight: bold;
     box-shadow: 1px 1px 2px rgba(0,0,0,0.2);
 }
@@ -591,10 +661,10 @@ footer {
 #chat-messages {
     flex-grow: 1; /* Allows chat messages to take up available vertical space */
     overflow-y: auto; /* Changed from scroll to auto for better behavior */
-    border: 1px solid #A0522D; /* Sienna border, like form inputs */
+    border: 1px solid #A0522D; /* Sienna border, like form inputs - Kept */
     padding: 10px;
     margin-bottom: 10px;
-    background-color: #fffdf5; /* Slightly off-white, like character cards */
+    background-color: #fdf5e6; /* Changed from #fffdf5 to match character sheet overlay parchment */
     border-radius: 3px;
 }
 
@@ -617,12 +687,49 @@ footer {
 }
 
 
-#send-button { /* Assuming general .button styling is applied or can be used as base */
-    width: 90px; /* Fixed width for send button */
-    padding: 8px 0; /* Adjust padding for consistent height with input */
-    /* Ensure it aligns nicely with the input field. Vertical-align might be needed if they are inline-block */
-    vertical-align: top; /* Or middle, depending on desired alignment with input */
-    /* Uses .button styling from above for consistency */
+#send-button {
+    display: inline-block; /* From .button */
+    width: 90px; /* Fixed width for send button - Kept */
+    padding: 6px 0; /* Adjusted to match .button vertical padding, horizontal padding 0 due to fixed width */
+    text-align: center; /* To center text in fixed-width button */
+    vertical-align: top; /* Kept for alignment with input */
+    
+    /* Copied from .button style */
+    background-color: #8B4513;
+    color: #f5e8c3;
+    border: 2px solid #5D4037;
+    border-top-color: #A0522D;
+    border-left-color: #A0522D;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    font-family: 'Merriweather', serif;
+    font-size: 0.95em;
+    font-weight: bold;
+    box-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+    transition: background-color 0.2s ease, box-shadow 0.2s ease, border-style 0.2s ease, color 0.2s ease;
+    margin-top: 5px; /* Copied from .button */
+    margin-bottom: 5px; /* Copied from .button */
+}
+
+#send-button:hover {
+    /* Copied from .button:hover style */
+    background-color: #A0522D;
+    color: #f5e8c3; 
+    border-color: #3B2F2F;
+    border-top-color: #8B4513;
+    border-left-color: #8B4513;
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+}
+
+#send-button:active {
+    /* Copied from .button:active style */
+    background-color: #5D4037;
+    color: #f5e8c3; 
+    border-style: inset;
+    border-top-color: #3B2F2F;
+    border-left-color: #3B2F2F;
+    box-shadow: none;
 }
 
 /* Character Sheet Button (Scroll Icon) */
@@ -659,23 +766,25 @@ footer {
 
 /* Chat Messages Styling (remains the same) */
 .message {
-    padding: 5px 8px;
-    margin-bottom: 5px;
+    padding: 3px 6px; /* Reduced from 5px 8px */
+    margin-bottom: 3px; /* Reduced from 5px */
     border-radius: 4px;
-    line-height: 1.4;
-    font-size: 0.95em;
+    line-height: 1.35; /* Reduced from 1.4 */
+    font-size: 0.9em; /* Reduced from 0.95em */
 }
 
 .message-user {
-    background-color: #e1f5fe; /* Light blue */
+    background-color: #fdfbf5; /* Changed to a very light, clean parchment */
     text-align: right;
     margin-left: 20%; /* Push user messages to the right */
-    border: 1px solid #b3e5fc;
+    border: 1px solid #e0d6c1; /* Changed to a lighter, complementary tan */
+    color: #3B2F2F; /* Explicitly set text color - Kept */
 }
 
 .message-dm {
-    background-color: #fce4ec; /* Light pink/parchment-like */
+    background-color: #f5efdc; /* Was light pink, now slightly darker/yellowish parchment */
     text-align: left;
     margin-right: 20%; /* Push DM messages to the left */
-    border: 1px solid #f8bbd0;
+    border: 1px solid #c8bdaE; /* Was light pink border, now medium desaturated brown/tan */
+    color: #3B2F2F; /* Explicitly set text color */
 }

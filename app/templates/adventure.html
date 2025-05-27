@@ -249,7 +249,35 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     characterSheetButton.addEventListener('click', function() {
-        characterSheetOverlay.style.display = (characterSheetOverlay.style.display === 'none' ? 'block' : 'none');
+        if (characterSheetOverlay.style.display === 'none' || characterSheetOverlay.style.display === '') {
+            // Show the overlay first to get its dimensions
+            characterSheetOverlay.style.display = 'block';
+            
+            const buttonRect = characterSheetButton.getBoundingClientRect();
+            const overlayWidth = characterSheetOverlay.offsetWidth;
+            const offsetY = 5; // 5px gap below the button
+
+            // Calculate top and left for top-right corner alignment
+            let newTop = buttonRect.bottom + offsetY;
+            let newLeft = buttonRect.right - overlayWidth;
+
+            // Ensure it's not off-screen (simple boundary check)
+            if (newTop + characterSheetOverlay.offsetHeight > window.innerHeight) {
+                newTop = window.innerHeight - characterSheetOverlay.offsetHeight - offsetY;
+            }
+            if (newLeft < 0) {
+                newLeft = 0;
+            }
+             if (newTop < 0) { // Ensure top is not off-screen upwards
+                newTop = offsetY;
+            }
+
+            characterSheetOverlay.style.top = newTop + 'px';
+            characterSheetOverlay.style.left = newLeft + 'px';
+            characterSheetOverlay.style.transform = 'none'; // Override CSS centering
+        } else {
+            characterSheetOverlay.style.display = 'none';
+        }
     });
 
     closeSheetButton.addEventListener('click', function() {
