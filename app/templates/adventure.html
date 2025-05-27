@@ -166,104 +166,14 @@
     <div class="proficiencies-list"><ul>{% for item in proficient_languages %}<li>{{ item }}</li>{% endfor %}</ul></div>
     {% endif %}
 
-    {# New Equipment and Coinage Display #}
-    {% if character_items or character_coinage %}
-        <h4 class="sheet-section-title">Inventory</h4>
-        
-        {% if character_items %}
-            <div class="equipment-list">
-                <h5>Items:</h5>
-                <ul>
-                    {% for item in character_items %}
-                        <li style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                            <span>
-                                {{ item.name }} (x{{ item.quantity }})
-                                {% if item.description and item.description != "Starting equipment" and item.description != "From background" %}
-                                    <small><em>- {{ item.description }}</em></small>
-                                {% endif %}
-                            </span>
-                            <form method="POST" action="{{ url_for('main.remove_item_from_inventory', character_id=character.id, item_id=item.id) }}" style="display: inline; margin-left: 10px;">
-                                <input type="submit" value="Remove" class="button-small" onclick="return confirm('Are you sure you want to remove this item?');">
-                            </form>
-                        </li>
-                    {% endfor %}
-                </ul>
-                {# Add Item Form #}
-                <div style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
-                    <h6>Add New Item:</h6>
-                    <form method="POST" action="{{ url_for('main.add_item_to_inventory', character_id=character.id) }}">
-                        <div>
-                            <label for="item_name" style="font-size:0.8em; display:inline-block; width:auto; margin-right:5px;">Name:</label>
-                            <input type="text" id="item_name" name="item_name" required style="font-size:0.8em; padding:3px; width: 150px; display:inline-block;">
-                        </div>
-                        <div style="margin-top:5px;">
-                            <label for="item_quantity" style="font-size:0.8em; display:inline-block; width:auto; margin-right:5px;">Qty:</label>
-                            <input type="number" id="item_quantity" name="item_quantity" value="1" min="1" required style="font-size:0.8em; padding:3px; width:60px; display:inline-block;">
-                        </div>
-                        <div style="margin-top:5px;">
-                            <label for="item_description" style="font-size:0.8em; display:inline-block; width:auto; margin-right:5px;">Desc (opt.):</label>
-                            <input type="text" id="item_description" name="item_description" style="font-size:0.8em; padding:3px; width: 150px; display:inline-block;">
-                        </div>
-                        <input type="submit" value="Add Item" class="button-small" style="margin-top:8px;">
-                    </form>
-                </div>
-            </div>
-        {% endif %}
-
-        {% if character_coinage %}
-            {# Use 'equipment-list' class for consistent styling with other lists #}
-            <div class="equipment-list"> 
-                <h5>Coinage:</h5>
-                <form method="POST" action="{{ url_for('main.update_coinage_for_character', character_id=character.id) }}">
-                    {# Prepare a dictionary to easily access current coinage values in the template #}
-                    {% set current_coins = {} %}
-                    {% for coin in character_coinage %}
-                        {% if coin.name == "Gold Pieces" %}{% set _ = current_coins.update({'Gold': coin.quantity}) %}{% endif %}
-                        {% if coin.name == "Silver Pieces" %}{% set _ = current_coins.update({'Silver': coin.quantity}) %}{% endif %}
-                        {% if coin.name == "Copper Pieces" %}{% set _ = current_coins.update({'Copper': coin.quantity}) %}{% endif %}
-                    {% endfor %}
-                    <div class="coinage-inputs-container">
-                        <div class="coin-input-group">
-                            <label for="gold_quantity">GP:</label>
-                            <input type="number" id="gold_quantity" name="gold_quantity" value="{{ current_coins.get('Gold', 0) }}" min="0" class="coinage-input">
-                        </div>
-                        <div class="coin-input-group">
-                            <label for="silver_quantity">SP:</label>
-                            <input type="number" id="silver_quantity" name="silver_quantity" value="{{ current_coins.get('Silver', 0) }}" min="0" class="coinage-input">
-                        </div>
-                        <div class="coin-input-group">
-                            <label for="copper_quantity">CP:</label>
-                            <input type="number" id="copper_quantity" name="copper_quantity" value="{{ current_coins.get('Copper', 0) }}" min="0" class="coinage-input">
-                        </div>
-                    </div>
-                    <span id="coinage-save-status" class="save-status-message"></span>
-                    {# Submit button removed for auto-update on change/blur #}
-                </form>
-            </div>
-        {% endif %}
-    {% else %}
-       <h4 class="sheet-section-title">Inventory</h4>
-       <p>No items or coinage.</p>
-    {% endif %}
-    
-    {% if proficient_armor %}
-    <h4 class="sheet-section-title">Armor Proficiencies</h4>
-    <div class="proficiencies-list"><ul>{% for item in proficient_armor %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    {% if cantrips %}
+    <h4 class="sheet-section-title">Cantrips</h4>
+    <div class="spells-list"><ul>{% for spell in cantrips %}<li>{{ spell.name }}</li>{% endfor %}</ul></div>
     {% endif %}
 
-    {% if proficient_weapons %}
-    <h4 class="sheet-section-title">Weapon Proficiencies</h4>
-    <div class="proficiencies-list"><ul>{% for item in proficient_weapons %}<li>{{ item }}</li>{% endfor %}</ul></div>
-    {% endif %}
-
-    {% if proficient_tools %}
-    <h4 class="sheet-section-title">Tool Proficiencies</h4>
-    <div class="proficiencies-list"><ul>{% for item in proficient_tools %}<li>{{ item }}</li>{% endfor %}</ul></div>
-    {% endif %}
-
-    {% if proficient_languages %}
-    <h4 class="sheet-section-title">Languages</h4>
-    <div class="proficiencies-list"><ul>{% for item in proficient_languages %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    {% if level_1_spells %}
+    <h4 class="sheet-section-title">Level 1 Spells</h4>
+    <div class="spells-list"><ul>{% for spell in level_1_spells %}<li>{{ spell.name }}</li>{% endfor %}</ul></div>
     {% endif %}
 
 
