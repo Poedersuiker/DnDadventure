@@ -36,39 +36,116 @@
             </div>
         {% endfor %}
     </div>
-    
-    <h4 class="sheet-section-title">Saving Throws</h4>
-    <div class="saving-throws-list">
-        {% for save_info in saving_throws_data %}
-            <p>
-                <span class="prof-indicator">{% if save_info.is_proficient %}●{% else %}○{% endif %}</span>
-                <span class="ability-name">{{ save_info.name }}</span>
-                <span class="modifier">{% if save_info.modifier >= 0 %}+{% endif %}{{ save_info.modifier }}</span>
-                <button class="roll-button" 
-                        data-roll-type="save" 
-                        data-roll-name="{{ save_info.name }} Save"
-                        data-dice-formula="1d20"
-                        data-modifier="{{ save_info.modifier }}">🎲</button>
-            </p>
-        {% endfor %}
-    </div>
 
-    <h4 class="sheet-section-title">Skills</h4>
-    <div class="skills-list">
-        {% for skill_info in skills_data %}
-            <p>
-                <span class="prof-indicator">{% if skill_info.is_proficient %}●{% else %}○{% endif %}</span>
-                <span class="skill-name">{{ skill_info.name }}</span>
-                <span class="skill-ability-abbr">({{ skill_info.ability_abbr }})</span>
-                <span class="modifier">{% if skill_info.modifier >= 0 %}+{% endif %}{{ skill_info.modifier }}</span>
-                <button class="roll-button" 
-                        data-roll-type="skill" 
-                        data-roll-name="{{ skill_info.name }}"
-                        data-dice-formula="1d20"
-                        data-modifier="{{ skill_info.modifier }}">🎲</button>
-            </p>
-        {% endfor %}
-    </div>
+    <div class="character-sheet-main-content"> <!-- Flex container for two columns -->
+        <div class="character-stats-column"> <!-- Column for Saving Throws and Skills -->
+            <div class="saving-throws-section-wrapper"> <!-- Wrapper for Saving Throws -->
+                <h4 class="sheet-section-title">Saving Throws</h4>
+                <div class="saving-throws-list">
+                    {% for save_info in saving_throws_data %}
+                        <p>
+                            <span class="prof-indicator">{% if save_info.is_proficient %}●{% else %}○{% endif %}</span>
+                            <span class="ability-name">{{ save_info.name }}</span>
+                            <span class="modifier">{% if save_info.modifier >= 0 %}+{% endif %}{{ save_info.modifier }}</span>
+                            <button class="roll-button" 
+                                    data-roll-type="save" 
+                                    data-roll-name="{{ save_info.name }} Save"
+                                    data-dice-formula="1d20"
+                                    data-modifier="{{ save_info.modifier }}">🎲</button>
+                        </p>
+                    {% endfor %}
+                </div>
+            </div> <!-- End saving-throws-section-wrapper -->
+
+            <div class="skills-section-wrapper"> <!-- Wrapper for Skills -->
+                <h4 class="sheet-section-title">Skills</h4>
+                <div class="skills-list">
+                    {% for skill_info in skills_data %}
+                        <p>
+                            <span class="prof-indicator">{% if skill_info.is_proficient %}●{% else %}○{% endif %}</span>
+                            <span class="skill-name">{{ skill_info.name }}</span>
+                            <span class="skill-ability-abbr">({{ skill_info.ability_abbr }})</span>
+                            <span class="modifier">{% if skill_info.modifier >= 0 %}+{% endif %}{{ skill_info.modifier }}</span>
+                            <button class="roll-button" 
+                                    data-roll-type="skill" 
+                                    data-roll-name="{{ skill_info.name }}"
+                                    data-dice-formula="1d20"
+                                    data-modifier="{{ skill_info.modifier }}">🎲</button>
+                        </p>
+                    {% endfor %}
+                </div>
+            </div> <!-- End skills-section-wrapper -->
+        </div> <!-- End character-stats-column -->
+
+        <div class="inventory-column"> <!-- Column for Inventory -->
+            {# New Equipment and Coinage Display #}
+            {% if character_items or character_coinage %}
+                <h4 class="sheet-section-title">Inventory</h4>
+                
+                {% if character_items %}
+                    <div class="equipment-list">
+                        <h5>Items:</h5>
+                        <ul>
+                            {% for item in character_items %}
+                                <li style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                    <span>
+                                        {{ item.name }} (x{{ item.quantity }})
+                                        {% if item.description and item.description != "Starting equipment" and item.description != "From background" %}
+                                            <small><em>- {{ item.description }}</em></small>
+                                        {% endif %}
+                                    </span>
+                                    <div class="item-actions" style="display: flex; align-items: center;">
+                                        <button type="button" class="button-small edit-item-btn" data-item-id="{{ item.id }}" data-item-name="{{ item.name }}" data-item-quantity="{{ item.quantity }}" data-item-description="{{ item.description|default('', true) }}" style="margin-right: 5px;">✏️</button>
+                                        <form method="POST" action="{{ url_for('main.remove_item_from_inventory', character_id=character.id, item_id=item.id) }}" style="display: inline;">
+                                            <input type="submit" value="🗑️" class="button-small" onclick="return confirm('Are you sure you want to remove this item?');" title="Remove {{item.name}}">
+                                        </form>
+                                    </div>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                        {# Add Item Form #}
+                        <div style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
+                            <button type="button" id="show-add-item-modal-btn" class="button-small">Add New Item</button>
+                        </div>
+                    </div>
+                {% endif %}
+            {% else %}
+                <h4 class="sheet-section-title">Inventory</h4>
+                <p>No items or coinage.</p>
+            {% endif %}
+        </div> <!-- End inventory-column -->
+    </div> <!-- End character-sheet-main-content -->
+    
+    {% if character_coinage %}
+        {# Use 'equipment-list' class for consistent styling with other lists #}
+        <div class="equipment-list"> 
+            <h5>Coinage:</h5>
+            {# Form tag removed for AJAX submission #}
+            {# Prepare a dictionary to easily access current coinage values in the template #}
+            {% set current_coins = {} %}
+            {% for coin in character_coinage %}
+                {% if coin.name == "Gold Pieces" %}{% set _ = current_coins.update({'Gold': coin.quantity}) %}{% endif %}
+                {% if coin.name == "Silver Pieces" %}{% set _ = current_coins.update({'Silver': coin.quantity}) %}{% endif %}
+                {% if coin.name == "Copper Pieces" %}{% set _ = current_coins.update({'Copper': coin.quantity}) %}{% endif %}
+            {% endfor %}
+
+            <div class="coinage-inputs-container">
+                <div class="coinage-input-group">
+                    <label for="gold_quantity">Gold:</label>
+                    <input type="number" id="gold_quantity" name="gold_quantity" value="{{ current_coins.get('Gold', 0) }}" min="0"> GP
+                </div>
+                <div class="coinage-input-group">
+                    <label for="silver_quantity">Silver:</label>
+                    <input type="number" id="silver_quantity" name="silver_quantity" value="{{ current_coins.get('Silver', 0) }}" min="0"> SP
+                </div>
+                <div class="coinage-input-group">
+                    <label for="copper_quantity">Copper:</label>
+                    <input type="number" id="copper_quantity" name="copper_quantity" value="{{ current_coins.get('Copper', 0) }}" min="0"> CP
+                </div>
+            </div>
+            <span id="coinage-save-status" class="save-status-message"></span>
+        </div>
+    {% endif %}
     
     {% if proficient_armor %}
     <h4 class="sheet-section-title">Armor Proficiencies</h4>
@@ -90,11 +167,6 @@
     <div class="proficiencies-list"><ul>{% for item in proficient_languages %}<li>{{ item }}</li>{% endfor %}</ul></div>
     {% endif %}
 
-    {% if equipment_list %}
-    <h4 class="sheet-section-title">Equipment</h4>
-    <div class="equipment-list"><ul>{% for item in equipment_list %}<li>{{ item }}</li>{% endfor %}</ul></div>
-    {% endif %}
-    
     {% if cantrips %}
     <h4 class="sheet-section-title">Cantrips</h4>
     <div class="spells-list"><ul>{% for spell in cantrips %}<li>{{ spell.name }}</li>{% endfor %}</ul></div>
@@ -105,7 +177,34 @@
     <div class="spells-list"><ul>{% for spell in level_1_spells %}<li>{{ spell.name }}</li>{% endfor %}</ul></div>
     {% endif %}
 
+
     <button id="close-sheet-button">Close</button>
+
+    <!-- Item Add/Edit Modal -->
+    <div id="item-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close-modal-btn">&times;</span>
+            <h3 id="modal-title">Add New Item</h3>
+            {# The form action will be set by JavaScript for edit, or use a separate route for add if not using AJAX #}
+            {# For now, the form inside the modal uses the same add_item_to_inventory route #}
+            <form id="item-form" method="POST" action="{{ url_for('main.add_item_to_inventory', character_id=character.id) }}">
+                <input type="hidden" id="edit-item-id" name="edit_item_id"> 
+                <div>
+                    <label for="modal-item-name">Name:</label>
+                    <input type="text" id="modal-item-name" name="item_name" required>
+                </div>
+                <div>
+                    <label for="modal-item-quantity">Quantity:</label>
+                    <input type="number" id="modal-item-quantity" name="item_quantity" value="1" min="1" required>
+                </div>
+                <div>
+                    <label for="modal-item-description">Description (Opt.):</label>
+                    <textarea id="modal-item-description" name="item_description" rows="3"></textarea>
+                </div>
+                <button type="submit" id="save-item-btn" class="button">Save Item</button>
+            </form>
+        </div>
+    </div>
 </div>
 
 <div style="position: absolute; top: 10px; right: 10px;">
@@ -362,6 +461,304 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // Modal JavaScript
+    const itemModal = document.getElementById('item-modal');
+    const showAddItemModalBtn = document.getElementById('show-add-item-modal-btn');
+    const closeModalBtn = itemModal.querySelector('.close-modal-btn');
+    const modalTitle = document.getElementById('modal-title');
+    const itemForm = document.getElementById('item-form');
+    const editItemIdInput = document.getElementById('edit-item-id');
+    const modalItemNameInput = document.getElementById('modal-item-name');
+    const modalItemQuantityInput = document.getElementById('modal-item-quantity');
+    const modalItemDescriptionInput = document.getElementById('modal-item-description');
+    const saveItemBtn = document.getElementById('save-item-btn'); 
+
+    // Coinage Auto-Update Elements
+    const goldQuantityInput = document.getElementById('gold_quantity');
+    const silverQuantityInput = document.getElementById('silver_quantity');
+    const copperQuantityInput = document.getElementById('copper_quantity');
+    const coinageSaveStatus = document.getElementById('coinage-save-status');
+
+    let coinageUpdateTimeout = null;
+
+    async function handleCoinageUpdate() {
+        if (!goldQuantityInput || !silverQuantityInput || !copperQuantityInput || !coinageSaveStatus) {
+            console.error("Coinage input fields or status span not found.");
+            return;
+        }
+
+        const gold = parseInt(goldQuantityInput.value);
+        const silver = parseInt(silverQuantityInput.value);
+        const copper = parseInt(copperQuantityInput.value);
+
+        if (isNaN(gold) || gold < 0 || isNaN(silver) || silver < 0 || isNaN(copper) || copper < 0) {
+            coinageSaveStatus.textContent = 'Invalid quantities.';
+            coinageSaveStatus.style.color = 'red';
+            if(coinageUpdateTimeout) clearTimeout(coinageUpdateTimeout);
+            coinageUpdateTimeout = setTimeout(() => { coinageSaveStatus.textContent = ''; }, 3000);
+            return;
+        }
+
+        coinageSaveStatus.textContent = 'Saving...';
+        coinageSaveStatus.style.color = 'orange';
+
+        try {
+            const response = await fetch(`{{ url_for('main.update_coinage_for_character', character_id=character.id) }}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token() if csrf_token else "" }}' // Add CSRF token if your app uses it
+                },
+                body: JSON.stringify({
+                    gold_quantity: gold,
+                    silver_quantity: silver,
+                    copper_quantity: copper
+                })
+            });
+
+            const responseData = await response.json();
+
+            if (response.ok && responseData.status === 'success') {
+                coinageSaveStatus.textContent = responseData.message || 'Saved!';
+                coinageSaveStatus.style.color = 'green';
+            } else {
+                coinageSaveStatus.textContent = responseData.message || 'Error saving coinage.';
+                coinageSaveStatus.style.color = 'red';
+            }
+        } catch (error) {
+            console.error('Error updating coinage:', error);
+            coinageSaveStatus.textContent = 'Network error.';
+            coinageSaveStatus.style.color = 'red';
+        } finally {
+            if(coinageUpdateTimeout) clearTimeout(coinageUpdateTimeout);
+            coinageUpdateTimeout = setTimeout(() => { coinageSaveStatus.textContent = ''; }, 3000);
+        }
+    }
+
+    if (goldQuantityInput && silverQuantityInput && copperQuantityInput) {
+        [goldQuantityInput, silverQuantityInput, copperQuantityInput].forEach(input => {
+            input.addEventListener('blur', handleCoinageUpdate);
+        });
+    }
+
+
+    function openAddItemModal() {
+        modalTitle.textContent = 'Add New Item';
+        itemForm.action = "{{ url_for('main.add_item_to_inventory', character_id=character.id) }}"; // Set action for adding
+        editItemIdInput.value = ''; // Clear edit ID
+        modalItemNameInput.value = '';
+        modalItemQuantityInput.value = '1';
+        modalItemDescriptionInput.value = '';
+        itemModal.style.display = 'block';
+        modalItemNameInput.focus();
+    }
+
+    function closeModal() {
+        itemModal.style.display = 'none';
+    }
+
+    if (showAddItemModalBtn) { // Check if the button exists on the page
+        showAddItemModalBtn.addEventListener('click', openAddItemModal);
+    }
+    
+    if (closeModalBtn) {
+        closeModalBtn.addEventListener('click', closeModal);
+    }
+
+    window.addEventListener('click', function(event) {
+        if (event.target === itemModal) {
+            closeModal();
+        }
+    });
+    
+    // Placeholder for itemForm submit logic (to be handled with AJAX later)
+    // itemForm.addEventListener('submit', function(event) {
+    //     event.preventDefault(); // Prevent default POST for now if using AJAX
+    //     console.log('Form submitted via modal (AJAX to be implemented)');
+    //     // In next step: gather form data, send via fetch, handle response, close modal.
+    const editItemBtns = document.querySelectorAll('.edit-item-btn'); // Get all edit buttons
+
+    // Function to dynamically update or add an item to the sheet
+    function dynamicallyUpdateOrAddItemToSheet(itemData, isNew) {
+        const itemsListUl = document.querySelector('.equipment-list ul'); // Assuming this is where items are listed
+        if (!itemsListUl) return;
+
+        let listItem = itemsListUl.querySelector(`li[data-item-row-id="${itemData.id}"]`);
+
+        if (isNew && !listItem) { // Add new item
+            listItem = document.createElement('li');
+            listItem.style.display = 'flex';
+            listItem.style.justifyContent = 'space-between';
+            listItem.style.alignItems = 'center';
+            listItem.style.marginBottom = '4px';
+            listItem.setAttribute('data-item-row-id', itemData.id); // For future updates
+            itemsListUl.appendChild(listItem);
+        }
+        
+        if (listItem) { // Update existing or newly created
+            let descriptionHtml = '';
+            if (itemData.description && itemData.description !== "Starting equipment" && itemData.description !== "From background") {
+                descriptionHtml = `<small><em>- ${itemData.description}</em></small>`;
+            }
+            listItem.innerHTML = `
+                <span>
+                    ${itemData.name} (x${itemData.quantity})
+                    ${descriptionHtml}
+                </span>
+                <div class="item-actions" style="display: flex; align-items: center;">
+                    <button type="button" class="button-small edit-item-btn" 
+                            data-item-id="${itemData.id}" 
+                            data-item-name="${itemData.name}" 
+                            data-item-quantity="${itemData.quantity}" 
+                            data-item-description="${itemData.description || ''}" 
+                            title="Edit ${itemData.name}"
+                            style="margin-right: 5px;">✏️</button>
+                    <form method="POST" action="/character/${characterId}/inventory/remove_item/${itemData.id}" style="display: inline;">
+                        <input type="submit" value="🗑️" class="button-small" 
+                               onclick="return confirm('Are you sure you want to remove this item?');" 
+                               title="Remove ${itemData.name}">
+                    </form>
+                </div>
+            `;
+            // Re-attach listener for the new/updated edit button within this item
+            const newEditBtn = listItem.querySelector('.edit-item-btn');
+            if (newEditBtn) {
+                newEditBtn.addEventListener('click', function() {
+                    openEditItemModal(this.dataset);
+                });
+            }
+        }
+    }
+
+    function openAddItemModal() {
+        modalTitle.textContent = 'Add New Item';
+        itemForm.action = "{{ url_for('main.add_item_to_inventory', character_id=character.id) }}";
+        editItemIdInput.value = ''; 
+        modalItemNameInput.value = '';
+        modalItemQuantityInput.value = '1';
+        modalItemDescriptionInput.value = '';
+        itemModal.style.display = 'block';
+        modalItemNameInput.focus();
+    }
+
+    function openEditItemModal(itemData) {
+        modalTitle.textContent = 'Edit Item';
+        // Correctly use itemData which is already the dataset
+        editItemIdInput.value = itemData.itemId; 
+        modalItemNameInput.value = itemData.itemName;
+        modalItemQuantityInput.value = itemData.itemQuantity;
+        modalItemDescriptionInput.value = itemData.itemDescription;
+        // Placeholder action for edit - will be handled by AJAX
+        itemForm.action = `/character/${characterId}/inventory/edit_item/${itemData.itemId}`; 
+        itemModal.style.display = 'block';
+        modalItemNameInput.focus();
+    }
+
+    function closeModal() {
+        itemModal.style.display = 'none';
+    }
+
+    if (showAddItemModalBtn) {
+        showAddItemModalBtn.addEventListener('click', openAddItemModal);
+    }
+    
+    editItemBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            openEditItemModal(this.dataset); // Pass dataset directly
+        });
+    });
+    
+    if (closeModalBtn) {
+        closeModalBtn.addEventListener('click', closeModal);
+    }
+
+    window.addEventListener('click', function(event) {
+        if (event.target === itemModal) {
+            closeModal();
+        }
+    });
+    
+    itemForm.addEventListener('submit', function(event) {
+        event.preventDefault(); 
+        
+        const formData = new FormData(itemForm);
+        const data = Object.fromEntries(formData.entries());
+        const itemId = data.edit_item_id; // from hidden input
+
+        let url = itemForm.action; // Action is set when modal opens
+        let method = 'POST';
+
+        if (itemId) { // This is an EDIT operation
+            url = `/character/${characterId}/inventory/edit_item/${itemId}`; // Construct edit URL
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token() if csrf_token else "" }}'
+                },
+                body: JSON.stringify({
+                    item_name: data.item_name,
+                    item_quantity: data.item_quantity,
+                    item_description: data.item_description
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => { throw err; });
+                }
+                return response.json();
+            })
+            .then(responseData => {
+                if (responseData.status === 'success') {
+                    dynamicallyUpdateOrAddItemToSheet(responseData.item, false); // isNew = false for edit
+                    closeModal();
+                    alert(responseData.message || 'Item updated successfully!');
+                } else {
+                    alert(responseData.message || 'Error updating item.');
+                }
+            })
+            .catch(error => {
+                console.error('Error updating item:', error);
+                alert('Failed to update item. ' + (error.message || ''));
+            });
+        } else { // This is an ADD operation
+            url = "{{ url_for('main.add_item_to_inventory', character_id=character.id) }}"; // Ensure add URL
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token() if csrf_token else "" }}' // If CSRF is used, otherwise remove
+                },
+                body: JSON.stringify({
+                    item_name: data.item_name,
+                    item_quantity: data.item_quantity,
+                    item_description: data.item_description
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => { throw err; });
+                }
+                return response.json();
+            })
+            .then(responseData => {
+                if (responseData.status === 'success') {
+                    // Assuming server sends back the full item object including its new ID
+                    dynamicallyUpdateOrAddItemToSheet(responseData.item, true); 
+                    closeModal();
+                    // For a flash-like message without full page reload, you'd need a JS solution
+                    alert(responseData.message || 'Item added successfully!'); 
+                } else {
+                    alert(responseData.message || 'Error adding item.');
+                }
+            })
+            .catch(error => {
+                console.error('Error adding item:', error);
+                alert('Failed to add item. ' + (error.message || ''));
+            });
+        }
+    });
 });
 </script>
 {% endblock %}

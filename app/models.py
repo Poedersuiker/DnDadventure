@@ -34,12 +34,13 @@ class Character(db.Model):
     armor_class = db.Column(db.Integer, default=10)
     speed = db.Column(db.Integer, default=30, nullable=False) # <-- ADD THIS LINE
     current_proficiencies = db.Column(db.Text, nullable=True)  # JSON
-    current_equipment = db.Column(db.Text, nullable=True)  # JSON
     alignment = db.Column(db.String(100), nullable=True)
     background_name = db.Column(db.String(100), nullable=True)
     background_proficiencies = db.Column(db.Text, nullable=True)  # JSON
-    background_equipment = db.Column(db.Text, nullable=True)  # JSON
     adventure_log = db.Column(db.Text, nullable=True) # JSON chat history
+
+    items = db.relationship('Item', back_populates='character', lazy=True)
+    coinage = db.relationship('Coinage', back_populates='character', lazy=True)
 
     race = db.relationship('Race', backref='characters')
     char_class = db.relationship('Class', backref='characters')
@@ -138,3 +139,30 @@ class Setting(db.Model):
 
     def __repr__(self):
         return f'<Setting {self.key}={self.value}>'
+
+
+class Item(db.Model):
+    __tablename__ = 'item'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    quantity = db.Column(db.Integer, default=1)
+    character_id = db.Column(db.Integer, db.ForeignKey('character.id'), nullable=False)
+
+    character = db.relationship('Character', back_populates='items')
+
+    def __repr__(self):
+        return f'<Item {self.name}>'
+
+
+class Coinage(db.Model):
+    __tablename__ = 'coinage'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False)  # e.g., "Gold", "Silver", "Copper"
+    quantity = db.Column(db.Integer, default=0)
+    character_id = db.Column(db.Integer, db.ForeignKey('character.id'), nullable=False)
+
+    character = db.relationship('Character', back_populates='coinage')
+
+    def __repr__(self):
+        return f'<Coinage {self.quantity} {self.name}>'

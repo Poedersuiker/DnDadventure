@@ -2,9 +2,9 @@ import unittest
 import json
 from unittest.mock import patch, MagicMock, ANY 
 import google.generativeai as genai # Added for spec=genai.ChatSession
-from flask import current_app, url_for
+from flask import current_app, url_for, session # Added session for test_creation_review
 from app import app, db
-from app.models import User, Character, Race, Class, Setting, Spell 
+from app.models import User, Character, Race, Class, Setting, Spell, Item, Coinage # Added Item, Coinage
 from app.gemini import GEMINI_DM_SYSTEM_RULES # Import the constant for the new test
 
 class TestMainRoutes(unittest.TestCase):
@@ -325,6 +325,375 @@ class TestMainRoutes(unittest.TestCase):
         updated_character = Character.query.get(self.character.id)
         log_entries = json.loads(updated_character.adventure_log)
         self.assertEqual(log_entries, [{"sender": "user", "text": user_message_text}, {"sender": "dm", "text": "Refactored AI says hello!"}])
+
+    def test_creation_review_with_inventory_aggregation_and_multi_coinage(self):
+        test_creation_user = User(id=3, email="creation_user@example.com", google_id="creation_user_google_id")
+        db.session.add(test_creation_user)
+        db.session.commit()
+
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = test_creation_user.id
+            sess['_fresh'] = True
+            sess['new_character_data'] = {
+                'race_id': self.test_race.id,
+                'class_id': self.test_class.id,
+                'ability_scores': {'STR': 15, 'DEX': 14, 'CON': 13, 'INT': 12, 'WIS': 10, 'CHA': 8},
+                'max_hp': 10, 'armor_class_base': 12, 'speed': 30,
+                'background_name': 'Merchant',
+                'background_skill_proficiencies': ['Insight', 'Persuasion'],
+                'background_tool_proficiencies': [], 'background_languages': ['Common', 'Dwarvish'],
+                'background_equipment': "A fine set of clothes, a mule, 5 torches, some rations, and a pouch containing 10 gp, 25 sp, and 50 cp.",
+                'class_skill_proficiencies': ['Arcana', 'History'],
+                'armor_proficiencies': [], 'weapon_proficiencies': ['Daggers'], 'tool_proficiencies_class_fixed': [],
+                'saving_throw_proficiencies': ['INT', 'WIS'],
+                'final_equipment': ["Dagger (x1)", "Torches (x2)", "Rations (x3)"], # Note: Torches and Rations also in background
+                'chosen_cantrip_ids': [self.cantrip.id], 'chosen_level_1_spell_ids': []
+            }
+
+        response = self.client.post(url_for('main.creation_review'), data={
+            'character_name': 'Wealthy Merchant', 'alignment': 'Neutral', 'character_description': 'Has wares, seeks coin.'
+        }, follow_redirects=True)
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Character created successfully!', response.data)
+
+        created_char = Character.query.filter_by(name='Wealthy Merchant').first()
+        self.assertIsNotNone(created_char)
+
+        # Test Coinage
+        gold = Coinage.query.filter_by(character_id=created_char.id, name="Gold Pieces").first()
+        silver = Coinage.query.filter_by(character_id=created_char.id, name="Silver Pieces").first()
+        copper = Coinage.query.filter_by(character_id=created_char.id, name="Copper Pieces").first()
+        self.assertIsNotNone(gold); self.assertEqual(gold.quantity, 10)
+        self.assertIsNotNone(silver); self.assertEqual(silver.quantity, 25)
+        self.assertIsNotNone(copper); self.assertEqual(copper.quantity, 50)
+
+        # Test Item Aggregation
+        items = {item.name: item.quantity for item in Item.query.filter_by(character_id=created_char.id).all()}
+        self.assertIn("Dagger", items); self.assertEqual(items["Dagger"], 1) # Only from class
+        self.assertIn("Torches", items); self.assertEqual(items["Torches"], 5 + 2) # 5 from background, 2 from class
+        self.assertIn("Rations", items); self.assertEqual(items["Rations"], 3) # 3 from class, "some rations" from background should aggregate (assuming "some" = 1 or is handled by parsing logic as such)
+                                                                              # Current parsing of "some rations" might not yield a quantity, leading to 3.
+                                                                              # Let's assume the parsing logic for "some item" adds 1 or the test string is more explicit.
+                                                                              # The provided background string is "some rations" - the code will parse this as "Some Rations" qty 1
+        self.assertIn("A Fine Set Of Clothes", items) # From background
+        self.assertIn("A Mule", items) # From background
+        self.assertNotIn("A Pouch Containing 10 Gp", items) # Pouch text should not be an item if it only held coins
+
+    def _create_character_with_inventory(self, user_id_offset=0, char_id_offset=0):
+        user = User(id=100 + user_id_offset, email=f"inv_user{user_id_offset}@example.com", google_id=f"inv_user_google_id_{user_id_offset}")
+        db.session.add(user)
+        db.session.commit()
+
+        character = Character(
+            id=100 + char_id_offset, name=f"InvChar{char_id_offset}", user_id=user.id,
+            race_id=self.test_race.id, class_id=self.test_class.id, level=1,
+            strength=10, dexterity=10, constitution=10, intelligence=10, wisdom=10, charisma=10,
+            hp=10, max_hp=10, armor_class=10, speed=30, current_proficiencies='{}', xp=0
+        )
+        db.session.add(character)
+        db.session.commit()
+
+        item1 = Item(name="Sword", quantity=1, character_id=character.id)
+        item2 = Item(name="Rope (50ft)", quantity=1, character_id=character.id)
+        coin_gp = Coinage(name="Gold Pieces", quantity=20, character_id=character.id)
+        coin_sp = Coinage(name="Silver Pieces", quantity=50, character_id=character.id)
+        db.session.add_all([item1, item2, coin_gp, coin_sp])
+        db.session.commit()
+        return user, character
+
+    def test_add_new_item_to_inventory(self):
+        user, char = self._create_character_with_inventory()
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = user.id; sess['_fresh'] = True
+        
+        response = self.client.post(url_for('main.add_item_to_inventory', character_id=char.id), data={
+            'item_name': 'Shield', 'item_quantity': '1', 'item_description': 'A sturdy shield'
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Shield (x1) added to inventory.', response.data)
+        shield = Item.query.filter_by(character_id=char.id, name="Shield").first()
+        self.assertIsNotNone(shield)
+        self.assertEqual(shield.quantity, 1)
+        self.assertEqual(shield.description, "A sturdy shield")
+
+    def test_add_to_existing_item_in_inventory(self):
+        user, char = self._create_character_with_inventory() # Sword (x1) exists
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = user.id; sess['_fresh'] = True
+
+        response = self.client.post(url_for('main.add_item_to_inventory', character_id=char.id), data={
+            'item_name': 'Sword', 'item_quantity': '2' 
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'2 Sword(s) added. You now have 3.', response.data)
+        sword = Item.query.filter_by(character_id=char.id, name="Sword").first()
+        self.assertEqual(sword.quantity, 3)
+
+    def test_add_item_validation(self):
+        user, char = self._create_character_with_inventory()
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = user.id; sess['_fresh'] = True
+        
+        response = self.client.post(url_for('main.add_item_to_inventory', character_id=char.id), data={'item_name': '', 'item_quantity': '1'}, follow_redirects=True)
+        self.assertIn(b'Item name cannot be empty.', response.data)
+        response = self.client.post(url_for('main.add_item_to_inventory', character_id=char.id), data={'item_name': 'Flute', 'item_quantity': '0'}, follow_redirects=True)
+        self.assertIn(b'Item quantity must be positive.', response.data)
+        response = self.client.post(url_for('main.add_item_to_inventory', character_id=char.id), data={'item_name': 'Flute', 'item_quantity': '-1'}, follow_redirects=True)
+        self.assertIn(b'Item quantity must be positive.', response.data)
+        response = self.client.post(url_for('main.add_item_to_inventory', character_id=char.id), data={'item_name': 'Flute', 'item_quantity': 'abc'}, follow_redirects=True)
+        self.assertIn(b'Invalid quantity. Please enter a number.', response.data)
+
+    def test_remove_item_from_inventory(self):
+        user, char = self._create_character_with_inventory()
+        sword = Item.query.filter_by(character_id=char.id, name="Sword").first()
+        self.assertIsNotNone(sword)
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = user.id; sess['_fresh'] = True
+        
+        response = self.client.post(url_for('main.remove_item_from_inventory', character_id=char.id, item_id=sword.id), follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Sword removed from inventory.', response.data)
+        self.assertIsNone(Item.query.get(sword.id))
+
+    def test_remove_item_unauthorized_or_not_found(self):
+        user, char = self._create_character_with_inventory()
+        other_user, other_char = self._create_character_with_inventory(user_id_offset=1, char_id_offset=1)
+        other_char_item = Item.query.filter_by(character_id=other_char.id).first()
+        
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = user.id; sess['_fresh'] = True # Logged in as 'user'
+
+        # Try to remove item not belonging to user's character
+        response = self.client.post(url_for('main.remove_item_from_inventory', character_id=other_char.id, item_id=other_char_item.id), follow_redirects=True)
+        self.assertIn(b'You do not have permission to modify this character.', response.data) # From character check
+        
+        # Try to remove non-existent item from own character
+        response = self.client.post(url_for('main.remove_item_from_inventory', character_id=char.id, item_id=9999), follow_redirects=True)
+        self.assertIn(b'Item not found or does not belong to this character.', response.data)
+
+
+    def test_update_coinage_for_character(self):
+        user, char = self._create_character_with_inventory() # Has 20 GP, 50 SP
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = user.id; sess['_fresh'] = True
+
+        # Update GP, remove SP (set to 0), add CP
+        response = self.client.post(url_for('main.update_coinage_for_character', character_id=char.id), data={
+            'gold_quantity': '100', 'silver_quantity': '0', 'copper_quantity': '75'
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Coinage updated successfully.', response.data)
+
+        gold = Coinage.query.filter_by(character_id=char.id, name="Gold Pieces").first()
+        silver = Coinage.query.filter_by(character_id=char.id, name="Silver Pieces").first()
+        copper = Coinage.query.filter_by(character_id=char.id, name="Copper Pieces").first()
+        self.assertIsNotNone(gold); self.assertEqual(gold.quantity, 100)
+        self.assertIsNone(silver) # Should be deleted as quantity is 0
+        self.assertIsNotNone(copper); self.assertEqual(copper.quantity, 75)
+
+    def test_update_coinage_validation(self):
+        user, char = self._create_character_with_inventory()
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = user.id; sess['_fresh'] = True
+        
+        response = self.client.post(url_for('main.update_coinage_for_character', character_id=char.id), data={'gold_quantity': 'abc'}, follow_redirects=True)
+        self.assertIn(b'Invalid quantity format for Gold Pieces.', response.data)
+        response = self.client.post(url_for('main.update_coinage_for_character', character_id=char.id), data={'silver_quantity': '-10'}, follow_redirects=True)
+        self.assertIn(b'Invalid quantity for Silver Pieces. Must be zero or positive.', response.data)
+
+    def test_clear_character_progress_clears_inventory(self):
+        # 1. Create a character with items and coinage
+        test_clear_user = User(id=4, email="clear_user@example.com", google_id="clear_user_google_id")
+        db.session.add(test_clear_user)
+        db.session.commit()
+
+        char_to_clear = Character(
+            id=3, name="CharToClear", user_id=test_clear_user.id,
+            race_id=self.test_race.id, class_id=self.test_class.id, level=5,
+            strength=10, dexterity=10, constitution=10,
+            intelligence=10, wisdom=10, charisma=10,
+            hp=30, max_hp=30, armor_class=10, speed=30,
+            adventure_log=json.dumps([{"sender": "dm", "text": "An old log."}]),
+            current_proficiencies='{}', xp=5000
+        )
+        db.session.add(char_to_clear)
+        db.session.commit() # Commit to get char_to_clear.id
+
+        # Add items and coinage
+        item1 = Item(name="Old Sword", quantity=1, character_id=char_to_clear.id)
+        item2 = Item(name="Dusty Shield", quantity=1, character_id=char_to_clear.id)
+        coin = Coinage(name="Copper Pieces", quantity=120, character_id=char_to_clear.id)
+        db.session.add_all([item1, item2, coin])
+        db.session.commit()
+
+        self.assertEqual(Item.query.filter_by(character_id=char_to_clear.id).count(), 2)
+        self.assertEqual(Coinage.query.filter_by(character_id=char_to_clear.id).count(), 1)
+
+        # 2. Log in as the character's user
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = test_clear_user.id
+            sess['_fresh'] = True
+        
+        # 3. Call the clear_character_progress route
+        response = self.client.post(url_for('main.clear_character_progress', character_id=char_to_clear.id), follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Adventure progress cleared. Your character has been reset to level 1. Inventory and coinage have been cleared.', response.data)
+
+        # 4. Verify character is reset and inventory is cleared
+        cleared_char = Character.query.get(char_to_clear.id)
+        self.assertEqual(cleared_char.level, 1)
+        self.assertEqual(cleared_char.adventure_log, '[]')
+        
+        self.assertEqual(Item.query.filter_by(character_id=char_to_clear.id).count(), 0)
+        self.assertEqual(Coinage.query.filter_by(character_id=char_to_clear.id).count(), 0)
+
+    def test_edit_item_success(self):
+        user, char = self._create_character_with_inventory() # Sword (id=item1.id), Rope (id=item2.id)
+        item_to_edit = Item.query.filter_by(character_id=char.id, name="Sword").first()
+        self.assertIsNotNone(item_to_edit)
+
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = user.id
+            sess['_fresh'] = True
+        
+        edit_data = {
+            'item_name': 'Magic Sword',
+            'item_quantity': 2,
+            'item_description': 'Glows faintly.'
+        }
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
+            json=edit_data
+        )
+        self.assertEqual(response.status_code, 200)
+        json_response = response.get_json()
+        self.assertEqual(json_response['status'], 'success')
+        self.assertEqual(json_response['item']['name'], 'Magic Sword')
+        self.assertEqual(json_response['item']['quantity'], 2)
+        self.assertEqual(json_response['item']['description'], 'Glows faintly.')
+
+        db.session.refresh(item_to_edit) # Ensure we get the latest from DB
+        self.assertEqual(item_to_edit.name, 'Magic Sword')
+        self.assertEqual(item_to_edit.quantity, 2)
+        self.assertEqual(item_to_edit.description, 'Glows faintly.')
+
+    def test_edit_item_validation_errors(self):
+        user, char = self._create_character_with_inventory()
+        item_to_edit = Item.query.filter_by(character_id=char.id, name="Sword").first()
+        original_name = item_to_edit.name
+        original_quantity = item_to_edit.quantity
+        original_description = item_to_edit.description
+
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = user.id
+            sess['_fresh'] = True
+
+        # Empty Name
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
+            json={'item_name': '', 'item_quantity': 1, 'item_description': 'No name'}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['message'], 'Item name cannot be empty.')
+        db.session.refresh(item_to_edit)
+        self.assertEqual(item_to_edit.name, original_name) # Check no change
+
+        # Invalid Quantity (0)
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
+            json={'item_name': 'Valid Name', 'item_quantity': 0, 'item_description': 'Qty 0'}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['message'], 'Item quantity must be positive. To remove an item, use the remove function.')
+        db.session.refresh(item_to_edit)
+        self.assertEqual(item_to_edit.quantity, original_quantity) # Check no change
+        
+        # Invalid Quantity (negative)
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
+            json={'item_name': 'Valid Name', 'item_quantity': -5, 'item_description': 'Qty -5'}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['message'], 'Item quantity must be positive. To remove an item, use the remove function.')
+
+        # Invalid Quantity (non-integer string)
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
+            json={'item_name': 'Valid Name', 'item_quantity': 'abc', 'item_description': 'Qty abc'}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['message'], 'Invalid quantity format. Must be a number.')
+        
+        # Missing quantity field
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
+            json={'item_name': 'Valid Name', 'item_description': 'Missing Qty'}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['message'], 'Item quantity is required.')
+
+
+    def test_edit_item_authorization_and_not_found(self):
+        user1, char1 = self._create_character_with_inventory(user_id_offset=10, char_id_offset=10)
+        item1 = Item.query.filter_by(character_id=char1.id).first()
+        
+        user2, char2 = self._create_character_with_inventory(user_id_offset=11, char_id_offset=11)
+        item2 = Item.query.filter_by(character_id=char2.id).first()
+
+        # Log in as user1
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = user1.id
+            sess['_fresh'] = True
+        
+        valid_payload = {'item_name': 'New Name', 'item_quantity': 1, 'item_description': 'New Desc'}
+
+        # Attempt to edit item of char2 (character not owned by user1)
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char2.id, item_id=item2.id),
+            json=valid_payload
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.get_json()['message'], 'Unauthorized: You do not own this character.')
+
+        # Attempt to edit item2 but attribute it to char1 (item not owned by character)
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char1.id, item_id=item2.id),
+            json=valid_payload
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json()['message'], 'Item not found or does not belong to this character.')
+
+        # Attempt to edit non-existent item_id for char1
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char1.id, item_id=99999),
+            json=valid_payload
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json()['message'], 'Item not found or does not belong to this character.')
+
+    def test_edit_item_bad_payload(self):
+        user, char = self._create_character_with_inventory()
+        item_to_edit = Item.query.filter_by(character_id=char.id).first()
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = user.id
+            sess['_fresh'] = True
+
+        # Non-JSON payload
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
+            data="this is not json"
+        )
+        self.assertEqual(response.status_code, 400) # Flask typically returns 400 for malformed JSON
+        self.assertIn('No data provided', response.get_json()['message']) # Or similar, depending on Flask's exact error
+
+        # JSON payload missing required fields (e.g. item_name)
+        response = self.client.post(
+            url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
+            json={'item_quantity': 5, 'item_description': 'Only qty and desc'}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['message'], 'Item name cannot be empty.')
 
 
 if __name__ == '__main__':

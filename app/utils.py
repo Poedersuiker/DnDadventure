@@ -1,4 +1,5 @@
 import random
+import re # For _parse_gold
 from flask import current_app
 import google.generativeai as genai
 import logging # For logging errors/warnings
@@ -51,3 +52,30 @@ def list_gemini_models():
     except Exception as e:
         logging.error(f"Error listing Gemini models: {e}")
         return []
+
+def parse_coinage(text_content: str) -> dict:
+    """
+    Parses a string to find and return amounts of gold (gp), silver (sp), and copper (cp).
+    Returns a dictionary with keys 'Gold', 'Silver', 'Copper' and their respective amounts.
+    Amounts default to 0 if not found.
+    """
+    coins = {'Gold': 0, 'Silver': 0, 'Copper': 0}
+    if not text_content or not isinstance(text_content, str):
+        return coins
+
+    # Regex for gold: number followed by "gp", "gold pieces", or "g" (case insensitive)
+    gold_match = re.search(r'(\d+)\s*(gp|gold\s*pieces?|g)\b', text_content, re.IGNORECASE)
+    if gold_match:
+        coins['Gold'] = int(gold_match.group(1))
+
+    # Regex for silver: number followed by "sp" or "silver pieces" (case insensitive)
+    silver_match = re.search(r'(\d+)\s*(sp|silver\s*pieces?)\b', text_content, re.IGNORECASE)
+    if silver_match:
+        coins['Silver'] = int(silver_match.group(1))
+
+    # Regex for copper: number followed by "cp" or "copper pieces" (case insensitive)
+    copper_match = re.search(r'(\d+)\s*(cp|copper\s*pieces?)\b', text_content, re.IGNORECASE)
+    if copper_match:
+        coins['Copper'] = int(copper_match.group(1))
+        
+    return coins

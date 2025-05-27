@@ -2,13 +2,14 @@ import json
 import os
 # import google.generativeai as genai # Removed
 import google.generativeai as genai # Re-add import
+import re # Added for gold parsing
 from flask import render_template, redirect, url_for, flash, request, session, get_flashed_messages, jsonify, current_app
 from flask_babel import _
 from flask_login import login_required, current_user
 from app import db
-from app.models import User, Character, Race, Class, Spell, Setting # Re-add Setting import
-from app.utils import roll_dice
-from app.gemini import geminiai, GEMINI_DM_SYSTEM_RULES 
+from app.models import User, Character, Race, Class, Spell, Setting, Item, Coinage
+from app.utils import roll_dice, parse_coinage # Changed import to parse_coinage
+from app.gemini import geminiai, GEMINI_DM_SYSTEM_RULES
 from app.main import bp
 
 # Placeholder for Gemini API Key Configuration
@@ -95,8 +96,13 @@ def clear_character_progress(character_id):
     
     # current_equipment and current_proficiencies are assumed to be the L1 state as per creation_review logic.
 
+    # Clear items and coinage
+    Item.query.filter_by(character_id=character.id).delete()
+    Coinage.query.filter_by(character_id=character.id).delete()
+    # Note: Re-adding L1 equipment/coinage is deferred for simplicity in this step.
+
     db.session.commit()
-    flash('Adventure progress cleared. Your character has been reset to level 1.', 'success')
+    flash('Adventure progress cleared. Your character has been reset to level 1. Inventory and coinage have been cleared.', 'success')
     return redirect(url_for('main.index'))
 
 # Character Creation Step 1: Race Selection
@@ -790,6 +796,7 @@ def creation_review():
     all_language_proficiencies = set(char_data.get('background_languages', []))
     # (Future: add racial languages if they were stored separately and aren't just text descriptions)
 
+    # parse_coinage is now imported from app.utils
 
     if request.method == 'POST':
         character_name = request.form.get('character_name')
@@ -847,7 +854,7 @@ def creation_review():
                 char_data.get('background_tool_proficiencies', []) +
                 char_data.get('background_languages', [])
             ),
-            background_equipment=json.dumps(char_data.get('background_equipment', '')), # Stored as string from background
+            # background_equipment field is removed from Character model
             current_proficiencies=json.dumps({
                 'skills': list(current_skills_set),
                 'tools': list(current_tools_set),
@@ -855,9 +862,105 @@ def creation_review():
                 'armor': char_data.get('armor_proficiencies', []),
                 'weapons': char_data.get('weapon_proficiencies', []),
                 'saving_throws': char_data.get('saving_throw_proficiencies', [])
-            }),
-            current_equipment=json.dumps(char_data.get('final_equipment', []))
+            })
+            # current_equipment field is removed from Character model
         )
+
+        db.session.add(new_char)
+        db.session.flush() # Flush to get new_char.id for foreign key relationships
+
+        # Process Equipment and Coinage
+        # final_equipment from session is a list of strings like "Shield (x1)", "Dagger"
+        # background_equipment from session is a single string like "Acolyte's pack (holy symbol, ... 15 gp)"
+        
+        final_equipment_from_session = char_data.get('final_equipment', [])
+        background_equipment_str = char_data.get('background_equipment', '') # This is a string
+
+        # Parse all coinage from background equipment string
+        parsed_coins = parse_coinage(background_equipment_str)
+        for coin_type, quantity in parsed_coins.items():
+            if quantity > 0:
+                # Construct a descriptive name like "Gold Pieces", "Silver Pieces"
+                coin_name = f"{coin_type.title()} Pieces" 
+                coin_entry = Coinage(name=coin_name, quantity=quantity, character_id=new_char.id)
+                db.session.add(coin_entry)
+        
+        # Process items from final_equipment (class choices / fixed items from class)
+        # and items from background_equipment_str (excluding gold)
+        
+        # Consolidate all item strings to parse
+        all_item_strings_to_parse = []
+        if background_equipment_str:
+            # Add parts of the background equipment string, attempting to split by common delimiters
+            # and excluding already processed gold parts.
+            potential_bg_items = re.split(r',\s*|\s+and\s+', background_equipment_str)
+            for p_item in potential_bg_items:
+                p_item_clean = p_item.strip()
+                if "gp" in p_item_clean.lower() or "gold pieces" in p_item_clean.lower() or "gold" in p_item_clean.lower():
+                    continue # Gold already handled
+                if p_item_clean and not p_item_clean.lower().startswith("a pouch containing"): # Avoid adding the pouch itself if it only contained gold
+                    all_item_strings_to_parse.append(p_item_clean)
+        
+        # Add items from class equipment choices (which might include "Background: full string" if not careful in previous step)
+        for item_string_from_session in final_equipment_from_session:
+            if item_string_from_session.lower().startswith("background:"):
+                # If the full background string was added to final_equipment, parse it similarly
+                actual_bg_items_str = item_string_from_session.replace("Background: ", "", 1)
+                potential_bg_items_from_final = re.split(r',\s*|\s+and\s+', actual_bg_items_str)
+                for p_item in potential_bg_items_from_final:
+                    p_item_clean = p_item.strip()
+                    if "gp" in p_item_clean.lower() or "gold pieces" in p_item_clean.lower() or "gold" in p_item_clean.lower():
+                        continue
+                    if p_item_clean and not p_item_clean.lower().startswith("a pouch containing"):
+                         all_item_strings_to_parse.append(p_item_clean)
+            else:
+                all_item_strings_to_parse.append(item_string_from_session)
+
+        # Process all collected item strings with aggregation
+        aggregated_items = {} # To store {normalized_name: {'quantity': Q, 'description': D}}
+
+        for item_string in all_item_strings_to_parse:
+            item_name_raw = item_string
+            quantity = 1
+            # Default description, can be updated if a more specific one is parsed
+            description = "Starting equipment" 
+
+            # Basic parsing for quantity like "Item Name (xN)" or "N Item Name"
+            qty_match_suffix = re.match(r'^(.*?)\s*\(x(\d+)\)$', item_string) # "Shield (x1)"
+            qty_match_prefix = re.match(r'(\d+)\s+(.*)', item_string)    # "5 sticks of incense"
+
+            if qty_match_suffix:
+                item_name_raw = qty_match_suffix.group(1).strip()
+                quantity = int(qty_match_suffix.group(2))
+            elif qty_match_prefix:
+                quantity = int(qty_match_prefix.group(1))
+                item_name_raw = qty_match_prefix.group(2).strip()
+            
+            # Normalize item name (e.g., title case and strip whitespace)
+            # More advanced normalization (e.g., singularization) could be added here if needed.
+            normalized_item_name = item_name_raw.strip().title() # Using title case for consistency
+
+            if not normalized_item_name: # Avoid adding empty item names
+                continue
+
+            if normalized_item_name in aggregated_items:
+                aggregated_items[normalized_item_name]['quantity'] += quantity
+                # Description handling: keep the first one, or implement more complex logic
+                # For now, if a more generic "Starting equipment" is already there,
+                # and a more specific one comes along (e.g. "From background"), prefer the more specific.
+                # This is a simple heuristic.
+                if aggregated_items[normalized_item_name]['description'] == "Starting equipment" and description != "Starting equipment":
+                    aggregated_items[normalized_item_name]['description'] = description
+            else:
+                aggregated_items[normalized_item_name] = {
+                    'quantity': quantity,
+                    'description': description 
+                }
+        
+        # Create Item objects from the aggregated list
+        for name, data in aggregated_items.items():
+            item = Item(name=name, quantity=data['quantity'], character_id=new_char.id, description=data['description'])
+            db.session.add(item)
 
         # Assign spells
         chosen_spell_ids = char_data.get('chosen_cantrip_ids', []) + char_data.get('chosen_level_1_spell_ids', [])
@@ -960,7 +1063,9 @@ def adventure(character_id):
             try:
                 temp_proficiencies_data = json.loads(character.current_proficiencies or '{}')
                 if not isinstance(temp_proficiencies_data, dict): temp_proficiencies_data = {}
-            except json.JSONDecodeError: pass
+            except json.JSONDecodeError: 
+                current_app.logger.error(f"Malformed current_proficiencies for char {character.id} in adventure init prompt.")
+                pass # temp_proficiencies_data remains {}
             
             temp_skills_str = ", ".join(temp_proficiencies_data.get('skills', [])) or "None"
             temp_saving_throws_str = ", ".join(temp_proficiencies_data.get('saving_throws', [])) or "None"
@@ -969,13 +1074,14 @@ def adventure(character_id):
             temp_tool_prof_str = ", ".join(temp_proficiencies_data.get('tools', [])) or "None"
             temp_languages_str = ", ".join(temp_proficiencies_data.get('languages', [])) or "None"
 
-            temp_equipment_list = []
-            try:
-                temp_equipment_list = json.loads(character.current_equipment or '[]')
-                if not isinstance(temp_equipment_list, list): temp_equipment_list = []
-            except json.JSONDecodeError: pass
-            temp_equipment_str = "\n".join([f"- {item}" for item in temp_equipment_list]) if temp_equipment_list else "None"
-
+            # Build equipment string from Item and Coinage models for the prompt
+            # character.items and character.coinage should be loaded due to relationship access
+            items_list_for_prompt = [f"{item.name} (x{item.quantity})" + (f" - {item.description}" if item.description else "") for item in character.items]
+            coinage_list_for_prompt = [f"{coin.quantity} {coin.name}" for coin in character.coinage]
+            
+            full_equipment_list_for_prompt = items_list_for_prompt + coinage_list_for_prompt
+            temp_equipment_str = "\n".join([f"- {item_str}" for item_str in full_equipment_list_for_prompt]) if full_equipment_list_for_prompt else "None"
+            
             xp_thresholds = {1: 300, 2: 900, 3: 2700, 4: 6500, 5: 14000, 6: 23000, 7: 34000, 8: 48000, 9: 64000, 10: 85000, 11: 100000, 12: 120000, 13: 140000, 14: 165000, 15: 195000, 16: 225000, 17: 265000, 18: 305000, 19: 355000}
             xp_for_next = xp_thresholds.get(character.level, "N/A for current level")
 
@@ -1063,16 +1169,10 @@ def adventure(character_id):
     proficient_weapons = proficiencies_data.get('weapons', [])
     proficient_saving_throws = proficiencies_data.get('saving_throws', []) # List of ability abbreviations e.g. ["STR", "DEX"]
 
-    # Parse Equipment
-    equipment_list = []
-    try:
-        equipment_list = json.loads(character.current_equipment or '[]')
-        if not isinstance(equipment_list, list): # Ensure it's a list
-            equipment_list = []
-            current_app.logger.warning(f"current_equipment for char {character_id} was not a list, reset to empty.")
-    except json.JSONDecodeError:
-        current_app.logger.error(f"Failed to parse current_equipment JSON for character {character_id}: {character.current_equipment}")
-        equipment_list = [] # Default to empty list if parsing fails
+    # Get Items and Coinage for template rendering
+    # These are now direct relationships from the Character model
+    character_items = character.items # List of Item objects
+    character_coinage = character.coinage # List of Coinage objects
 
     # Filter Spells
     cantrips = [spell for spell in character.known_spells if spell.level == 0]
@@ -1150,7 +1250,9 @@ def adventure(character_id):
                            proficient_languages=proficient_languages,
                            proficient_armor=proficient_armor,
                            proficient_weapons=proficient_weapons,
-                           equipment_list=equipment_list,
+                           # equipment_list is replaced by character_items and character_coinage
+                           character_items=character_items,
+                           character_coinage=character_coinage,
                            cantrips=cantrips,
                            level_1_spells=level_1_spells,
                            # New pre-calculated data for template:
@@ -1302,3 +1404,244 @@ def send_chat_message(character_id):
         current_app.logger.warning(f"Received no text and no error from geminiai for char {character_id}. User message: '{user_message}'")
         # Return a generic "DM is pondering" message rather than an error, as it might not be a hard error.
         return jsonify(reply=_("The Dungeon Master ponders your words but remains silent for now...")), 200
+
+
+@bp.route('/character/<int:character_id>/inventory/add_item', methods=['POST'])
+@login_required
+def add_item_to_inventory(character_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(status="error", message="Unauthorized: You do not own this character."), 403
+
+    data = request.json
+    if not data:
+        return jsonify(status="error", message="No data provided."), 400
+
+    item_name = data.get('item_name', '').strip().title()
+    item_description = data.get('item_description', '').strip()
+    
+    try:
+        item_quantity_str = data.get('item_quantity')
+        if item_quantity_str is None: # Field not sent
+            return jsonify(status="error", message="Item quantity is required."), 400
+        item_quantity = int(item_quantity_str)
+    except ValueError:
+        return jsonify(status="error", message="Invalid quantity format. Must be a number."), 400
+    except TypeError: # Handles if item_quantity_str is None and int() fails (already caught by check above but good for safety)
+        return jsonify(status="error", message="Item quantity must be a valid number."), 400
+
+    if not item_name:
+        return jsonify(status="error", message="Item name cannot be empty."), 400
+    
+    if item_quantity <= 0:
+        return jsonify(status="error", message="Item quantity must be positive."), 400
+
+    existing_item = Item.query.filter_by(character_id=character.id, name=item_name).first()
+    item_for_response = None
+    status_code = 200 # Default to 200 (OK)
+
+    if existing_item:
+        existing_item.quantity += item_quantity
+        item_for_response = existing_item
+        message = f'{item_quantity} {item_name}(s) added. You now have {existing_item.quantity}.'
+    else:
+        new_item = Item(
+            name=item_name,
+            description=item_description,
+            quantity=item_quantity,
+            character_id=character.id
+        )
+        db.session.add(new_item)
+        # We need to flush to get the ID for the new_item if we want to return it
+        # However, if we commit here, a rollback for a potential outer transaction might be an issue.
+        # For now, let's assume this is an atomic operation. If not, we might need to adjust.
+        # A common pattern is to commit and then query the item, or ensure the ORM populates the ID after add+flush.
+        # For simplicity, we'll commit and then use the new_item object.
+        # db.session.flush() # Or commit later, see note below
+        item_for_response = new_item
+        message = f'{item_name} (x{item_quantity}) added to inventory.'
+        status_code = 201 # 201 (Created) for new resource
+    
+    try:
+        db.session.commit()
+        # Ensure item_for_response is populated for the JSON, especially its ID after commit
+        # If it was a new_item, its ID is now populated.
+        return jsonify(
+            status="success", 
+            message=message,
+            item={
+                'id': item_for_response.id,
+                'name': item_for_response.name,
+                'quantity': item_for_response.quantity,
+                'description': item_for_response.description
+            }
+        ), status_code
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error adding/updating item for character {character_id}: {str(e)}")
+        return jsonify(status="error", message="An internal error occurred while saving the item."), 500
+
+
+@bp.route('/character/<int:character_id>/inventory/remove_item/<int:item_id>', methods=['POST'])
+@login_required
+def remove_item_from_inventory(character_id, item_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        flash('You do not have permission to modify this character.', 'error')
+        return redirect(url_for('main.adventure', character_id=character_id))
+
+    item_to_remove = Item.query.filter_by(id=item_id, character_id=character.id).first()
+
+    if item_to_remove:
+        item_name = item_to_remove.name
+        db.session.delete(item_to_remove)
+        db.session.commit()
+        flash(f'{item_name} removed from inventory.', 'success')
+    else:
+        flash('Item not found or does not belong to this character.', 'error')
+        
+    return redirect(url_for('main.adventure', character_id=character_id) + "#character-sheet-overlay")
+
+
+@bp.route('/character/<int:character_id>/inventory/update_coinage', methods=['POST'])
+@login_required
+def update_coinage_for_character(character_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(status="error", message="Unauthorized: You do not own this character."), 403
+
+    data = request.json
+    if not data:
+        return jsonify(status="error", message="No data provided."), 400
+
+    coin_quantities = {}
+    coin_keys = ["gold_quantity", "silver_quantity", "copper_quantity"]
+    db_coin_names = {
+        "gold_quantity": "Gold Pieces",
+        "silver_quantity": "Silver Pieces",
+        "copper_quantity": "Copper Pieces"
+    }
+
+    for key in coin_keys:
+        if key not in data:
+            return jsonify(status="error", message=f"Missing '{key}' in request."), 400
+        try:
+            quantity = int(data[key])
+            if quantity < 0:
+                return jsonify(status="error", message=f"Quantity for {db_coin_names[key]} must be non-negative."), 400
+            coin_quantities[key] = quantity
+        except (ValueError, TypeError):
+            return jsonify(status="error", message=f"Invalid quantity for {db_coin_names[key]}. Must be an integer."), 400
+    
+    updated_any = False
+    updated_coin_details = [] # To send back the state of coins after update
+
+    for key, quantity in coin_quantities.items():
+        db_name = db_coin_names[key]
+        existing_coinage = Coinage.query.filter_by(character_id=character.id, name=db_name).first()
+
+        if existing_coinage:
+            if quantity > 0:
+                if existing_coinage.quantity != quantity:
+                    existing_coinage.quantity = quantity
+                    updated_any = True
+                updated_coin_details.append({'name': db_name, 'quantity': existing_coinage.quantity})
+            else: # quantity is 0
+                db.session.delete(existing_coinage)
+                updated_any = True
+                # No details to append for deleted coin, or could append with quantity 0
+        elif quantity > 0: # No existing record, but new quantity is positive
+            new_coinage_entry = Coinage(name=db_name, quantity=quantity, character_id=character.id)
+            db.session.add(new_coinage_entry)
+            updated_any = True
+            # To get ID, we'd need to flush or commit. For now, just return name/qty.
+            updated_coin_details.append({'name': db_name, 'quantity': new_coinage_entry.quantity})
+            
+    if updated_any:
+        try:
+            db.session.commit()
+            # Re-fetch to ensure all data is current, especially if new items were added.
+            # This is a bit inefficient but ensures data consistency for the response.
+            # A more optimized way might involve only adding/updating specific items in updated_coin_details.
+            final_coinage_state = []
+            for _, db_name_iter in db_coin_names.items():
+                coin_obj = Coinage.query.filter_by(character_id=character.id, name=db_name_iter).first()
+                if coin_obj:
+                    final_coinage_state.append({'name': coin_obj.name, 'quantity': coin_obj.quantity})
+                else: # Ensure all types are represented, even if 0
+                    final_coinage_state.append({'name': db_name_iter, 'quantity': 0})
+
+            return jsonify(status="success", message="Coinage updated successfully.", coinage=final_coinage_state), 200
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error updating coinage for character {character_id}: {str(e)}")
+            return jsonify(status="error", message="An internal error occurred while updating coinage."), 500
+    else:
+        # Even if no changes, return current state for consistency
+        current_coinage_state = []
+        for _, db_name_iter in db_coin_names.items():
+            coin_obj = Coinage.query.filter_by(character_id=character.id, name=db_name_iter).first()
+            if coin_obj:
+                current_coinage_state.append({'name': coin_obj.name, 'quantity': coin_obj.quantity})
+            else:
+                current_coinage_state.append({'name': db_name_iter, 'quantity': 0})
+        return jsonify(status="success", message="No changes detected in coinage amounts.", coinage=current_coinage_state), 200
+
+
+@bp.route('/character/<int:character_id>/inventory/edit_item/<int:item_id>', methods=['POST'])
+@login_required
+def edit_item_in_inventory(character_id, item_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(status="error", message="Unauthorized: You do not own this character."), 403
+
+    item_to_edit = Item.query.filter_by(id=item_id, character_id=character.id).first()
+    if not item_to_edit:
+        return jsonify(status="error", message="Item not found or does not belong to this character."), 404
+
+    data = request.json
+    if not data:
+        return jsonify(status="error", message="No data provided."), 400
+
+    new_name = data.get('item_name', '').strip().title()
+    new_description = data.get('item_description', '').strip()
+    
+    try:
+        new_quantity_str = data.get('item_quantity')
+        if new_quantity_str is None: # Field not sent
+             return jsonify(status="error", message="Item quantity is required."), 400
+        new_quantity = int(new_quantity_str)
+    except ValueError:
+        return jsonify(status="error", message="Invalid quantity format. Must be a number."), 400
+    except TypeError: # Handles if new_quantity_str is None and int() fails
+        return jsonify(status="error", message="Item quantity must be a valid number."), 400
+
+
+    if not new_name:
+        return jsonify(status="error", message="Item name cannot be empty."), 400
+    
+    if new_quantity <= 0:
+        # If quantity is zero or less, client should use remove_item route.
+        # For edit, we expect a positive quantity.
+        return jsonify(status="error", message="Item quantity must be positive. To remove an item, use the remove function."), 400
+
+    item_to_edit.name = new_name
+    item_to_edit.description = new_description
+    item_to_edit.quantity = new_quantity
+
+    try:
+        db.session.commit()
+        return jsonify(
+            status="success", 
+            message="Item updated successfully!", 
+            item={
+                'id': item_to_edit.id,
+                'name': item_to_edit.name,
+                'quantity': item_to_edit.quantity,
+                'description': item_to_edit.description
+            }
+        ), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating item {item_id} for character {character_id}: {str(e)}")
+        return jsonify(status="error", message="An internal error occurred while updating the item."), 500
