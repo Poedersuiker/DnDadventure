@@ -87,7 +87,7 @@
                         <h5>Items:</h5>
                         <ul>
                             {% for item in character_items %}
-                                <li style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <li style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;" data-item-row-id="{{ item.id }}">
                                     <span>
                                         {{ item.name }} (x{{ item.quantity }})
                                         {% if item.description and item.description != "Starting equipment" and item.description != "From background" %}
@@ -95,7 +95,13 @@
                                         {% endif %}
                                     </span>
                                     <div class="item-actions" style="display: flex; align-items: center;">
-                                        <button type="button" class="button-small edit-item-btn" data-item-id="{{ item.id }}" data-item-name="{{ item.name }}" data-item-quantity="{{ item.quantity }}" data-item-description="{{ item.description|default('', true) }}" style="margin-right: 5px;">✏️</button>
+                                        <button type="button" class="button-small edit-item-btn" 
+                                                data-item-id="{{ item.id }}" 
+                                                data-item-name="{{ item.name }}" 
+                                                data-item-quantity="{{ item.quantity }}" 
+                                                data-item-description="{{ item.description|default('', true) }}" 
+                                                title="Edit {{item.name}}"
+                                                style="margin-right: 5px;">✏️</button>
                                         <form method="POST" action="{{ url_for('main.remove_item_from_inventory', character_id=character.id, item_id=item.id) }}" style="display: inline;">
                                             <input type="submit" value="🗑️" class="button-small" onclick="return confirm('Are you sure you want to remove this item?');" title="Remove {{item.name}}">
                                         </form>
@@ -109,43 +115,46 @@
                         </div>
                     </div>
                 {% endif %}
+                 {% if character_coinage %}
+                    {# Use 'equipment-list' class for consistent styling with other lists #}
+                    <div class="equipment-list"> 
+                        <h5>Coinage:</h5>
+                        {# Prepare a dictionary to easily access current coinage values in the template #}
+                        {% set current_coins = {} %}
+                        {% for coin in character_coinage %}
+                            {% if coin.name == "Gold Pieces" %}{% set _ = current_coins.update({'Gold': coin.quantity}) %}{% endif %}
+                            {% if coin.name == "Silver Pieces" %}{% set _ = current_coins.update({'Silver': coin.quantity}) %}{% endif %}
+                            {% if coin.name == "Copper Pieces" %}{% set _ = current_coins.update({'Copper': coin.quantity}) %}{% endif %}
+                        {% endfor %}
+
+                        <div class="coinage-inputs-container">
+                            <div class="coinage-input-group">
+                                <label for="gold_quantity">Gold:</label>
+                                <input type="number" id="gold_quantity" name="gold_quantity" value="{{ current_coins.get('Gold', 0) }}" min="0"> GP
+                            </div>
+                            <div class="coinage-input-group">
+                                <label for="silver_quantity">Silver:</label>
+                                <input type="number" id="silver_quantity" name="silver_quantity" value="{{ current_coins.get('Silver', 0) }}" min="0"> SP
+                            </div>
+                            <div class="coinage-input-group">
+                                <label for="copper_quantity">Copper:</label>
+                                <input type="number" id="copper_quantity" name="copper_quantity" value="{{ current_coins.get('Copper', 0) }}" min="0"> CP
+                            </div>
+                        </div>
+                        <span id="coinage-save-status" class="save-status-message"></span>
+                    </div>
+                {% endif %}
             {% else %}
                 <h4 class="sheet-section-title">Inventory</h4>
                 <p>No items or coinage.</p>
+                 <div style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
+                    <button type="button" id="show-add-item-modal-btn" class="button-small">Add New Item</button>
+                </div>
             {% endif %}
         </div> <!-- End inventory-column -->
     </div> <!-- End character-sheet-main-content -->
     
-    {% if character_coinage %}
-        {# Use 'equipment-list' class for consistent styling with other lists #}
-        <div class="equipment-list"> 
-            <h5>Coinage:</h5>
-            {# Form tag removed for AJAX submission #}
-            {# Prepare a dictionary to easily access current coinage values in the template #}
-            {% set current_coins = {} %}
-            {% for coin in character_coinage %}
-                {% if coin.name == "Gold Pieces" %}{% set _ = current_coins.update({'Gold': coin.quantity}) %}{% endif %}
-                {% if coin.name == "Silver Pieces" %}{% set _ = current_coins.update({'Silver': coin.quantity}) %}{% endif %}
-                {% if coin.name == "Copper Pieces" %}{% set _ = current_coins.update({'Copper': coin.quantity}) %}{% endif %}
-            {% endfor %}
-
-            <div class="coinage-inputs-container">
-                <div class="coinage-input-group">
-                    <label for="gold_quantity">Gold:</label>
-                    <input type="number" id="gold_quantity" name="gold_quantity" value="{{ current_coins.get('Gold', 0) }}" min="0"> GP
-                </div>
-                <div class="coinage-input-group">
-                    <label for="silver_quantity">Silver:</label>
-                    <input type="number" id="silver_quantity" name="silver_quantity" value="{{ current_coins.get('Silver', 0) }}" min="0"> SP
-                </div>
-                <div class="coinage-input-group">
-                    <label for="copper_quantity">Copper:</label>
-                    <input type="number" id="copper_quantity" name="copper_quantity" value="{{ current_coins.get('Copper', 0) }}" min="0"> CP
-                </div>
-            </div>
-            <span id="coinage-save-status" class="save-status-message"></span>
-        </div>
-    {% endif %}
+   
     
     {% if proficient_armor %}
     <h4 class="sheet-section-title">Armor Proficiencies</h4>
@@ -167,15 +176,104 @@
     <div class="proficiencies-list"><ul>{% for item in proficient_languages %}<li>{{ item }}</li>{% endfor %}</ul></div>
     {% endif %}
 
-    {% if cantrips %}
-    <h4 class="sheet-section-title">Cantrips</h4>
-    <div class="spells-list"><ul>{% for spell in cantrips %}<li>{{ spell.name }}</li>{% endfor %}</ul></div>
-    {% endif %}
+    <!-- Spells Section -->
+    <h3 class="sheet-section-title">Spells & Spell Slots</h3>
+    <div class="rest-buttons" style="margin-bottom: 10px;">
+        <button id="short-rest-button" data-character-id="{{ character.id }}" class="button-small">Short Rest</button>
+        <button id="long-rest-button" data-character-id="{{ character.id }}" class="button-small">Long Rest</button>
+        <span id="rest-status-message" class="save-status-message" style="margin-left: 10px;"></span>
+    </div>
 
-    {% if level_1_spells %}
-    <h4 class="sheet-section-title">Level 1 Spells</h4>
-    <div class="spells-list"><ul>{% for spell in level_1_spells %}<li>{{ spell.name }}</li>{% endfor %}</ul></div>
-    {% endif %}
+    {% for L in range(10) %} {# Loop from 0 (Cantrips) to 9 #}
+        {% if L == 0 %}
+            {% if spells_by_level[0] %}
+                <h4 class="spell-level-header">Cantrips</h4>
+                <ul class="spells-list">
+                    {% for spell in spells_by_level[0] %}
+                        <li class="spell-list-item" data-spell-index="{{ spell.index }}">
+                            <span class="spell-name">{{ spell.name }}</span>
+                            <div class="spell-card-details" style="display: none; position: absolute; border: 1px solid black; background-color: white; padding: 10px; width: 300px; z-index: 100;">
+                                <h4>{{ spell.name }}</h4>
+                                <p><em>{{ spell.school }} Cantrip {% if spell.ritual %}(ritual){% endif %}</em></p>
+                                <p><strong>Casting Time:</strong> {{ spell.casting_time }}</p>
+                                <p><strong>Range:</strong> {{ spell.range }}</p>
+                                <p><strong>Components:</strong> {{ spell.components }}{% if spell.material %} ({{ spell.material }}){% endif %}</p>
+                                <p><strong>Duration:</strong> {{ spell.duration }} {% if spell.concentration %}(Concentration){% endif %}</p>
+                                <div class="spell-description">
+                                    {% set spell_desc_list = spell.description|fromjson if spell.description.startswith('[') else [spell.description] %}
+                                    {% for desc_paragraph in spell_desc_list %}
+                                        <p>{{ desc_paragraph }}</p>
+                                    {% endfor %}
+                                </div>
+                                {% if spell.higher_level %}
+                                <p><strong>At Higher Levels:</strong> 
+                                    {% set spell_hl_list = spell.higher_level|fromjson if spell.higher_level.startswith('[') else [spell.higher_level] %}
+                                    {% for hl_paragraph in spell_hl_list %}
+                                         {{ hl_paragraph }}
+                                    {% endfor %}
+                                </p>
+                                {% endif %}
+                            </div>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        {% else %} {# Leveled Spells L > 0 #}
+            {% if spell_slots_data[L] or spells_by_level[L] %}
+                <h4 class="spell-level-header">
+                    Level {{ L }} Spells
+                    {% if spell_slots_data[L] %}
+                        (Slots: <span id="slots-used-L{{L}}">{{ spell_slots_data[L].slots_used }}</span>/<span id="slots-total-L{{L}}">{{ spell_slots_data[L].slots_total }}</span>)
+                    {% endif %}
+                </h4>
+                
+                {% if spell_slots_data[L] %}
+                    <div class="spell-slot-tracker" id="slot-tracker-L{{L}}">
+                        {% for i in range(spell_slots_data[L].slots_total) %}
+                            <div class="spell-slot-checkbox {% if i < spell_slots_data[L].slots_used %}used{% endif %}" 
+                                 data-level="{{ L }}" 
+                                 data-slot-index="{{ i }}" 
+                                 data-character-id="{{ character.id }}">
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                {% if spells_by_level[L] %}
+                    <ul class="spells-list">
+                        {% for spell in spells_by_level[L] %}
+                            <li class="spell-list-item" data-spell-index="{{ spell.index }}">
+                                <span class="spell-name">{{ spell.name }}</span>
+                                <div class="spell-card-details" style="display: none; position: absolute; border: 1px solid black; background-color: white; padding: 10px; width: 300px; z-index: 100;">
+                                    <h4>{{ spell.name }}</h4>
+                                    <p><em>{{ spell.school }} {{ L }}-level {% if spell.ritual %}(ritual){% endif %}</em></p>
+                                    <p><strong>Casting Time:</strong> {{ spell.casting_time }}</p>
+                                    <p><strong>Range:</strong> {{ spell.range }}</p>
+                                    <p><strong>Components:</strong> {{ spell.components }}{% if spell.material %} ({{ spell.material }}){% endif %}</p>
+                                    <p><strong>Duration:</strong> {{ spell.duration }} {% if spell.concentration %}(Concentration){% endif %}</p>
+                                    <div class="spell-description">
+                                        {% set spell_desc_list = spell.description|fromjson if spell.description.startswith('[') else [spell.description] %}
+                                        {% for desc_paragraph in spell_desc_list %}
+                                            <p>{{ desc_paragraph }}</p>
+                                        {% endfor %}
+                                    </div>
+                                    {% if spell.higher_level %}
+                                    <p><strong>At Higher Levels:</strong> 
+                                        {% set spell_hl_list = spell.higher_level|fromjson if spell.higher_level.startswith('[') else [spell.higher_level] %}
+                                        {% for hl_paragraph in spell_hl_list %}
+                                             {{ hl_paragraph }}
+                                        {% endfor %}
+                                    </p>
+                                    {% endif %}
+                                </div>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+            {% endif %}
+        {% endif %}
+    {% endfor %}
+    <!-- End Spells Section -->
 
 
     <button id="close-sheet-button">Close</button>
@@ -185,9 +283,7 @@
         <div class="modal-content">
             <span class="close-modal-btn">&times;</span>
             <h3 id="modal-title">Add New Item</h3>
-            {# The form action will be set by JavaScript for edit, or use a separate route for add if not using AJAX #}
-            {# For now, the form inside the modal uses the same add_item_to_inventory route #}
-            <form id="item-form" method="POST" action="{{ url_for('main.add_item_to_inventory', character_id=character.id) }}">
+            <form id="item-form" method="POST"> {# Action set by JS #}
                 <input type="hidden" id="edit-item-id" name="edit_item_id"> 
                 <div>
                     <label for="modal-item-name">Name:</label>
@@ -234,8 +330,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const rollButtons = document.querySelectorAll('.roll-button');
     const characterId = {{ character.id }};
     const initialLogEntries = {{ log_entries|tojson }};
+    const csrfToken = '{{ csrf_token() if csrf_token else "" }}'; // For AJAX POST
 
-    let ellipsisInterval = null; // Declare globally in this scope for clearInterval
+    let ellipsisInterval = null; 
 
     function appendMessage(text, sender, messageId = null) {
         const messageDiv = document.createElement('div');
@@ -245,13 +342,13 @@ document.addEventListener('DOMContentLoaded', function() {
         if (sender === 'user') {
             messageDiv.classList.add('message-user');
             messageDiv.innerHTML = 'You: ' + formattedText;
-        } else { // 'dm' or 'system' for thinking indicator
-            messageDiv.classList.add('message-dm'); // Style thinking indicator as DM message
-            messageDiv.innerHTML = (sender === 'dm' ? 'DM: ' : '') + formattedText;
+        } else { // 'dm' or 'system'
+            messageDiv.classList.add('message-dm'); 
+            messageDiv.innerHTML = (sender === 'dm' ? 'DM: ' : (sender === 'system' ? 'System: ' : '')) + formattedText;
         }
         chatMessagesDiv.appendChild(messageDiv);
         chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
-        return messageDiv; // Return the created element
+        return messageDiv; 
     }
 
     async function sendMessage(messageContent, isSystemMessageNoEcho = false) {
@@ -277,17 +374,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         if (textForBackend === undefined || textForBackend === null) { 
-            // This case should not be reached if called from event listeners or initial load.
-            // It implies messageContent was null/undefined and isSystemMessageNoEcho was true,
-            // or initialLogEntries was not empty but messageContent was null.
             console.error("sendMessage: textForBackend is undefined or null. Aborting.");
             return; 
         }
 
         let thinkingIndicatorElement = null;
-        // Show thinking indicator only for user-initiated actions that send to backend
-        // (typed messages or dice rolls which set isSystemMessageNoEcho=true and have content)
-        // and not for the automatic __START_ADVENTURE__ on empty log load.
         const shouldShowThinkingIndicator = (textForBackend !== "__START_ADVENTURE__" || (messageContent !== null && textForBackend === "__START_ADVENTURE__")) && textForBackend;
 
 
@@ -306,7 +397,7 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const response = await fetch(`/send_chat_message/${characterId}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                 body: JSON.stringify({ message: textForBackend }) 
             });
 
@@ -329,7 +420,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 appendMessage(data.reply, 'dm');
             }
         } catch (error) {
-            if (ellipsisInterval) clearInterval(ellipsisInterval); // Ensure cleanup on network error too
+            if (ellipsisInterval) clearInterval(ellipsisInterval); 
             if (thinkingIndicatorElement) thinkingIndicatorElement.remove();
             chatInput.disabled = false;
             sendButton.disabled = false;
@@ -349,31 +440,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
     characterSheetButton.addEventListener('click', function() {
         if (characterSheetOverlay.style.display === 'none' || characterSheetOverlay.style.display === '') {
-            // Show the overlay first to get its dimensions
             characterSheetOverlay.style.display = 'block';
             
             const buttonRect = characterSheetButton.getBoundingClientRect();
             const overlayWidth = characterSheetOverlay.offsetWidth;
-            const offsetY = 5; // 5px gap below the button
+            const offsetY = 5; 
 
-            // Calculate top and left for top-right corner alignment
             let newTop = buttonRect.bottom + offsetY;
             let newLeft = buttonRect.right - overlayWidth;
 
-            // Ensure it's not off-screen (simple boundary check)
             if (newTop + characterSheetOverlay.offsetHeight > window.innerHeight) {
                 newTop = window.innerHeight - characterSheetOverlay.offsetHeight - offsetY;
             }
             if (newLeft < 0) {
                 newLeft = 0;
             }
-             if (newTop < 0) { // Ensure top is not off-screen upwards
+             if (newTop < 0) { 
                 newTop = offsetY;
             }
 
             characterSheetOverlay.style.top = newTop + 'px';
             characterSheetOverlay.style.left = newLeft + 'px';
-            characterSheetOverlay.style.transform = 'none'; // Override CSS centering
+            characterSheetOverlay.style.transform = 'none'; 
         } else {
             characterSheetOverlay.style.display = 'none';
         }
@@ -392,7 +480,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             fetch("{{ url_for('main.roll_dice_from_sheet') }}", {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                 body: JSON.stringify({
                     roll_name: rollName, dice_formula: diceFormula, modifier: modifier
                 })
@@ -415,7 +503,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 appendMessage(rollDetails, 'user'); 
                 characterSheetOverlay.style.display = 'none';
-                sendMessage(rollDetails, true); // Send to AI, isSystemMessageNoEcho = true
+                sendMessage(rollDetails, true); 
             })
             .catch(error => {
                 console.error('Dice roll error:', error);
@@ -427,13 +515,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (initialLogEntries && initialLogEntries.length > 0) {
         initialLogEntries.forEach(entry => appendMessage(entry.text, entry.sender));
     } else {
-        // Call sendMessage with null to trigger the __START_ADVENTURE__ if log is empty.
-        // The "thinking" indicator logic in sendMessage will decide if it should be shown.
-        // Based on current logic, it won't show for this initial automatic call.
         sendMessage(null, false); 
     }
 
-    // Draggable Character Sheet Logic
     if (sheetDragHandle) {
         let isDragging = false;
         let offsetX, offsetY;
@@ -462,7 +546,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Modal JavaScript
     const itemModal = document.getElementById('item-modal');
     const showAddItemModalBtn = document.getElementById('show-add-item-modal-btn');
     const closeModalBtn = itemModal.querySelector('.close-modal-btn');
@@ -474,7 +557,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const modalItemDescriptionInput = document.getElementById('modal-item-description');
     const saveItemBtn = document.getElementById('save-item-btn'); 
 
-    // Coinage Auto-Update Elements
     const goldQuantityInput = document.getElementById('gold_quantity');
     const silverQuantityInput = document.getElementById('silver_quantity');
     const copperQuantityInput = document.getElementById('copper_quantity');
@@ -508,7 +590,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRFToken': '{{ csrf_token() if csrf_token else "" }}' // Add CSRF token if your app uses it
+                    'X-CSRFToken': csrfToken
                 },
                 body: JSON.stringify({
                     gold_quantity: gold,
@@ -542,61 +624,28 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    const editItemBtns = document.querySelectorAll('.edit-item-btn'); 
 
-    function openAddItemModal() {
-        modalTitle.textContent = 'Add New Item';
-        itemForm.action = "{{ url_for('main.add_item_to_inventory', character_id=character.id) }}"; // Set action for adding
-        editItemIdInput.value = ''; // Clear edit ID
-        modalItemNameInput.value = '';
-        modalItemQuantityInput.value = '1';
-        modalItemDescriptionInput.value = '';
-        itemModal.style.display = 'block';
-        modalItemNameInput.focus();
-    }
-
-    function closeModal() {
-        itemModal.style.display = 'none';
-    }
-
-    if (showAddItemModalBtn) { // Check if the button exists on the page
-        showAddItemModalBtn.addEventListener('click', openAddItemModal);
-    }
-    
-    if (closeModalBtn) {
-        closeModalBtn.addEventListener('click', closeModal);
-    }
-
-    window.addEventListener('click', function(event) {
-        if (event.target === itemModal) {
-            closeModal();
-        }
-    });
-    
-    // Placeholder for itemForm submit logic (to be handled with AJAX later)
-    // itemForm.addEventListener('submit', function(event) {
-    //     event.preventDefault(); // Prevent default POST for now if using AJAX
-    //     console.log('Form submitted via modal (AJAX to be implemented)');
-    //     // In next step: gather form data, send via fetch, handle response, close modal.
-    const editItemBtns = document.querySelectorAll('.edit-item-btn'); // Get all edit buttons
-
-    // Function to dynamically update or add an item to the sheet
     function dynamicallyUpdateOrAddItemToSheet(itemData, isNew) {
-        const itemsListUl = document.querySelector('.equipment-list ul'); // Assuming this is where items are listed
-        if (!itemsListUl) return;
+        const itemsListUl = document.querySelector('.inventory-column .equipment-list ul'); 
+        if (!itemsListUl) {
+            console.error("Items UL not found for dynamic update.");
+            return;
+        }
 
         let listItem = itemsListUl.querySelector(`li[data-item-row-id="${itemData.id}"]`);
 
-        if (isNew && !listItem) { // Add new item
+        if (isNew && !listItem) { 
             listItem = document.createElement('li');
             listItem.style.display = 'flex';
             listItem.style.justifyContent = 'space-between';
             listItem.style.alignItems = 'center';
             listItem.style.marginBottom = '4px';
-            listItem.setAttribute('data-item-row-id', itemData.id); // For future updates
+            listItem.setAttribute('data-item-row-id', itemData.id); 
             itemsListUl.appendChild(listItem);
         }
         
-        if (listItem) { // Update existing or newly created
+        if (listItem) { 
             let descriptionHtml = '';
             if (itemData.description && itemData.description !== "Starting equipment" && itemData.description !== "From background") {
                 descriptionHtml = `<small><em>- ${itemData.description}</em></small>`;
@@ -621,7 +670,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     </form>
                 </div>
             `;
-            // Re-attach listener for the new/updated edit button within this item
             const newEditBtn = listItem.querySelector('.edit-item-btn');
             if (newEditBtn) {
                 newEditBtn.addEventListener('click', function() {
@@ -644,12 +692,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function openEditItemModal(itemData) {
         modalTitle.textContent = 'Edit Item';
-        // Correctly use itemData which is already the dataset
         editItemIdInput.value = itemData.itemId; 
         modalItemNameInput.value = itemData.itemName;
         modalItemQuantityInput.value = itemData.itemQuantity;
         modalItemDescriptionInput.value = itemData.itemDescription;
-        // Placeholder action for edit - will be handled by AJAX
         itemForm.action = `/character/${characterId}/inventory/edit_item/${itemData.itemId}`; 
         itemModal.style.display = 'block';
         modalItemNameInput.focus();
@@ -665,7 +711,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     editItemBtns.forEach(btn => {
         btn.addEventListener('click', function() {
-            openEditItemModal(this.dataset); // Pass dataset directly
+            openEditItemModal(this.dataset); 
         });
     });
     
@@ -684,18 +730,18 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const formData = new FormData(itemForm);
         const data = Object.fromEntries(formData.entries());
-        const itemId = data.edit_item_id; // from hidden input
+        const itemId = data.edit_item_id; 
 
-        let url = itemForm.action; // Action is set when modal opens
+        let url = itemForm.action; 
         let method = 'POST';
 
-        if (itemId) { // This is an EDIT operation
-            url = `/character/${characterId}/inventory/edit_item/${itemId}`; // Construct edit URL
+        if (itemId) { 
+            url = `/character/${characterId}/inventory/edit_item/${itemId}`; 
             fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRFToken': '{{ csrf_token() if csrf_token else "" }}'
+                    'X-CSRFToken': csrfToken
                 },
                 body: JSON.stringify({
                     item_name: data.item_name,
@@ -711,7 +757,7 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .then(responseData => {
                 if (responseData.status === 'success') {
-                    dynamicallyUpdateOrAddItemToSheet(responseData.item, false); // isNew = false for edit
+                    dynamicallyUpdateOrAddItemToSheet(responseData.item, false); 
                     closeModal();
                     alert(responseData.message || 'Item updated successfully!');
                 } else {
@@ -722,13 +768,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('Error updating item:', error);
                 alert('Failed to update item. ' + (error.message || ''));
             });
-        } else { // This is an ADD operation
-            url = "{{ url_for('main.add_item_to_inventory', character_id=character.id) }}"; // Ensure add URL
+        } else { 
+            url = "{{ url_for('main.add_item_to_inventory', character_id=character.id) }}"; 
             fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRFToken': '{{ csrf_token() if csrf_token else "" }}' // If CSRF is used, otherwise remove
+                    'X-CSRFToken': csrfToken 
                 },
                 body: JSON.stringify({
                     item_name: data.item_name,
@@ -744,10 +790,8 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .then(responseData => {
                 if (responseData.status === 'success') {
-                    // Assuming server sends back the full item object including its new ID
                     dynamicallyUpdateOrAddItemToSheet(responseData.item, true); 
                     closeModal();
-                    // For a flash-like message without full page reload, you'd need a JS solution
                     alert(responseData.message || 'Item added successfully!'); 
                 } else {
                     alert(responseData.message || 'Error adding item.');
@@ -759,6 +803,208 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     });
+
+    // --- Spell Card Hover/Click Logic ---
+    document.querySelectorAll('.spell-name').forEach(item => {
+        let spellCard; // Define here to be accessible in both listeners
+        let enterTimeout; // For delayed appearance
+        let leaveTimeout; // For delayed disappearance
+
+        item.addEventListener('mouseenter', event => {
+            clearTimeout(leaveTimeout); // Cancel any pending hide
+            enterTimeout = setTimeout(() => {
+                // Find the sibling .spell-card-details
+                spellCard = event.target.closest('.spell-list-item').querySelector('.spell-card-details');
+                if (spellCard) {
+                    spellCard.style.display = 'block';
+                    // Position spell card
+                    const rect = event.target.getBoundingClientRect();
+                    const sheetRect = characterSheetOverlay.getBoundingClientRect();
+
+                    // Calculate desired position relative to the viewport
+                    let cardTop = rect.top;
+                    let cardLeft = rect.right + 10; // 10px to the right
+
+                    // Adjust if going off-screen right
+                    if (cardLeft + spellCard.offsetWidth > window.innerWidth) {
+                        cardLeft = rect.left - spellCard.offsetWidth - 10; // Move to left
+                    }
+                    // Adjust if going off-screen bottom
+                    if (cardTop + spellCard.offsetHeight > window.innerHeight) {
+                        cardTop = window.innerHeight - spellCard.offsetHeight - 5; // Align to bottom
+                    }
+                    // Adjust if going off-screen top
+                    if (cardTop < 0) {
+                        cardTop = 5; // Align to top
+                    }
+                     // Ensure it's within the character sheet overlay if possible
+                    if (cardLeft < sheetRect.left) cardLeft = sheetRect.left + 5;
+                    if (cardLeft + spellCard.offsetWidth > sheetRect.right) cardLeft = sheetRect.right - spellCard.offsetWidth - 5;
+                    if (cardTop < sheetRect.top) cardTop = sheetRect.top + 5;
+                    if (cardTop + spellCard.offsetHeight > sheetRect.bottom) cardTop = sheetRect.bottom - spellCard.offsetHeight - 5;
+
+
+                    spellCard.style.left = cardLeft + 'px';
+                    spellCard.style.top = cardTop + 'px';
+                    spellCard.style.zIndex = '105'; // Ensure above other sheet elements
+                }
+            }, 150); // Small delay before showing
+        });
+
+        item.addEventListener('mouseleave', event => {
+            clearTimeout(enterTimeout); // Cancel any pending show
+            leaveTimeout = setTimeout(() => {
+                // spellCard might not be set if mouseleave happens before enterTimeout
+                const currentSpellCard = event.target.closest('.spell-list-item').querySelector('.spell-card-details');
+                if (currentSpellCard) {
+                    currentSpellCard.style.display = 'none';
+                }
+            }, 100); // Small delay before hiding
+        });
+        
+        // Keep card visible if mouse moves onto it
+        const spellListItem = item.closest('.spell-list-item');
+        if (spellListItem) {
+            const spellCardDetails = spellListItem.querySelector('.spell-card-details');
+            if (spellCardDetails) {
+                spellCardDetails.addEventListener('mouseenter', () => {
+                    clearTimeout(leaveTimeout);
+                });
+                spellCardDetails.addEventListener('mouseleave', () => {
+                     leaveTimeout = setTimeout(() => {
+                        spellCardDetails.style.display = 'none';
+                    }, 100);
+                });
+            }
+        }
+    });
+
+    // --- Spell Slot Ticking ---
+    document.querySelectorAll('.spell-slot-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('click', async function() {
+            const spellLevel = this.dataset.level;
+            const charId = this.dataset.characterId; // Should be the same as global `characterId`
+            const isUsed = this.classList.contains('used');
+            const url = isUsed ?
+                `/character/${charId}/spellslot/regain/${spellLevel}/1` :
+                `/character/${charId}/spellslot/use/${spellLevel}`;
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
+                });
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    this.classList.toggle('used');
+                    // Update the displayed counts
+                    const usedSlotsSpan = document.getElementById(`slots-used-L${spellLevel}`);
+                    const totalSlotsSpan = document.getElementById(`slots-total-L${spellLevel}`);
+                    if (usedSlotsSpan && totalSlotsSpan) {
+                        usedSlotsSpan.textContent = data.slots_used;
+                        // totalSlotsSpan.textContent = data.slots_total; // Total usually doesn't change here
+                    }
+                } else {
+                    alert(data.message || 'Failed to update spell slot.');
+                    console.error("Spell slot update error:", data.message);
+                }
+            } catch (error) {
+                alert('Error communicating with server for spell slot update.');
+                console.error('Fetch error for spell slot:', error);
+            }
+        });
+    });
+
+    // --- Rest Button Functionality ---
+    const shortRestButton = document.getElementById('short-rest-button');
+    const longRestButton = document.getElementById('long-rest-button');
+    const restStatusMessage = document.getElementById('rest-status-message');
+    let restTimeout = null;
+
+
+    if (shortRestButton) {
+        shortRestButton.addEventListener('click', async function() {
+            const charId = this.dataset.characterId;
+            restStatusMessage.textContent = 'Taking short rest...';
+            restStatusMessage.style.color = 'orange';
+            if (restTimeout) clearTimeout(restTimeout);
+
+            try {
+                const response = await fetch(`/character/${charId}/rest/short`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
+                });
+                const data = await response.json();
+                if (response.ok && data.status === 'success') {
+                    appendMessage(data.message, 'system'); // Append to main chat
+                    restStatusMessage.textContent = 'Short rest taken.';
+                    restStatusMessage.style.color = 'green';
+                } else {
+                    restStatusMessage.textContent = data.message || 'Short rest failed.';
+                    restStatusMessage.style.color = 'red';
+                    console.error("Short rest error:", data.message);
+                }
+            } catch (error) {
+                restStatusMessage.textContent = 'Error during short rest.';
+                restStatusMessage.style.color = 'red';
+                console.error('Fetch error for short rest:', error);
+            } finally {
+                 restTimeout = setTimeout(() => { restStatusMessage.textContent = ''; }, 3000);
+            }
+        });
+    }
+
+    if (longRestButton) {
+        longRestButton.addEventListener('click', async function() {
+            const charId = this.dataset.characterId;
+            restStatusMessage.textContent = 'Taking long rest...';
+            restStatusMessage.style.color = 'orange';
+            if (restTimeout) clearTimeout(restTimeout);
+
+            try {
+                const response = await fetch(`/character/${charId}/rest/long`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
+                });
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    appendMessage(data.message, 'system'); // Append to main chat
+                    restStatusMessage.textContent = 'Long rest taken. Slots refreshed.';
+                    restStatusMessage.style.color = 'green';
+
+                    if (data.refreshed_slots && data.all_slots_data) {
+                        data.all_slots_data.forEach(slotInfo => {
+                            const level = slotInfo.spell_level;
+                            const usedSlotsSpan = document.getElementById(`slots-used-L${level}`);
+                            if (usedSlotsSpan) {
+                                usedSlotsSpan.textContent = slotInfo.slots_used; // Should be 0
+                            }
+                            // Update individual checkboxes
+                            const slotTrackerDiv = document.getElementById(`slot-tracker-L${level}`);
+                            if (slotTrackerDiv) {
+                                slotTrackerDiv.querySelectorAll('.spell-slot-checkbox').forEach(checkbox => {
+                                    checkbox.classList.remove('used');
+                                });
+                            }
+                        });
+                    }
+                } else {
+                    restStatusMessage.textContent = data.message || 'Long rest failed.';
+                     restStatusMessage.style.color = 'red';
+                    console.error("Long rest error:", data.message);
+                }
+            } catch (error) {
+                restStatusMessage.textContent = 'Error during long rest.';
+                restStatusMessage.style.color = 'red';
+                console.error('Fetch error for long rest:', error);
+            } finally {
+                restTimeout = setTimeout(() => { restStatusMessage.textContent = ''; }, 3000);
+            }
+        });
+    }
+
 });
 </script>
 {% endblock %}
