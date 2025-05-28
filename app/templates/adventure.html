@@ -200,18 +200,17 @@
                                 <p><strong>Components:</strong> {{ spell.components }}{% if spell.material %} ({{ spell.material }}){% endif %}</p>
                                 <p><strong>Duration:</strong> {{ spell.duration }} {% if spell.concentration %}(Concentration){% endif %}</p>
                                 <div class="spell-description">
-                                    {% set spell_desc_list = spell.description|fromjson if spell.description.startswith('[') else [spell.description] %}
-                                    {% for desc_paragraph in spell_desc_list %}
+                                    {% for desc_paragraph in spell.description|fromjson %}
                                         <p>{{ desc_paragraph }}</p>
                                     {% endfor %}
                                 </div>
                                 {% if spell.higher_level %}
-                                <p><strong>At Higher Levels:</strong> 
-                                    {% set spell_hl_list = spell.higher_level|fromjson if spell.higher_level.startswith('[') else [spell.higher_level] %}
-                                    {% for hl_paragraph in spell_hl_list %}
-                                         {{ hl_paragraph }}
+                                <p><strong>At Higher Levels:</strong></p>
+                                <div class="spell-higher-level">
+                                    {% for hl_paragraph in spell.higher_level|fromjson %}
+                                        <p>{{ hl_paragraph }}</p>
                                     {% endfor %}
-                                </p>
+                                </div>
                                 {% endif %}
                             </div>
                         </li>
@@ -252,18 +251,17 @@
                                     <p><strong>Components:</strong> {{ spell.components }}{% if spell.material %} ({{ spell.material }}){% endif %}</p>
                                     <p><strong>Duration:</strong> {{ spell.duration }} {% if spell.concentration %}(Concentration){% endif %}</p>
                                     <div class="spell-description">
-                                        {% set spell_desc_list = spell.description|fromjson if spell.description.startswith('[') else [spell.description] %}
-                                        {% for desc_paragraph in spell_desc_list %}
+                                    {% for desc_paragraph in spell.description|fromjson %}
                                             <p>{{ desc_paragraph }}</p>
                                         {% endfor %}
                                     </div>
                                     {% if spell.higher_level %}
-                                    <p><strong>At Higher Levels:</strong> 
-                                        {% set spell_hl_list = spell.higher_level|fromjson if spell.higher_level.startswith('[') else [spell.higher_level] %}
-                                        {% for hl_paragraph in spell_hl_list %}
-                                             {{ hl_paragraph }}
+                                <p><strong>At Higher Levels:</strong></p>
+                                <div class="spell-higher-level">
+                                    {% for hl_paragraph in spell.higher_level|fromjson %}
+                                        <p>{{ hl_paragraph }}</p>
                                         {% endfor %}
-                                    </p>
+                                </div>
                                     {% endif %}
                                 </div>
                             </li>

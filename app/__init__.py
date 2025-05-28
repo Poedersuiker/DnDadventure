@@ -1,3 +1,4 @@
+import json # Added for fromjson filter
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
@@ -106,6 +107,15 @@ def load_and_initialize_settings(current_app):
 # Call the function after db is initialized and app config is loaded.
 # This ensures it runs when the app factory is executed.
 load_and_initialize_settings(app)
+
+# Custom Jinja Filter for JSON
+def from_json_filter(value):
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return [] # Return empty list on error, suitable for spell descriptions
+
+app.jinja_env.filters['fromjson'] = from_json_filter
 
 
 # Import and register blueprints
