@@ -124,62 +124,62 @@ def populate_classes_data():
             # spell_slots_by_level_map remains {}
         # --- End of levels data processing ---
 
-            # Proficiencies
-            all_proficiencies = class_data.get('proficiencies', [])
-            proficiencies_armor = get_proficiencies(all_proficiencies, ['armor', 'shield'])
-            proficiencies_weapons = get_proficiencies(all_proficiencies, ['weapon']) # General term 'weapon'
-            proficiencies_tools = get_proficiencies(all_proficiencies, ['artisans-tools', 'musical-instruments', 'kit', 'vehicle', 'tool'])
+        # Proficiencies
+        all_proficiencies = class_data.get('proficiencies', [])
+        proficiencies_armor = get_proficiencies(all_proficiencies, ['armor', 'shield'])
+        proficiencies_weapons = get_proficiencies(all_proficiencies, ['weapon']) # General term 'weapon'
+        proficiencies_tools = get_proficiencies(all_proficiencies, ['artisans-tools', 'musical-instruments', 'kit', 'vehicle', 'tool'])
 
 
-            # Skill proficiency choices
-            # This requires careful parsing of 'proficiency_choices'
-            skill_prof_options_list = []
-            skill_prof_choose_count = 0
-            for choice_group in class_data.get('proficiency_choices', []):
-                if choice_group.get('desc','').lower().startswith('skills'): # Check description or type
-                    skill_prof_choose_count = choice_group.get('choose', 0)
-                    for option in choice_group.get('from', {}).get('options', []):
-                        if option.get('item', {}).get('index','').startswith('skill-'):
-                             skill_prof_options_list.append(option['item'].get('name'))
-                    break # Assuming one main skill choice group
+        # Skill proficiency choices
+        # This requires careful parsing of 'proficiency_choices'
+        skill_prof_options_list = []
+        skill_prof_choose_count = 0
+        for choice_group in class_data.get('proficiency_choices', []):
+            if choice_group.get('desc','').lower().startswith('skills'): # Check description or type
+                skill_prof_choose_count = choice_group.get('choose', 0)
+                for option in choice_group.get('from', {}).get('options', []):
+                    if option.get('item', {}).get('index','').startswith('skill-'):
+                            skill_prof_options_list.append(option['item'].get('name'))
+                break # Assuming one main skill choice group
 
-            # Starting Equipment - already a list of objects, can be directly JSON dumped
-            starting_equipment_json = json.dumps(class_data.get('starting_equipment', []))
-            # Also consider starting_equipment_options for more complex choices
-            # For now, sticking to the simpler `starting_equipment` field.
+        # Starting Equipment - already a list of objects, can be directly JSON dumped
+        starting_equipment_json = json.dumps(class_data.get('starting_equipment', []))
+        # Also consider starting_equipment_options for more complex choices
+        # For now, sticking to the simpler `starting_equipment` field.
 
-            # can_prepare_spells
-            preparer_classes = ["Wizard", "Cleric", "Druid", "Paladin"]
-            can_prepare = class_data.get('name') in preparer_classes
+        # can_prepare_spells
+        preparer_classes = ["Wizard", "Cleric", "Druid", "Paladin"]
+        can_prepare = class_data.get('name') in preparer_classes
 
-            try:
-                new_class = Class(
-                    name=class_data['name'],
-                    hit_die="d" + str(class_data.get('hit_die', 0)), # API gives number, model expects "d8"
-                    proficiencies_armor=json.dumps(proficiencies_armor),
-                    proficiencies_weapons=json.dumps(proficiencies_weapons),
-                    proficiencies_tools=json.dumps(proficiencies_tools),
-                    proficiency_saving_throws=json.dumps([st.get('name') for st in class_data.get('saving_throws', [])]),
-                    skill_proficiencies_option_count=skill_prof_choose_count,
-                    skill_proficiencies_options=json.dumps(skill_prof_options_list),
-                    starting_equipment=starting_equipment_json, # Storing the direct equipment list
-                    spellcasting_ability=spellcasting_data.get('spellcasting_ability', {}).get('name') if spellcasting_data else None,
-                    spell_slots_by_level=json.dumps(spell_slots_by_level_map), # Updated
-                    # Placeholders for cantrips and spells known per level, as per instructions
-                    cantrips_known_by_level=json.dumps({}), # Placeholder
-                    spells_known_by_level=json.dumps({}), # Placeholder
-                    can_prepare_spells=can_prepare
-                )
-                db.session.add(new_class)
-                print(f"Added '{new_class.name}' to session.")
-            except KeyError as e:
-                print(f"Missing critical key for class {class_index}: {e}. Skipping this class.")
-                continue
-            except Exception as e:
-                print(f"An unexpected error occurred processing {class_index}: {e}")
-                continue
-        
         try:
+            new_class = Class(
+                name=class_data['name'],
+                hit_die="d" + str(class_data.get('hit_die', 0)), # API gives number, model expects "d8"
+                proficiencies_armor=json.dumps(proficiencies_armor),
+                proficiencies_weapons=json.dumps(proficiencies_weapons),
+                proficiencies_tools=json.dumps(proficiencies_tools),
+                proficiency_saving_throws=json.dumps([st.get('name') for st in class_data.get('saving_throws', [])]),
+                skill_proficiencies_option_count=skill_prof_choose_count,
+                skill_proficiencies_options=json.dumps(skill_prof_options_list),
+                starting_equipment=starting_equipment_json, # Storing the direct equipment list
+                spellcasting_ability=spellcasting_data.get('spellcasting_ability', {}).get('name') if spellcasting_data else None,
+                spell_slots_by_level=json.dumps(spell_slots_by_level_map), # Updated
+                # Placeholders for cantrips and spells known per level, as per instructions
+                cantrips_known_by_level=json.dumps({}), # Placeholder
+                spells_known_by_level=json.dumps({}), # Placeholder
+                can_prepare_spells=can_prepare
+            )
+            db.session.add(new_class)
+            print(f"Added '{new_class.name}' to session.")
+        except KeyError as e:
+            print(f"Missing critical key for class {class_index}: {e}. Skipping this class.")
+            continue
+        except Exception as e:
+            print(f"An unexpected error occurred processing {class_index}: {e}")
+            continue
+    
+        try: # This try is for the final db.session.commit()
             db.session.commit()
             print("\nAll new classes processed and session committed to database.")
         except Exception as e:
