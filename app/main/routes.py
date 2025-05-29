@@ -2084,8 +2084,19 @@ def level_up_apply(character_id):
         spell_slots_snapshot=json.dumps(new_spell_slots_snapshot_dict), 
         created_at=datetime.utcnow()
     )
-    
+
+    # Update the main Character object with new HP, Max HP, and AC
+    character.hp = new_level_data.hp
+    character.max_hp = new_level_data.max_hp
+    # Only update AC if it's actually changing.
+    # For now, level up process doesn't change AC, it's taken from current_level_entry.armor_class.
+    # If future level up steps can change AC, this line should be:
+    # character.armor_class = new_level_data.armor_class
+    # However, to match the new_level_data, which currently just copies AC from previous level:
+    character.armor_class = new_level_data.armor_class # This will reflect the AC stored for the new level.
+
     db.session.add(new_level_data)
+    # character object is already in the session, so changes will be committed.
     try:
         db.session.commit()
         session.pop('level_up_data', None) 

@@ -1421,36 +1421,47 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateFeaturesDisplay(featuresGainedContent) {
         if (featuresDisplayDiv) {
-            if (featuresGainedContent && featuresGainedContent.trim() !== "") {
-                try {
-                    const features = JSON.parse(featuresGainedContent); // Assuming it's a JSON string of an array of objects or strings
-                    if (Array.isArray(features)) {
-                        featuresDisplayDiv.innerHTML = ''; 
-                        if (features.length > 0) {
-                            const ul = document.createElement('ul');
-                            features.forEach(feature => {
-                                const li = document.createElement('li');
-                                if (typeof feature === 'string') {
-                                    li.textContent = feature;
-                                } else if (typeof feature === 'object' && feature.name) {
-                                    li.textContent = feature.name + (feature.description ? `: ${feature.description}` : '');
-                                } else {
-                                    li.textContent = JSON.stringify(feature);
-                                }
-                                ul.appendChild(li);
-                            });
-                            featuresDisplayDiv.appendChild(ul);
-                        } else {
-                             featuresDisplayDiv.innerHTML = '<p>No specific features listed for this level.</p>';
-                        }
-                    } else { // Not an array, display as text
-                        featuresDisplayDiv.textContent = featuresGainedContent;
-                    }
-                } catch (e) { // Not JSON, display as plain text
-                    featuresDisplayDiv.textContent = featuresGainedContent;
+            let featuresArray;
+            if (typeof featuresGainedContent === 'string') {
+                if (featuresGainedContent.trim() === "") {
+                    featuresDisplayDiv.innerHTML = '<p>No specific features recorded for this level.</p>';
+                    return;
                 }
+                try {
+                    featuresArray = JSON.parse(featuresGainedContent);
+                } catch (e) {
+                    // If parsing still fails, treat as plain text or error
+                    console.error("Error parsing featuresGainedContent:", e);
+                    featuresDisplayDiv.textContent = featuresGainedContent; // Display as is, or an error message
+                    return;
+                }
+            } else if (Array.isArray(featuresGainedContent)) {
+                featuresArray = featuresGainedContent; // It's already an array
             } else {
-                featuresDisplayDiv.innerHTML = '<p>No specific features recorded for this level.</p>';
+                // Handle cases where it's neither a string nor an array (e.g., null, undefined, other object types)
+                featuresDisplayDiv.innerHTML = '<p>No specific features recorded for this level (or unexpected data format).</p>';
+                return;
+            }
+
+            if (Array.isArray(featuresArray) && featuresArray.length > 0) {
+                featuresDisplayDiv.innerHTML = ''; // Clear previous content
+                const ul = document.createElement('ul');
+                featuresArray.forEach(feature => {
+                    const li = document.createElement('li');
+                    if (typeof feature === 'string') {
+                        li.textContent = feature;
+                    } else if (typeof feature === 'object' && feature !== null && feature.name) { // Check for null too
+                        li.textContent = feature.name + (feature.description ? `: ${feature.description}` : '');
+                    } else if (typeof feature === 'object' && feature !== null) { // Generic object display
+                        li.textContent = JSON.stringify(feature);
+                    } else {
+                        li.textContent = String(feature); // Fallback for other types
+                    }
+                    ul.appendChild(li);
+                });
+                featuresDisplayDiv.appendChild(ul);
+            } else {
+                featuresDisplayDiv.innerHTML = '<p>No specific features listed for this level.</p>';
             }
         }
     }
