@@ -6,7 +6,12 @@
         <h3>{{ character.name }}</h3>
     </div>
     <div class="sheet-subheader">
-        <p>{{ character.race.name }} Lvl {{ character.level }} {{ character.char_class.name }}</p>
+        <p>
+            <button id="prev-level-button" class="level-nav-button" style="display: none; margin-right: 5px;">&lt;</button>
+            {{ character.race.name }} Lvl <span id="displayed-level-number">{{ current_actual_level }}</span> {{ character.char_class.name }}
+            <button id="next-level-button" class="level-nav-button" style="display: none; margin-left: 5px;">&gt;</button>
+            <button id="level-up-button" class="button-small" style="display: none; margin-left: 15px; padding: 3px 8px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">Level Up!</button>
+        </p>
     </div>
 
     <div class="sheet-details">
@@ -15,16 +20,16 @@
     </div>
 
     <div class="main-attributes">
-        <div class="attribute-box"><div>Prof. Bonus</div><div>+{{ proficiency_bonus }}</div></div>
-        <div class="attribute-box"><div>HP</div><div>{{ character.hp }}/{{ character.max_hp }}</div></div>
-        <div class="attribute-box"><div>AC</div><div>{{ character.armor_class }}</div></div>
-        <div class="attribute-box"><div>Speed</div><div>{{ character.speed }}</div></div>
+        <div class="attribute-box"><div>Prof. Bonus</div><div id="prof-bonus-display">+{{ proficiency_bonus }}</div></div>
+        <div class="attribute-box"><div>HP</div><div><span id="hp-display">{{ character.hp }}</span>/<span id="max-hp-display">{{ character.max_hp }}</span></div></div>
+        <div class="attribute-box"><div>AC</div><div id="ac-display">{{ character.armor_class }}</div></div>
+        <div class="attribute-box"><div>Speed</div><div id="speed-display">{{ character.speed }}</div></div>
     </div>
 
     <h4 class="sheet-section-title">Abilities</h4>
     <div class="abilities-grid">
         {% for ability in abilities_data %}
-            <div class="ability-box">
+            <div class="ability-box" data-ability-name="{{ ability.name_full }}">
                 <span class="ability-label">{{ ability.name_short }}</span>
                 <span class="ability-score">{{ ability.score }}</span>
                 <span class="ability-modifier">({% if ability.modifier >=0 %}+{% endif %}{{ ability.modifier }})</span>
@@ -155,28 +160,34 @@
     </div> <!-- End character-sheet-main-content -->
     
    
+    {# Features Gained Section - Placed before proficiencies for better flow #}
+    <h4 class="sheet-section-title">Features Gained at this Level</h4>
+    <div id="features-gained-content" class="proficiencies-list"> <!-- Using proficiencies-list for some default styling -->
+        <p>Details about features gained at this level will appear here.</p>
+    </div>
     
     {% if proficient_armor %}
     <h4 class="sheet-section-title">Armor Proficiencies</h4>
-    <div class="proficiencies-list"><ul>{% for item in proficient_armor %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    <div class="proficiencies-list"><ul id="armor-prof-list">{% for item in proficient_armor %}<li>{{ item }}</li>{% endfor %}</ul></div>
     {% endif %}
 
     {% if proficient_weapons %}
     <h4 class="sheet-section-title">Weapon Proficiencies</h4>
-    <div class="proficiencies-list"><ul>{% for item in proficient_weapons %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    <div class="proficiencies-list"><ul id="weapon-prof-list">{% for item in proficient_weapons %}<li>{{ item }}</li>{% endfor %}</ul></div>
     {% endif %}
 
     {% if proficient_tools %}
     <h4 class="sheet-section-title">Tool Proficiencies</h4>
-    <div class="proficiencies-list"><ul>{% for item in proficient_tools %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    <div class="proficiencies-list"><ul id="tool-prof-list">{% for item in proficient_tools %}<li>{{ item }}</li>{% endfor %}</ul></div>
     {% endif %}
 
     {% if proficient_languages %}
     <h4 class="sheet-section-title">Languages</h4>
-    <div class="proficiencies-list"><ul>{% for item in proficient_languages %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    <div class="proficiencies-list"><ul id="language-prof-list">{% for item in proficient_languages %}<li>{{ item }}</li>{% endfor %}</ul></div>
     {% endif %}
 
     <!-- Spells Section -->
+<div id="spells-section-container">
     <h3 class="sheet-section-title">Spells & Spell Slots</h3>
     <div class="rest-buttons" style="margin-bottom: 10px;">
         <button id="short-rest-button" data-character-id="{{ character.id }}" class="button-small">Short Rest</button>
@@ -185,6 +196,7 @@
     </div>
 
     {% for L in range(10) %} {# Loop from 0 (Cantrips) to 9 #}
+    <div class="spell-level-section" data-spell-level-container="{{L}}">
         {% if L == 0 %}
             {% if spells_by_level[0] %}
                 <h4 class="spell-level-header">Cantrips</h4>
@@ -271,8 +283,9 @@
                 {% endif %}
             {% endif %}
         {% endif %}
+    </div> {# End spell-level-section div #}
     {% endfor %}
-    <!-- End Spells Section -->
+</div> <!-- End Spells Section Container -->
 
 
     <button id="close-sheet-button">Close</button>
@@ -331,7 +344,59 @@ document.addEventListener('DOMContentLoaded', function() {
     const initialLogEntries = {{ log_entries|tojson }};
     const csrfToken = '{{ csrf_token() if csrf_token else "" }}'; // For AJAX POST
 
+    // --- New Global Vars for Level Navigation ---
+    const currentActualLevel = {{ current_actual_level }};
+    let dmAllowedLevel = {{ dm_allowed_level }}; // Changed const to let
+    const achievedLevelsList = {{ achieved_levels_list|tojson }};
+    let currentlyViewedLevel = currentActualLevel; // Initialize with the character's actual current level
+
+    // DOM Elements
+    const levelUpButton = document.getElementById('level-up-button');
+    const prevLevelButton = document.getElementById('prev-level-button');
+    const nextLevelButton = document.getElementById('next-level-button');
+    const displayedLevelNumberSpan = document.getElementById('displayed-level-number');
+    const loadingIndicator = document.createElement('div'); 
+    loadingIndicator.id = 'level-data-loading-indicator';
+    loadingIndicator.textContent = 'Loading level data...';
+    loadingIndicator.style.display = 'none';
+    loadingIndicator.style.textAlign = 'center';
+    loadingIndicator.style.padding = '10px';
+    const sheetSubHeader = document.querySelector('.sheet-subheader');
+    if (sheetSubHeader) sheetSubHeader.parentNode.insertBefore(loadingIndicator, sheetSubHeader.nextSibling);
+    
+    // Main content display areas - Using IDs now
+    const profBonusDisplay = document.getElementById('prof-bonus-display');
+    const hpDisplay = document.getElementById('hp-display');
+    const maxHpDisplay = document.getElementById('max-hp-display');
+    const acDisplay = document.getElementById('ac-display');
+    const speedDisplay = document.getElementById('speed-display'); 
+    
+    const abilitiesGrid = document.querySelector('.abilities-grid'); // Children will be targeted using data-attributes
+    const savingThrowsList = document.querySelector('.saving-throws-list');
+    const skillsList = document.querySelector('.skills-list');
+    
+    const armorProficienciesList = document.getElementById('armor-prof-list');
+    const weaponProficienciesList = document.getElementById('weapon-prof-list');
+    const toolProficienciesList = document.getElementById('tool-prof-list');
+    const languageProficienciesList = document.getElementById('language-prof-list');
+    const spellsSectionContainer = document.getElementById('spells-section-container');
+    const featuresDisplayDiv = document.getElementById('features-gained-content');
+
     let ellipsisInterval = null; 
+
+    // --- JS Constants for DOM updates ---
+    const ABILITY_NAMES_FULL_JS = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma'];
+    const ABILITY_SHORT_TO_FULL_JS = {
+        'str': 'Strength', 'dex': 'Dexterity', 'con': 'Constitution',
+        'int': 'Intelligence', 'wis': 'Wisdom', 'cha': 'Charisma'
+    };
+    const SKILL_TO_ABILITY_MAP_JS = {
+        'Acrobatics': 'dex', 'Animal Handling': 'wis', 'Arcana': 'int', 'Athletics': 'str',
+        'Deception': 'cha', 'History': 'int', 'Insight': 'wis', 'Intimidation': 'cha',
+        'Investigation': 'int', 'Medicine': 'wis', 'Nature': 'int', 'Perception': 'wis',
+        'Performance': 'cha', 'Persuasion': 'cha', 'Religion': 'int', 'Sleight of Hand': 'dex',
+        'Stealth': 'dex', 'Survival': 'wis'
+    };
 
     function appendMessage(text, sender, messageId = null) {
         const messageDiv = document.createElement('div');
@@ -415,6 +480,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             const data = await response.json();
+
+            if (data.levelUpGranted === true && typeof data.newDmAllowedLevel !== 'undefined') {
+                dmAllowedLevel = data.newDmAllowedLevel; // Update global variable
+                updateNavigationButtonStates(); // Refresh button visibility
+                console.log(`Level up detected! New DM Allowed Level: ${dmAllowedLevel}`);
+            }
+
             if (data.reply) {
                 appendMessage(data.reply, 'dm');
             }
@@ -985,21 +1057,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     restStatusMessage.textContent = 'Long rest taken. Slots refreshed.';
                     restStatusMessage.style.color = 'green';
 
-                    if (data.refreshed_slots && data.all_slots_data) {
-                        data.all_slots_data.forEach(slotInfo => {
-                            const level = slotInfo.spell_level;
-                            const usedSlotsSpan = document.getElementById(`slots-used-L${level}`);
-                            if (usedSlotsSpan) {
-                                usedSlotsSpan.textContent = slotInfo.slots_used; // Should be 0
-                            }
-                            // Update individual checkboxes
-                            const slotTrackerDiv = document.getElementById(`slot-tracker-L${level}`);
-                            if (slotTrackerDiv) {
-                                slotTrackerDiv.querySelectorAll('.spell-slot-checkbox').forEach(checkbox => {
-                                    checkbox.classList.remove('used');
-                                });
-                            }
-                        });
+                    // If viewing current level when long rest happens, update displayed slots
+                    if (currentlyViewedLevel === currentActualLevel) {
+                        if (data.refreshed_slots && data.all_slots_data) {
+                            const snapshot = {};
+                            data.all_slots_data.forEach(slotInfo => {
+                                snapshot[slotInfo.spell_level.toString()] = {
+                                    slots_used: slotInfo.slots_used,
+                                    slots_total: slotInfo.slots_total
+                                };
+                            });
+                            updateSpellSlotsDisplay(snapshot); // Update the UI
+                        }
                     }
                 } else {
                     restStatusMessage.textContent = data.message || 'Long rest failed.';
@@ -1016,6 +1085,489 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // --- Level Up and Navigation Logic ---
+    if (levelUpButton) {
+        if (currentActualLevel < dmAllowedLevel && achievedLevelsList.includes(currentActualLevel)) {
+             // Only show if truly current level is less than DM allowed AND they are viewing their current actual level
+            if (currentlyViewedLevel === currentActualLevel) {
+                 levelUpButton.style.display = 'inline-block';
+            }
+        }
+        levelUpButton.addEventListener('click', function() {
+            window.location.href = `/character/${characterId}/level_up/start`;
+        });
+    }
+
+    function updateNavigationButtonStates() {
+        if (!prevLevelButton || !nextLevelButton) return;
+
+        if (achievedLevelsList.length > 1) {
+            prevLevelButton.style.display = 'inline-block';
+            nextLevelButton.style.display = 'inline-block';
+        } else {
+            prevLevelButton.style.display = 'none';
+            nextLevelButton.style.display = 'none';
+            return; 
+        }
+
+        const currentIndex = achievedLevelsList.indexOf(currentlyViewedLevel);
+        prevLevelButton.disabled = (currentIndex <= 0);
+        nextLevelButton.disabled = (currentIndex >= achievedLevelsList.length - 1);
+        
+        // Hide level up button if not viewing current actual level
+        if (levelUpButton) {
+            if (currentlyViewedLevel === currentActualLevel && currentActualLevel < dmAllowedLevel) {
+                levelUpButton.style.display = 'inline-block';
+            } else {
+                levelUpButton.style.display = 'none';
+            }
+        }
+    }
+
+    async function fetchAndDisplayLevelData(levelNumber) {
+        console.log(`Fetching data for level ${levelNumber}`);
+        if (loadingIndicator) loadingIndicator.style.display = 'block';
+
+        try {
+            const response = await fetch(`/character/${characterId}/get_level_data/${levelNumber}`);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ message: 'Failed to parse error response from server.' }));
+                throw new Error(`HTTP error ${response.status}: ${errorData.message || response.statusText}`);
+            }
+            const levelDetails = await response.json();
+
+            currentlyViewedLevel = levelDetails.level_number;
+            if (displayedLevelNumberSpan) displayedLevelNumberSpan.textContent = levelDetails.level_number;
+            
+            const profBonus = Math.floor((levelDetails.level_number - 1) / 4) + 2;
+
+            updateAbilityScoresDisplay(levelDetails.stats); // stats is an object like {strength: 10, ...}
+            updateCombatStatsDisplay(levelDetails, profBonus); // levelDetails contains hp, max_hp, armor_class, speed
+            updateSavingThrowsDisplay(levelDetails.proficiencies, levelDetails.stats, profBonus); // proficiencies.saving_throws, stats
+            updateSkillsDisplay(levelDetails.proficiencies, levelDetails.stats, profBonus); // proficiencies.skills, stats
+            updateProficienciesDisplay(levelDetails.proficiencies); // proficiencies has armor, weapons, tools, languages
+            updateSpellsDisplay(levelDetails.spells_known_details || [], levelDetails.spell_slots_snapshot || {}, levelDetails.level_number);
+            updateSpellSlotsDisplay(levelDetails.spell_slots_snapshot || {}, levelDetails.level_number); // Pass level_number for context
+            updateFeaturesDisplay(levelDetails.features_gained); // Text or JSON string
+            
+            updateNavigationButtonStates();
+
+        } catch (error) {
+            console.error('Error fetching level data:', error);
+            appendMessage(`System: Error loading level ${levelNumber} data: ${error.message}`, 'system');
+        } finally {
+            if (loadingIndicator) loadingIndicator.style.display = 'none';
+        }
+    }
+    
+    function updateAbilityScoresDisplay(statsObject) {
+        if (!statsObject || !abilitiesGrid) return;
+        ABILITY_NAMES_FULL_JS.forEach(abilityName => {
+            const abilityBox = abilitiesGrid.querySelector(`.ability-box[data-ability-name="${abilityName}"]`);
+            if (abilityBox) {
+                const scoreSpan = abilityBox.querySelector('.ability-score');
+                const modifierSpan = abilityBox.querySelector('.ability-modifier');
+                const abilityAttrLower = abilityName.toLowerCase();
+                const score = statsObject[abilityAttrLower] !== undefined ? statsObject[abilityAttrLower] : 10; // Default to 10 if undefined
+
+                if (scoreSpan) scoreSpan.textContent = score;
+                if (modifierSpan) {
+                    const modifier = Math.floor((score - 10) / 2);
+                    modifierSpan.textContent = `(${modifier >= 0 ? '+' : ''}${modifier})`;
+                }
+            }
+        });
+    }
+
+    function updateCombatStatsDisplay(levelDetails, profBonus) {
+        if (profBonusDisplay) profBonusDisplay.textContent = `+${profBonus}`;
+        if (hpDisplay) hpDisplay.textContent = levelDetails.hp !== undefined ? levelDetails.hp : 0;
+        if (maxHpDisplay) maxHpDisplay.textContent = levelDetails.max_hp !== undefined ? levelDetails.max_hp : 0;
+        if (acDisplay) acDisplay.textContent = levelDetails.armor_class !== null ? levelDetails.armor_class : 'N/A';
+        if (speedDisplay) speedDisplay.textContent = levelDetails.speed !== null ? levelDetails.speed : 'N/A';
+    }
+
+    function updateSavingThrowsDisplay(proficienciesData, statsObject, profBonus) {
+        if (!savingThrowsList || !proficienciesData || !statsObject) return;
+        const currentSaves = proficienciesData.saving_throws || []; 
+
+        savingThrowsList.querySelectorAll('p').forEach(pElement => {
+            const nameSpan = pElement.querySelector('.ability-name');
+            const profIndicator = pElement.querySelector('.prof-indicator');
+            const modifierSpan = pElement.querySelector('.modifier');
+
+            if (nameSpan && profIndicator && modifierSpan) {
+                const fullAbilityName = nameSpan.textContent.trim();
+                const shortAbilityAbbr = Object.keys(ABILITY_SHORT_TO_FULL_JS).find(key => ABILITY_SHORT_TO_FULL_JS[key] === fullAbilityName);
+                
+                if (shortAbilityAbbr) {
+                    const abilityScore = statsObject[shortAbilityAbbr.toLowerCase()] !== undefined ? statsObject[shortAbilityAbbr.toLowerCase()] : 10;
+                    let finalModifier = Math.floor((abilityScore - 10) / 2);
+                    const isProficient = currentSaves.includes(shortAbilityAbbr.toUpperCase());
+
+                    if (isProficient) {
+                        finalModifier += profBonus;
+                        profIndicator.textContent = '●';
+                    } else {
+                        profIndicator.textContent = '○';
+                    }
+                    modifierSpan.textContent = `${finalModifier >= 0 ? '+' : ''}${finalModifier}`;
+                }
+            }
+        });
+    }
+
+    function updateSkillsDisplay(proficienciesData, statsObject, profBonus) {
+        if (!skillsList || !proficienciesData || !statsObject) return;
+        const currentSkillsProficiencies = proficienciesData.skills || [];
+
+        skillsList.querySelectorAll('p').forEach(pElement => {
+            const nameSpan = pElement.querySelector('.skill-name');
+            const profIndicator = pElement.querySelector('.prof-indicator');
+            const modifierSpan = pElement.querySelector('.modifier');
+
+            if (nameSpan && profIndicator && modifierSpan) {
+                const skillName = nameSpan.textContent.trim();
+                const baseAbilityShort = SKILL_TO_ABILITY_MAP_JS[skillName];
+
+                if (baseAbilityShort) {
+                    const abilityScore = statsObject[baseAbilityShort.toLowerCase()] !== undefined ? statsObject[baseAbilityShort.toLowerCase()] : 10;
+                    let finalModifier = Math.floor((abilityScore - 10) / 2);
+                    const isProficient = currentSkillsProficiencies.includes(skillName);
+
+                    if (isProficient) {
+                        finalModifier += profBonus;
+                        profIndicator.textContent = '●';
+                    } else {
+                        profIndicator.textContent = '○';
+                    }
+                    modifierSpan.textContent = `${finalModifier >= 0 ? '+' : ''}${finalModifier}`;
+                }
+            }
+        });
+    }
+    
+    function updateProficienciesDisplay(proficienciesData) {
+        if (!proficienciesData) return;
+        const profMap = {
+            'armor': armorProficienciesList, 'weapons': weaponProficienciesList,
+            'tools': toolProficienciesList, 'languages': languageProficienciesList
+        };
+        for (const key in profMap) {
+            const ulElement = profMap[key];
+            if (ulElement) {
+                ulElement.innerHTML = ''; 
+                const items = proficienciesData[key] || [];
+                if (items.length > 0) {
+                    items.forEach(itemText => {
+                        const li = document.createElement('li');
+                        li.textContent = itemText;
+                        ulElement.appendChild(li);
+                    });
+                } else {
+                     ulElement.innerHTML = '<li>None</li>'; // Indicate if empty
+                }
+            }
+        }
+    }
+
+    function updateSpellsDisplay(spellsKnownDetailsArray, spellSlotsSnapshotData, viewedLevel) {
+        if (!spellsKnownDetailsArray || !spellsSectionContainer) return;
+        
+        spellsSectionContainer.querySelectorAll('.spell-level-section').forEach(sec => sec.innerHTML = '');
+
+        const spellsByLevel = {};
+        (spellsKnownDetailsArray || []).forEach(spell => {
+            const level = spell.level !== undefined ? spell.level : (spell.spell_level || 0); // spell.level or spell.spell_level
+            if (!spellsByLevel[level]) spellsByLevel[level] = [];
+            spellsByLevel[level].push(spell);
+        });
+
+        for (let L = 0; L < 10; L++) {
+            const sectionDiv = spellsSectionContainer.querySelector(`.spell-level-section[data-spell-level-container="${L}"]`);
+            if (!sectionDiv) continue;
+            sectionDiv.innerHTML = ''; 
+
+            const spellsForThisLevel = spellsByLevel[L] || [];
+            const slotsInfo = spellSlotsSnapshotData ? (spellSlotsSnapshotData[L.toString()] || spellSlotsSnapshotData[L]) : null;
+
+            if (spellsForThisLevel.length > 0 || (L > 0 && slotsInfo && slotsInfo.slots_total > 0)) {
+                const header = document.createElement('h4');
+                header.classList.add('spell-level-header');
+                let headerText = L === 0 ? "Cantrips" : `Level ${L} Spells`;
+                if (L > 0 && slotsInfo && slotsInfo.slots_total !== undefined) {
+                     // For historical levels, used slots are just for info, not interactive
+                    const usedDisplay = slotsInfo.slots_used_historical !== undefined ? slotsInfo.slots_used_historical : (slotsInfo.slots_used || 0);
+                    headerText += ` (Slots: <span id="slots-used-L${L}">${usedDisplay}</span>/<span id="slots-total-L${L}">${slotsInfo.slots_total}</span>)`;
+                }
+                header.innerHTML = headerText;
+                sectionDiv.appendChild(header);
+
+                if (L > 0 && slotsInfo && slotsInfo.slots_total > 0) {
+                    const slotTrackerDiv = document.createElement('div');
+                    slotTrackerDiv.classList.add('spell-slot-tracker');
+                    slotTrackerDiv.id = `slot-tracker-L${L}`;
+                    const usedCount = slotsInfo.slots_used_historical !== undefined ? slotsInfo.slots_used_historical : (slotsInfo.slots_used || 0);
+                    for (let i = 0; i < slotsInfo.slots_total; i++) {
+                        const slotCheckbox = document.createElement('div');
+                        slotCheckbox.classList.add('spell-slot-checkbox', 'historical-slot'); 
+                        if (i < usedCount) slotCheckbox.classList.add('used');
+                        slotTrackerDiv.appendChild(slotCheckbox);
+                    }
+                    sectionDiv.appendChild(slotTrackerDiv);
+                }
+
+                if (spellsForThisLevel.length > 0) {
+                    const ul = document.createElement('ul');
+                    ul.classList.add('spells-list');
+                    spellsForThisLevel.forEach(spell => {
+                        const li = document.createElement('li');
+                        li.classList.add('spell-list-item');
+                        li.dataset.spellIndex = spell.index || spell.id;
+                        
+                        const nameSpan = document.createElement('span');
+                        nameSpan.classList.add('spell-name');
+                        nameSpan.textContent = spell.name;
+                        li.appendChild(nameSpan);
+                        
+                        const cardDiv = document.createElement('div');
+                        cardDiv.classList.add('spell-card-details');
+                        cardDiv.style.display = 'none';
+                        let spellDescHtml = `<p><em>${spell.school || 'N/A'} ${L === 0 ? 'Cantrip' : L + '-level'}</em></p>`;
+                        try { // Handle spell.description potentially being JSON string
+                            const descArray = JSON.parse(spell.description);
+                            descArray.forEach(p => spellDescHtml += `<p>${p}</p>`);
+                        } catch(e) {
+                            spellDescHtml += `<p>${spell.description || "No description."}</p>`;
+                        }
+                        cardDiv.innerHTML = `<h4>${spell.name}</h4>${spellDescHtml}`;
+                        li.appendChild(cardDiv);
+                        
+                        nameSpan.addEventListener('mouseenter', spellNameMouseEnterHandler);
+                        nameSpan.addEventListener('mouseleave', spellNameMouseLeaveHandler);
+                        cardDiv.addEventListener('mouseenter', spellCardMouseEnterHandler);
+                        cardDiv.addEventListener('mouseleave', spellCardMouseLeaveHandler);
+                        ul.appendChild(li);
+                    });
+                    sectionDiv.appendChild(ul);
+                }
+            } else if (L > 0) { // Ensure header and slot tracker are cleared if no spells/slots
+                 const header = sectionDiv.querySelector('.spell-level-header');
+                 if(header) header.innerHTML = `Level ${L} Spells (Slots: <span id="slots-used-L${L}">0</span>/<span id="slots-total-L${L}">0</span>)`;
+                 const slotTracker = sectionDiv.querySelector('.spell-slot-tracker');
+                 if(slotTracker) slotTracker.innerHTML = '';
+            }
+        }
+    }
+        
+    function updateSpellSlotsDisplay(spellSlotsSnapshot, viewedLevel) {
+        // This is largely handled by updateSpellsDisplay now.
+        // This function can ensure that if a level has no spells but has slots,
+        // the slot display is still correctly rendered or cleared.
+        if (!spellSlotsSnapshot) return;
+
+        for (let L = 1; L < 10; L++) {
+            const sectionDiv = spellsSectionContainer.querySelector(`.spell-level-section[data-spell-level-container="${L}"]`);
+            if (!sectionDiv) continue;
+
+            const slotsInfo = spellSlotsSnapshot[L.toString()] || spellSlotsSnapshot[L];
+            let header = sectionDiv.querySelector('.spell-level-header');
+            let slotTrackerDiv = sectionDiv.querySelector('.spell-slot-tracker');
+
+            if (slotsInfo && slotsInfo.slots_total !== undefined) {
+                if (!header) { // Create header if it doesn't exist (e.g. no spells, but has slots)
+                    header = document.createElement('h4');
+                    header.classList.add('spell-level-header');
+                    sectionDiv.insertBefore(header, sectionDiv.firstChild); // Insert at the beginning of section
+                }
+                const usedDisplay = slotsInfo.slots_used_historical !== undefined ? slotsInfo.slots_used_historical : (slotsInfo.slots_used || 0);
+                header.innerHTML = `Level ${L} Spells (Slots: <span id="slots-used-L${L}">${usedDisplay}</span>/<span id="slots-total-L${L}">${slotsInfo.slots_total}</span>)`;
+
+                if (!slotTrackerDiv && slotsInfo.slots_total > 0) {
+                    slotTrackerDiv = document.createElement('div');
+                    slotTrackerDiv.classList.add('spell-slot-tracker');
+                    slotTrackerDiv.id = `slot-tracker-L${L}`;
+                    if (header.nextSibling) sectionDiv.insertBefore(slotTrackerDiv, header.nextSibling);
+                    else sectionDiv.appendChild(slotTrackerDiv);
+                }
+                
+                if (slotTrackerDiv) {
+                    slotTrackerDiv.innerHTML = ''; // Clear old slots
+                     const currentUsedCount = slotsInfo.slots_used_historical !== undefined ? slotsInfo.slots_used_historical : (slotsInfo.slots_used || 0);
+                    for (let i = 0; i < slotsInfo.slots_total; i++) {
+                        const slotCheckbox = document.createElement('div');
+                        // For historical levels, or if not on current actual level, slots are non-interactive
+                        const isInteractive = (currentlyViewedLevel === currentActualLevel && viewedLevel === currentActualLevel);
+                        slotCheckbox.classList.add('spell-slot-checkbox');
+                        if (!isInteractive) slotCheckbox.classList.add('historical-slot');
+                        else slotCheckbox.dataset.level = L; // Add data only if interactive
+
+                        if (i < currentUsedCount) slotCheckbox.classList.add('used');
+                        
+                        // Only add click listener if it's for the current actual level being viewed
+                        if (isInteractive && !slotCheckbox.classList.contains('historical-slot')) {
+                             slotCheckbox.dataset.characterId = characterId; // Needed for the call
+                             slotCheckbox.addEventListener('click', spellSlotCheckboxClickHandler); // Use named handler
+                        }
+                        slotTrackerDiv.appendChild(slotCheckbox);
+                    }
+                }
+            } else if (header) { // No slots for this level, clear if exists
+                header.innerHTML = `Level ${L} Spells (Slots: <span id="slots-used-L${L}">0</span>/<span id="slots-total-L${L}">0</span>)`;
+                if (slotTrackerDiv) slotTrackerDiv.innerHTML = '';
+            }
+        }
+    }
+
+    function updateFeaturesDisplay(featuresGainedContent) {
+        if (featuresDisplayDiv) {
+            let featuresArray;
+            if (typeof featuresGainedContent === 'string') {
+                if (featuresGainedContent.trim() === "") {
+                    featuresDisplayDiv.innerHTML = '<p>No specific features recorded for this level.</p>';
+                    return;
+                }
+                try {
+                    featuresArray = JSON.parse(featuresGainedContent);
+                } catch (e) {
+                    // If parsing still fails, treat as plain text or error
+                    console.error("Error parsing featuresGainedContent:", e);
+                    featuresDisplayDiv.textContent = featuresGainedContent; // Display as is, or an error message
+                    return;
+                }
+            } else if (Array.isArray(featuresGainedContent)) {
+                featuresArray = featuresGainedContent; // It's already an array
+            } else {
+                // Handle cases where it's neither a string nor an array (e.g., null, undefined, other object types)
+                featuresDisplayDiv.innerHTML = '<p>No specific features recorded for this level (or unexpected data format).</p>';
+                return;
+            }
+
+            if (Array.isArray(featuresArray) && featuresArray.length > 0) {
+                featuresDisplayDiv.innerHTML = ''; // Clear previous content
+                const ul = document.createElement('ul');
+                featuresArray.forEach(feature => {
+                    const li = document.createElement('li');
+                    if (typeof feature === 'string') {
+                        li.textContent = feature;
+                    } else if (typeof feature === 'object' && feature !== null && feature.name) { // Check for null too
+                        li.textContent = feature.name + (feature.description ? `: ${feature.description}` : '');
+                    } else if (typeof feature === 'object' && feature !== null) { // Generic object display
+                        li.textContent = JSON.stringify(feature);
+                    } else {
+                        li.textContent = String(feature); // Fallback for other types
+                    }
+                    ul.appendChild(li);
+                });
+                featuresDisplayDiv.appendChild(ul);
+            } else {
+                featuresDisplayDiv.innerHTML = '<p>No specific features listed for this level.</p>';
+            }
+        }
+    }
+
+    // Reusable spell card hover handlers
+    let spellCardDisplayTimeout, spellCardHideTimeout; // Ensure these are accessible
+    function spellNameMouseEnterHandler(event) {
+        clearTimeout(spellCardHideTimeout); 
+        const spellListItem = event.target.closest('.spell-list-item');
+        if (!spellListItem) return;
+        const spellCard = spellListItem.querySelector('.spell-card-details');
+        if (spellCard) {
+            spellCardDisplayTimeout = setTimeout(() => {
+                spellCard.style.display = 'block';
+                spellCard.style.position = 'fixed'; 
+                spellCard.style.zIndex = '1050';    
+                const cardWidth = spellCard.offsetWidth;
+                const cardHeight = spellCard.offsetHeight;
+                const buffer = 15;
+                let idealTop = event.clientY + buffer;
+                let idealLeft = event.clientX + buffer;
+                if (idealTop + cardHeight > window.innerHeight - buffer) idealTop = event.clientY - cardHeight - buffer;
+                if (idealTop < buffer) idealTop = buffer;
+                if (idealLeft + cardWidth > window.innerWidth - buffer) idealLeft = event.clientX - cardWidth - buffer;
+                if (idealLeft < buffer) idealLeft = buffer;
+                spellCard.style.top = idealTop + 'px';
+                spellCard.style.left = idealLeft + 'px';
+            }, 150);
+        }
+    }
+    function spellNameMouseLeaveHandler(event) {
+        clearTimeout(spellCardDisplayTimeout);
+        const spellListItem = event.target.closest('.spell-list-item');
+        if (!spellListItem) return;
+        const spellCard = spellListItem.querySelector('.spell-card-details');
+        if (spellCard) {
+            spellCardHideTimeout = setTimeout(() => {
+                if (!spellCard.matches(':hover')) {
+                     spellCard.style.display = 'none';
+                }
+            }, 100);
+        }
+    }
+    function spellCardMouseEnterHandler() { clearTimeout(spellCardHideTimeout); }
+    function spellCardMouseLeaveHandler(event) {
+        const card = event.target.closest('.spell-card-details');
+        if (card) {
+            spellCardHideTimeout = setTimeout(() => {
+                card.style.display = 'none';
+            }, 100);
+        }
+    }
+
+    // Named handler for spell slot clicks for current level
+    async function spellSlotCheckboxClickHandler() {
+        if (this.classList.contains('historical-slot') || currentlyViewedLevel !== currentActualLevel) return; // Prevent action on historical
+
+        const spellLevel = this.dataset.level;
+        const charId = this.dataset.characterId;
+        const isUsed = this.classList.contains('used');
+        const url = isUsed ?
+            `/character/${charId}/spellslot/regain/${spellLevel}/1` :
+            `/character/${charId}/spellslot/use/${spellLevel}`;
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
+            });
+            const data = await response.json();
+            if (response.ok && data.status === 'success') {
+                this.classList.toggle('used');
+                const usedSlotsSpan = document.getElementById(`slots-used-L${spellLevel}`);
+                if (usedSlotsSpan) usedSlotsSpan.textContent = data.slots_used;
+            } else {
+                alert(data.message || 'Failed to update spell slot.');
+            }
+        } catch (error) {
+            alert('Error communicating with server for spell slot update.');
+        }
+    }
+    // End of spell slot click handler
+
+    if (prevLevelButton) {
+        prevLevelButton.addEventListener('click', function() {
+            const currentIndex = achievedLevelsList.indexOf(currentlyViewedLevel);
+            if (currentIndex > 0) {
+                fetchAndDisplayLevelData(achievedLevelsList[currentIndex - 1]);
+            }
+        });
+    }
+
+    if (nextLevelButton) {
+        nextLevelButton.addEventListener('click', function() {
+            const currentIndex = achievedLevelsList.indexOf(currentlyViewedLevel);
+            if (currentIndex < achievedLevelsList.length - 1) {
+                fetchAndDisplayLevelData(achievedLevelsList[currentIndex + 1]);
+            }
+        });
+    }
+
+    // Initial setup
+    updateNavigationButtonStates();
+
+    // Fetch and display data for the character's current actual level on initial load
+    fetchAndDisplayLevelData(currentActualLevel); 
 });
 </script>
 {% endblock %}

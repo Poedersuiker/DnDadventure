@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Level Up - Spells - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Level Up: Spells</h1>
+    <p>Character: {{ level_up_data.character_id }}</p>
+    <h2>{{ level_up_data.class_name }} - Level {{ level_up_data.current_level_number }} to {{ level_up_data.new_level_number }}</h2>
+    <hr>
+
+    <form method="POST" action="{{ url_for('main.level_up_spells', character_id=character_id) }}">
+        {{ csrf_token_form_field() if csrf_token_form_field else "" }}
+
+        {% if num_new_cantrips_to_choose > 0 %}
+        <div class="mb-4">
+            <h3>New Cantrips</h3>
+            <p>Choose {{ num_new_cantrips_to_choose }} new cantrip(s).</p>
+            {% if available_cantrips %}
+                {% for cantrip in available_cantrips %}
+                <div class="form-check">
+                    <input class="form-check-input cantrip-checkbox" type="checkbox" name="new_cantrips" value="{{ cantrip.id }}" id="cantrip_{{ cantrip.id }}">
+                    <label class="form-check-label" for="cantrip_{{ cantrip.id }}">
+                        <strong>{{ cantrip.name }}</strong> ({{ cantrip.school }})
+                        {# Basic description snippet - assuming description is JSON array of paragraphs #}
+                        {% if cantrip.description %}
+                            {% set desc_list = cantrip.description|fromjson %}
+                            <small class="d-block text-muted">{{ desc_list[0]|truncate(100) if desc_list else '' }}</small>
+                        {% endif %}
+                    </label>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p>No new cantrips available to learn (or you know them all!).</p>
+            {% endif %}
+        </div>
+        <hr>
+        {% endif %}
+
+        {% if num_new_spells_to_choose > 0 %}
+        <div class="mb-4">
+            <h3>New Spells</h3>
+            <p>Choose {{ num_new_spells_to_choose }} new spell(s) of level {{ max_spell_level_castable }} or lower.</p>
+            {# Group spells by level for better display #}
+            {% set spells_grouped = available_spells|groupby('level') %}
+            {% for level, spell_group in spells_grouped %}
+                <h4>Level {{ level }} Spells</h4>
+                {% for spell in spell_group %}
+                <div class="form-check">
+                    <input class="form-check-input spell-checkbox" type="checkbox" name="new_spells" value="{{ spell.id }}" id="spell_{{ spell.id }}">
+                    <label class="form-check-label" for="spell_{{ spell.id }}">
+                        <strong>{{ spell.name }}</strong> ({{ spell.school }})
+                        {% if spell.description %}
+                            {% set desc_list = spell.description|fromjson %}
+                            <small class="d-block text-muted">{{ desc_list[0]|truncate(100) if desc_list else '' }}</small>
+                        {% endif %}
+                    </label>
+                </div>
+                {% endfor %}
+                <br> 
+            {% endfor %}
+            {% if not available_spells %}
+                 <p>No new spells available to learn at this level (or you know them all!).</p>
+            {% endif %}
+        </div>
+        <hr>
+        {% endif %}
+
+        {% if num_new_cantrips_to_choose == 0 and num_new_spells_to_choose == 0 %}
+            <p>Your class ({{ level_up_data.class_name }}) does not select new cantrips or spells in this manner at level {{ level_up_data.new_level_number }}.</p>
+            <p>Prepared casters like Clerics, Druids, Paladins, and Wizards (for spells beyond those gained automatically) manage their spells daily from their broader list.</p>
+        {% endif %}
+
+        <button type="submit" class="btn btn-primary mt-3">Save Spell Selections & Continue to Review</button>
+        <a href="{{ url_for('main.level_up_review', character_id=character_id) }}" class="btn btn-secondary mt-3">Skip Spell Selection (if applicable)</a>
+
+    </form>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const cantripCheckboxes = document.querySelectorAll('.cantrip-checkbox');
+    const spellCheckboxes = document.querySelectorAll('.spell-checkbox');
+    const numNewCantrips = parseInt("{{ num_new_cantrips_to_choose }}", 10) || 0;
+    const numNewSpells = parseInt("{{ num_new_spells_to_choose }}", 10) || 0;
+
+    cantripCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            let checkedCount = 0;
+            cantripCheckboxes.forEach(cb => {
+                if (cb.checked) checkedCount++;
+            });
+            if (numNewCantrips > 0 && checkedCount > numNewCantrips) {
+                this.checked = false; // Prevent checking more than allowed
+                alert(`You can only select ${numNewCantrips} new cantrip(s).`);
+            }
+        });
+    });
+
+    spellCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            let checkedCount = 0;
+            spellCheckboxes.forEach(cb => {
+                if (cb.checked) checkedCount++;
+            });
+            if (numNewSpells > 0 && checkedCount > numNewSpells) {
+                this.checked = false; // Prevent checking more than allowed
+                alert(`You can only select ${numNewSpells} new spell(s).`);
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

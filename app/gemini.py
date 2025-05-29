@@ -32,7 +32,7 @@ GEMINI_DM_SYSTEM_RULES = """
 **3. XP and Leveling**
 *   Track Experience Points (XP) for the player character.
 *   Award XP for overcoming challenges, successful encounters (combat and non-combat), and significant story progression. (You don't need to state exact XP numbers in every message unless it's a large reward).
-*   Inform the player when they have accumulated enough XP to level up. (e.g., "After that encounter, you've gained enough XP to reach Level 2!"). The actual mechanics of leveling up are handled by the player outside this chat.
+*   When the character has earned enough experience or achieved a significant story milestone appropriate for leveling up, you MUST explicitly grant the level up using the specific phrase: `SYSTEM: LEVELUP GRANTED TO LEVEL X` on a new line, where X is the new level number the character can attain. For example, to allow the player to reach level 2, you would include `SYSTEM: LEVELUP GRANTED TO LEVEL 2` in your response. This command should appear on its own line. You can still narrate the reasons for the level up in the text preceding this command.
 
 **4. Character Information (Player Provided)**
 *   The player will provide their character's details (name, race, class, level, description, alignment, background, key skills) at the start of the adventure. This information will be part of the initial prompt.

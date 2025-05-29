@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}Level Up - Features & ASI - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Level Up: Features & Ability Score Improvements</h1>
+    <p>Character ID: {{ character_id }}</p> {# For debugging or context if needed, remove if not #}
+    <h2>{{ class_name }} - Level {{ new_level_number }}</h2>
+    <hr>
+
+    <h3>New Features Gained at Level {{ new_level_number }}:</h3>
+    {% if new_features %}
+        <ul>
+            {% for feature_name in new_features %}
+                <li>
+                    <strong>{{ feature_name }}</strong>
+                    {# Future enhancement: Could fetch and display feature descriptions here if available #}
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>No new specific class features automatically gained at this level (excluding potential ASI).</p>
+    {% endif %}
+
+    <hr>
+
+    <form method="POST" action="{{ url_for('main.level_up_features_asi', character_id=character_id) }}">
+        {{ csrf_token_form_field() if csrf_token_form_field else "" }} {# Simple CSRF if not using Flask-WTF #}
+
+        {% if asi_count > 0 %}
+            <h3>Ability Score Improvement (ASI)</h3>
+            <p>You have <strong>{{ asi_count }}</strong> ASI choice(s) at this level. For each choice, you can increase one ability score by 2, or two different ability scores by 1 each.</p>
+            
+            <p>Your current ability scores (before this ASI):</p>
+            <ul>
+                {% for ability_name_full in ability_names %}
+                    {% set ability_short = ability_name_full[:3].upper() %}
+                    <li>{{ ability_name_full }}: {{ current_ability_scores.get(ability_short, 'N/A') }}</li>
+                {% endfor %}
+            </ul>
+
+            {% for i in range(asi_count) %}
+            <div class="asi-choice-group mb-4 p-3 border rounded">
+                <h4>ASI Choice #{{ i + 1 }}</h4>
+                
+                <div class="form-group mb-2">
+                    <label>How would you like to apply this ASI?</label>
+                    <div>
+                        <input type="radio" name="asi_{{i}}_choice_type" value="plus_two" id="asi_{{i}}_plus_two" class="form-check-input asi-type-radio" data-choice-index="{{i}}" checked>
+                        <label for="asi_{{i}}_plus_two" class="form-check-label">Increase one ability score by +2</label>
+                    </div>
+                    <div>
+                        <input type="radio" name="asi_{{i}}_choice_type" value="plus_one_plus_one" id="asi_{{i}}_plus_one_plus_one" class="form-check-input asi-type-radio" data-choice-index="{{i}}">
+                        <label for="asi_{{i}}_plus_one_plus_one" class="form-check-label">Increase two different ability scores by +1 each</label>
+                    </div>
+                     <div>
+                        <input type="radio" name="asi_{{i}}_choice_type" value="none" id="asi_{{i}}_none" class="form-check-input asi-type-radio" data-choice-index="{{i}}">
+                        <label for="asi_{{i}}_none" class="form-check-label">Skip ASI / Choose Feat (Feat not implemented)</label>
+                    </div>
+                </div>
+
+                <div id="asi_{{i}}_plus_two_options_div" class="asi-options-div form-group mb-2">
+                    <label for="asi_{{i}}_score1_plus_two">Ability Score to increase by +2:</label>
+                    <select name="asi_{{i}}_score1_plus_two" id="asi_{{i}}_score1_plus_two" class="form-control asi-score-select">
+                        <option value="">-- Select Score --</option>
+                        {% for ability_name_full in ability_names %}
+                            {% set ability_short = ability_name_full[:3].upper() %}
+                            <option value="{{ ability_short }}">{{ ability_name_full }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div id="asi_{{i}}_plus_one_options_div" class="asi-options-div form-group mb-2" style="display: none;">
+                    <label for="asi_{{i}}_score1_plus_one">First ability score to increase by +1:</label>
+                    <select name="asi_{{i}}_score1_plus_one" id="asi_{{i}}_score1_plus_one" class="form-control asi-score-select">
+                        <option value="">-- Select Score --</option>
+                        {% for ability_name_full in ability_names %}
+                            {% set ability_short = ability_name_full[:3].upper() %}
+                            <option value="{{ ability_short }}">{{ ability_name_full }}</option>
+                        {% endfor %}
+                    </select>
+                    <br>
+                    <label for="asi_{{i}}_score2_plus_one">Second ability score to increase by +1:</label>
+                    <select name="asi_{{i}}_score2_plus_one" id="asi_{{i}}_score2_plus_one" class="form-control asi-score-select">
+                        <option value="">-- Select Score --</option>
+                        {% for ability_name_full in ability_names %}
+                            {% set ability_short = ability_name_full[:3].upper() %}
+                            <option value="{{ ability_short }}">{{ ability_name_full }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p>No Ability Score Improvement at this level.</p>
+        {% endif %}
+
+        <hr>
+        <button type="submit" class="btn btn-primary mt-3">Save Choices & Continue</button>
+    </form>
+
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const asiChoiceGroups = document.querySelectorAll('.asi-choice-group');
+    const abilityShortNames = ["STR", "DEX", "CON", "INT", "WIS", "CHA"]; // For easier validation
+
+    asiChoiceGroups.forEach(group => {
+        const choiceIndex = group.querySelector('.asi-type-radio').dataset.choiceIndex;
+        const radios = group.querySelectorAll(`.asi-type-radio[data-choice-index="${choiceIndex}"]`);
+        const plusTwoOptionsDiv = group.querySelector(`#asi_${choiceIndex}_plus_two_options_div`);
+        const plusOneOptionsDiv = group.querySelector(`#asi_${choiceIndex}_plus_one_options_div`);
+        
+        const score1PlusOneSelect = group.querySelector(`#asi_${choiceIndex}_score1_plus_one`);
+        const score2PlusOneSelect = group.querySelector(`#asi_${choiceIndex}_score2_plus_one`);
+
+        function toggleASIOptions() {
+            const selectedType = group.querySelector(`.asi-type-radio[data-choice-index="${choiceIndex}"]:checked`).value;
+            if (selectedType === 'plus_two') {
+                plusTwoOptionsDiv.style.display = 'block';
+                plusOneOptionsDiv.style.display = 'none';
+            } else if (selectedType === 'plus_one_plus_one') {
+                plusTwoOptionsDiv.style.display = 'none';
+                plusOneOptionsDiv.style.display = 'block';
+            } else { // 'none' or other
+                plusTwoOptionsDiv.style.display = 'none';
+                plusOneOptionsDiv.style.display = 'none';
+            }
+        }
+
+        radios.forEach(radio => radio.addEventListener('change', toggleASIOptions));
+        
+        // Initial state
+        toggleASIOptions();
+
+        if(score1PlusOneSelect && score2PlusOneSelect) {
+            function validateDifferentScores() {
+                if (score1PlusOneSelect.value !== "" && score1PlusOneSelect.value === score2PlusOneSelect.value) {
+                    alert("Please select two different abilities for the +1/+1 option for ASI Choice #" + (parseInt(choiceIndex) + 1) + ".");
+                    // Optionally reset one of them, e.g. the one that was just changed to create the conflict
+                    // This depends on which event listener is being triggered.
+                    // For simplicity, just alerting. User has to manually change.
+                }
+            }
+            score1PlusOneSelect.addEventListener('change', validateDifferentScores);
+            score2PlusOneSelect.addEventListener('change', validateDifferentScores);
+        }
+    });
+
+    const form = document.querySelector('form');
+    form.addEventListener('submit', function(event) {
+        let allAsiValid = true;
+        document.querySelectorAll('.asi-choice-group').forEach(group => {
+            const choiceIndex = group.querySelector('.asi-type-radio').dataset.choiceIndex;
+            const selectedType = group.querySelector(`.asi-type-radio[data-choice-index="${choiceIndex}"]:checked`).value;
+
+            if (selectedType === "plus_two") {
+                 const score1PlusTwoSelect = group.querySelector(`#asi_${choiceIndex}_score1_plus_two`);
+                 if (score1PlusTwoSelect.value === "") {
+                    alert(`For ASI Choice #${parseInt(choiceIndex) + 1} (+2 option), please select an ability.`);
+                    allAsiValid = false;
+                 }
+            } else if (selectedType === "plus_one_plus_one") {
+                const score1PlusOneSelect = group.querySelector(`#asi_${choiceIndex}_score1_plus_one`);
+                const score2PlusOneSelect = group.querySelector(`#asi_${choiceIndex}_score2_plus_one`);
+                if (score1PlusOneSelect.value === "" || score2PlusOneSelect.value === "") {
+                    alert(`For ASI Choice #${parseInt(choiceIndex) + 1} (+1/+1 option), please select two abilities.`);
+                    allAsiValid = false;
+                } else if (score1PlusOneSelect.value === score2PlusOneSelect.value) {
+                    alert(`For ASI Choice #${parseInt(choiceIndex) + 1} (+1/+1 option), you must select two different abilities.`);
+                    allAsiValid = false;
+                }
+            }
+            // If 'none', no validation needed for scores for that ASI slot
+        });
+
+        if (!allAsiValid) {
+            event.preventDefault(); // Stop form submission
+        }
+    });
+});
+</script>
+{% endblock %}
