@@ -73,8 +73,8 @@ def load_user(user_id):
 from . import models # models is already imported above for User, keep for db registration
 
 # Function to load/initialize settings from DB
-def load_and_initialize_settings(current_app):
-    with current_app.app_context():
+def load_and_initialize_settings(current_app): # Restored signature
+    with current_app.app_context(): # Uses current_app argument
         default_model_key = 'DEFAULT_GEMINI_MODEL'
         try:
             db_setting = Setting.query.filter_by(key=default_model_key).first()
@@ -103,10 +103,10 @@ def load_and_initialize_settings(current_app):
             current_app.logger.error(f"Database error during settings initialization for '{default_model_key}': {e}")
             current_app.logger.info(f"'{default_model_key}' will use the value from config.py if available: {current_app.config.get(default_model_key)}")
 
-
-# Call the function after db is initialized and app config is loaded.
-# This ensures it runs when the app factory is executed.
-load_and_initialize_settings(app)
+# Conditionally call the function after db is initialized and app config is loaded.
+# This prevents it from running during test imports if app.config['TESTING'] is True.
+if not app.config.get('TESTING', False):
+    load_and_initialize_settings(app)
 
 # Custom Jinja Filter for JSON
 def from_json_filter(value):
