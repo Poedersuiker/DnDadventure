@@ -81,10 +81,10 @@ def populate_classes_data():
                     # For this script, we'll keep it simpler and rely on what's in the main class or direct spellcasting object.
                     # The model fields spell_slots_by_level etc. expect a JSON of {level: value}
                     # This typically comes from the /levels endpoint which is not fetched here to keep it simple.
-            # print(f"Fetched additional spellcasting data for {class_index}") # Original print
-        except requests.exceptions.RequestException as e: # This try-except is for the /spellcasting endpoint, not /levels
+                    # print(f"Fetched additional spellcasting data for {class_index}") # Original print
+                except requests.exceptions.RequestException as e: # Correctly indented
                     print(f"Error fetching specific spellcasting details for {class_index}: {e}")
-                except json.JSONDecodeError:
+                except json.JSONDecodeError: # Correctly indented
                     print(f"Error decoding specific spellcasting JSON for {class_index}.")
 
         # --- Fetch and process levels data for spell_slots_by_level ---
