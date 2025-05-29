@@ -232,5 +232,3 @@ def populate_classes_data():
 if __name__ == '__main__':
     populate_classes_data()
     print("Class population script finished.")
-
-[end of app/scripts/populate_classes.py]
