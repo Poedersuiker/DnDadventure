@@ -184,6 +184,12 @@
         <span id="rest-status-message" class="save-status-message" style="margin-left: 10px;"></span>
     </div>
 
+    <!-- Debug: Raw spell_slots_data -->
+    <p style="color: red; font-weight: bold; background-color: #fff; padding: 5px; border: 1px solid black;">
+        Debug: Raw spell_slots_data: {{ spell_slots_data }}<br>
+        Debug: Keys in spell_slots_data: {{ spell_slots_data.keys() if spell_slots_data else 'N/A (spell_slots_data is None or empty)' }}
+    </p>
+
     {% for L in range(10) %} {# Loop from 0 (Cantrips) to 9 #}
         {% if L == 0 %}
             {% if spells_by_level[0] %}
@@ -226,16 +232,27 @@
                     {% endif %}
                 </h4>
                 
-                {% if spell_slots_data[L] %}
+                <!-- Debug: Per-level spell_slots_data -->
+                {% set slot_info_for_level = spell_slots_data.get(L) %}
+                <p style="color: blue; background-color: #eee; padding: 3px; border: 1px solid #ccc;">
+                    Debug for Level {{ L }}:
+                    Slot Info: {{ slot_info_for_level }} |
+                    Total: {{ slot_info_for_level.slots_total if slot_info_for_level else 'N/A' }} |
+                    Used: {{ slot_info_for_level.slots_used if slot_info_for_level else 'N/A' }}
+                </p>
+
+                {% if slot_info_for_level %} {# Use the pre-fetched slot_info_for_level #}
                     <div class="spell-slot-tracker" id="slot-tracker-L{{L}}">
-                        {% for i in range(spell_slots_data[L].slots_total) %}
-                            <div class="spell-slot-checkbox {% if i < spell_slots_data[L].slots_used %}used{% endif %}" 
+                        {% for i in range(slot_info_for_level.slots_total) %}
+                            <div class="spell-slot-checkbox {% if i < slot_info_for_level.slots_used %}used{% endif %}" 
                                  data-level="{{ L }}" 
                                  data-slot-index="{{ i }}" 
-                                 data-character-id="{{ character.id }}">
-                            </div>
+                                 data-character-id="{{ character.id }}"
+                                 style="border: 1px solid lime !important; width:15px; height:15px; display:inline-block; background-color: rgba(0,255,0,0.1);">X</div>{# Inner loop debug #}
                         {% endfor %}
                     </div>
+                {% else %}
+                     <p style="color: purple; font-size: 0.8em;">Debug: No slot_info_for_level for Level {{ L }}, so slot tracker not rendered.</p>
                 {% endif %}
 
                 {% if spells_by_level[L] %}
@@ -804,74 +821,71 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Spell Card Hover/Click Logic ---
     document.querySelectorAll('.spell-name').forEach(item => {
-        let spellCard; // Define here to be accessible in both listeners
-        let enterTimeout; // For delayed appearance
-        let leaveTimeout; // For delayed disappearance
+        let spellCardDisplayTimeout; // Used for delaying display
+        let spellCardHideTimeout;    // Used for delaying hide
 
         item.addEventListener('mouseenter', event => {
-            clearTimeout(leaveTimeout); // Cancel any pending hide
-            enterTimeout = setTimeout(() => {
-                // Find the sibling .spell-card-details
-                spellCard = event.target.closest('.spell-list-item').querySelector('.spell-card-details');
-                if (spellCard) {
+            clearTimeout(spellCardHideTimeout); // Cancel any pending hide operation
+            const spellListItem = event.target.closest('.spell-list-item');
+            const spellCard = spellListItem.querySelector('.spell-card-details');
+
+            if (spellCard) {
+                spellCardDisplayTimeout = setTimeout(() => {
                     spellCard.style.display = 'block';
-                    // Position spell card
-                    const rect = event.target.getBoundingClientRect();
-                    const sheetRect = characterSheetOverlay.getBoundingClientRect();
+                    const cardWidth = spellCard.offsetWidth;
+                    const cardHeight = spellCard.offsetHeight;
 
-                    // Calculate desired position relative to the viewport
-                    let cardTop = rect.top;
-                    let cardLeft = rect.right + 10; // 10px to the right
+                    // Attempt to position near the mouse cursor, slightly offset
+                    let top = event.clientY + 10;
+                    let left = event.clientX + 10;
 
-                    // Adjust if going off-screen right
-                    if (cardLeft + spellCard.offsetWidth > window.innerWidth) {
-                        cardLeft = rect.left - spellCard.offsetWidth - 10; // Move to left
+                    // Boundary collision checks (Viewport)
+                    if (left + cardWidth > window.innerWidth) {
+                        left = event.clientX - cardWidth - 10; // Move to left of cursor
                     }
-                    // Adjust if going off-screen bottom
-                    if (cardTop + spellCard.offsetHeight > window.innerHeight) {
-                        cardTop = window.innerHeight - spellCard.offsetHeight - 5; // Align to bottom
+                    if (left < 0) {
+                        left = 5; // Margin from left edge
                     }
-                    // Adjust if going off-screen top
-                    if (cardTop < 0) {
-                        cardTop = 5; // Align to top
+                    if (top + cardHeight > window.innerHeight) {
+                        top = event.clientY - cardHeight - 10; // Move above cursor
                     }
-                     // Ensure it's within the character sheet overlay if possible
-                    if (cardLeft < sheetRect.left) cardLeft = sheetRect.left + 5;
-                    if (cardLeft + spellCard.offsetWidth > sheetRect.right) cardLeft = sheetRect.right - spellCard.offsetWidth - 5;
-                    if (cardTop < sheetRect.top) cardTop = sheetRect.top + 5;
-                    if (cardTop + spellCard.offsetHeight > sheetRect.bottom) cardTop = sheetRect.bottom - spellCard.offsetHeight - 5;
+                    if (top < 0) {
+                        top = 5; // Margin from top edge
+                    }
 
-
-                    spellCard.style.left = cardLeft + 'px';
-                    spellCard.style.top = cardTop + 'px';
-                    spellCard.style.zIndex = '105'; // Ensure above other sheet elements
-                }
-            }, 150); // Small delay before showing
+                    spellCard.style.left = left + 'px';
+                    spellCard.style.top = top + 'px';
+                    // z-index is handled by CSS (.spell-card-details has z-index: 1050)
+                }, 150); // Delay before showing
+            }
         });
 
         item.addEventListener('mouseleave', event => {
-            clearTimeout(enterTimeout); // Cancel any pending show
-            leaveTimeout = setTimeout(() => {
-                // spellCard might not be set if mouseleave happens before enterTimeout
-                const currentSpellCard = event.target.closest('.spell-list-item').querySelector('.spell-card-details');
-                if (currentSpellCard) {
-                    currentSpellCard.style.display = 'none';
-                }
-            }, 100); // Small delay before hiding
+            clearTimeout(spellCardDisplayTimeout); // Cancel any pending show operation
+            const spellListItem = event.target.closest('.spell-list-item');
+            const spellCard = spellListItem.querySelector('.spell-card-details');
+            if (spellCard) {
+                spellCardHideTimeout = setTimeout(() => {
+                    // Check if mouse is now over the card itself
+                    if (!spellCard.matches(':hover')) {
+                         spellCard.style.display = 'none';
+                    }
+                }, 100); // Delay before hiding, allows moving to card
+            }
         });
         
-        // Keep card visible if mouse moves onto it
+        // Additional listeners for the card itself to prevent hiding when mouse moves onto it
         const spellListItem = item.closest('.spell-list-item');
         if (spellListItem) {
-            const spellCardDetails = spellListItem.querySelector('.spell-card-details');
-            if (spellCardDetails) {
-                spellCardDetails.addEventListener('mouseenter', () => {
-                    clearTimeout(leaveTimeout);
+            const spellCard = spellListItem.querySelector('.spell-card-details');
+            if (spellCard) {
+                spellCard.addEventListener('mouseenter', () => {
+                    clearTimeout(spellCardHideTimeout); // Don't hide if mouse is over the card
                 });
-                spellCardDetails.addEventListener('mouseleave', () => {
-                     leaveTimeout = setTimeout(() => {
-                        spellCardDetails.style.display = 'none';
-                    }, 100);
+                spellCard.addEventListener('mouseleave', () => {
+                    spellCardHideTimeout = setTimeout(() => {
+                        spellCard.style.display = 'none';
+                    }, 100); // Hide after a short delay when mouse leaves the card
                 });
             }
         }

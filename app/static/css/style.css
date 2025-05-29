@@ -1005,7 +1005,7 @@ footer {
 .spell-list-item {
     padding: 2px 0;
     margin-bottom: 1px; /* Minimal space between spell items */
-    position: relative; /* For spell card positioning */
+    /* position: relative; For spell card positioning - REMOVED */
 }
 
 .spell-name {
@@ -1034,21 +1034,21 @@ footer {
     display: inline-block;
     width: 14px; /* Slightly smaller */
     height: 14px;
-    border: 1px solid #A0522D; /* Sienna border */
+    border: 1px solid #5D4037; /* Darker, more prominent border */
     border-radius: 50%; /* Circle */
     margin-right: 3px;
     cursor: pointer;
     background-color: #fff9e6; /* Light parchment for available */
-    transition: background-color 0.2s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
     position: relative; /* For potential pseudo-elements if needed */
 }
 
 .spell-slot-checkbox.used {
     background-color: #5D4037; /* Dark brown for used */
-    border-color: #3B2F2F; /* Even darker border for used */
+    border-color: #3B2F2F; /* Even darker border for used state */
 }
 .spell-slot-checkbox:hover {
-    border-color: #8B0000; /* Red border on hover for interactivity */
+    border-color: #8B0000; /* Dark Red border on hover for interactivity */
 }
 
 /* Slot count text is part of .spell-level-header, e.g. (Slots: 3/4) */
@@ -1062,7 +1062,8 @@ footer {
 
 /* Spell Card Popup */
 .spell-card-details {
-    /* position: absolute; defined inline via JS, but can be default here */
+    display: none; /* Hidden by default, JS will toggle */
+    position: absolute; /* Positioned relative to nearest positioned ancestor or body */
     background-color: #fffdf5; /* Very light parchment, slightly off-white */
     border: 1px solid #5D4037; /* Dark brown border */
     padding: 10px 12px; /* Slightly more horizontal padding */
