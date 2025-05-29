@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Level Up Review - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Level Up Review: {{ class_name }} Level {{ new_level_number }}</h1>
+    <p>Character ID: {{ character_id }}</p>
+    <hr>
+
+    <h3>Summary of Changes:</h3>
+
+    {# HP Information #}
+    <div class="card mb-3">
+        <div class="card-header">HP Advancement</div>
+        <div class="card-body">
+            {% if hp_info %}
+                <p><strong>HP Gained:</strong> {{ hp_info.gain }}</p>
+                <p><small><em>Details: {{ hp_info.log_details }}</em></small></p>
+                <p>Your new Max HP will be your previous Max HP + {{ hp_info.gain }}.</p> {# Actual calculation will be in apply step #}
+            {% else %}
+                <p class="text-warning">HP information not recorded. Please revisit the HP step.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    {# Features & ASI #}
+    <div class="card mb-3">
+        <div class="card-header">Features & Ability Score Improvements</div>
+        <div class="card-body">
+            <h4>New Features:</h4>
+            {% if new_features_list %}
+                <ul>
+                    {% for feature in new_features_list %}
+                        <li>{{ feature }}</li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No new class features automatically gained at this level.</p>
+            {% endif %}
+
+            <h4>Ability Score Improvements:</h4>
+            {% if asi_choices_log %}
+                <ul>
+                    {% for log_entry in asi_choices_log %}
+                        <li>{{ log_entry }}</li>
+                    {% endfor %}
+                </ul>
+                <p><strong>Updated Ability Scores (Preview):</strong></p>
+                <ul>
+                    {% for ability_short, score in final_ability_scores.items() %}
+                        <li>{{ ability_short.upper() }}: {{ score }}</li>
+                    {% endfor %}
+                </ul>
+            {% elif level_up_data.get('asi_count_available', 0) > 0 %}
+                 <p class="text-warning">ASI was available but no choices seem to be recorded. Please revisit the Features/ASI step.</p>
+            {% else %}
+                <p>No Ability Score Improvement at this level.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    {# Spells Information #}
+    {% if level_up_data.class_id and Class.query.get(level_up_data.class_id).spellcasting_ability %}
+    <div class="card mb-3">
+        <div class="card-header">Spells</div>
+        <div class="card-body">
+            <h4>Newly Selected Cantrips:</h4>
+            {% if selected_new_cantrips %}
+                <ul>
+                    {% for cantrip in selected_new_cantrips %}
+                        <li>{{ cantrip.name }}</li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No new cantrips selected (or none available to choose at this level).</p>
+            {% endif %}
+
+            <h4>Newly Selected Spells:</h4>
+            {% if selected_new_spells %}
+                <ul>
+                    {% for spell in selected_new_spells %}
+                        <li>{{ spell.name }} (Level {{ spell.level }})</li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No new spells selected (or none available to choose for your class/level).</p>
+            {% endif %}
+             <p class="text-muted small">Note: For classes that prepare spells (like Clerics, Druids, Wizards adding to spellbook), this section reflects spells added to your known list or spellbook. Daily preparation is handled separately.</p>
+        </div>
+    </div>
+    {% endif %}
+    
+
+    <hr>
+    <div class="mt-4">
+        <form method="POST" action="{{ url_for('main.level_up_apply', character_id=character_id) }}" style="display: inline-block;">
+            {{ csrf_token_form_field() if csrf_token_form_field else "" }}
+            <button type="submit" class="btn btn-success btn-lg">Confirm & Apply Level Up</button>
+        </form>
+        <a href="{{ url_for('main.level_up_hp', character_id=character_id) }}" class="btn btn-warning btn-lg" style="margin-left: 10px;">Go Back & Change Choices</a>
+        <p class="text-muted small mt-2">Going back will restart the choices from the HP step, but your previous selections might be pre-filled if applicable.</p>
+    </div>
+
+</div>
+{% endblock %}

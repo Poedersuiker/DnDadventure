@@ -120,6 +120,7 @@ class Class(db.Model):
     cantrips_known_by_level = db.Column(db.Text, nullable=True) # JSON: {level: count}
     spells_known_by_level = db.Column(db.Text, nullable=True) # JSON: {level: count}
     can_prepare_spells = db.Column(db.Boolean, default=False) # For classes like Wizard vs Sorcerer
+    level_specific_data = db.Column(db.Text, nullable=True) # JSON: {level: {"features": ["Feature Name"], "asi_count": 0/1}}
 
     def __repr__(self):
         return f'<Class {self.name}>'

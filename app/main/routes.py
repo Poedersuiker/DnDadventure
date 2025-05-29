@@ -18,6 +18,11 @@ from app.main import bp
 # GEMINI_API_KEY = "YOUR_API_KEY" # Load this from environment variables in a real app
 # genai.configure(api_key=GEMINI_API_KEY)
 
+# Helper constant for ASI key mapping - ensure this matches keys in session['level_up_data']['ability_scores']
+ABILITY_NAMES_FULL_SESSION_KEYS = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']
+ABILITY_NAMES_FULL = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma']
+
+
 @bp.route('/')
 @bp.route('/index')
 @login_required
@@ -634,7 +639,9 @@ ALL_SKILLS_LIST = [
     ("Performance", "CHA"), ("Persuasion", "CHA"), ("Religion", "INT"),
     ("Sleight of Hand", "DEX"), ("Stealth", "DEX"), ("Survival", "WIS")
 ]
-ABILITY_NAMES_FULL = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma']
+# ABILITY_NAMES_FULL is defined a bit lower, but used by get_character_level_data.
+# For consistency and to avoid potential NameError if functions are ever reordered, define it here.
+# ABILITY_NAMES_FULL = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma'] # Defined globally now
 
 
 @bp.route('/<int:character_id>/adventure', methods=['GET', 'POST'])
@@ -1606,8 +1613,8 @@ def level_up_start(character_id):
             'INT': latest_level_data.intelligence,
             'WIS': latest_level_data.wisdom,
             'CHA': latest_level_data.charisma,
-        }
-        # Store other potentially useful info from latest_level_data if needed for subsequent steps
+        },
+        'previous_spells_known_ids': json.loads(latest_level_data.spells_known_ids or '[]') # Store for spell selection
     }
     session.modified = True
     
@@ -1680,8 +1687,7 @@ def level_up_hp(character_id):
         session.modified = True
         
         flash(f"HP gain of {hp_gained_this_level} recorded for level {new_level_number}.", "success")
-        # Redirect to the next step, e.g., features or ASI
-        return redirect(url_for('main.level_up_features_asi', character_id=character_id)) # Placeholder for next step
+        return redirect(url_for('main.level_up_features_asi', character_id=character_id)) 
 
     return render_template('level_up/level_up_hp.html',
                            character_id=character_id,
@@ -1695,43 +1701,300 @@ def level_up_hp(character_id):
 @bp.route('/character/<int:character_id>/level_up/features_asi', methods=['GET', 'POST'])
 @login_required
 def level_up_features_asi(character_id):
-    # Placeholder for Ability Score Increases / Feats and new features selection
     level_up_data = session.get('level_up_data')
     if not level_up_data or level_up_data.get('character_id') != character_id or not level_up_data.get('hp_info'):
         flash("Level up process not started correctly or HP step missed. Please start over.", "error")
         return redirect(url_for('main.level_up_start', character_id=character_id))
 
-    # In a real app, you'd fetch class features for level_up_data['new_level_number']
-    # and determine if an ASI/feat is granted.
+    char_class_id = level_up_data.get('class_id')
+    char_class = Class.query.get(char_class_id)
+    if not char_class:
+        flash("Could not retrieve class data. Aborting level up.", "error")
+        session.pop('level_up_data', None)
+        return redirect(url_for('main.adventure', character_id=character_id))
+
+    new_level_number = level_up_data.get('new_level_number')
+    # These are for GET request display, might be overwritten by POST
+    new_features_at_this_level = level_up_data.get('new_features_list', [])
+    asi_count_at_this_level = level_up_data.get('asi_count_available', 0)
+
+
+    if request.method == 'GET': 
+        if char_class.level_specific_data:
+            try:
+                level_specific_progression = json.loads(char_class.level_specific_data)
+                current_level_prog_data = level_specific_progression.get(str(new_level_number))
+                if current_level_prog_data:
+                    new_features_at_this_level = current_level_prog_data.get('features', [])
+                    asi_count_at_this_level = current_level_prog_data.get('asi_count', 0)
+            except json.JSONDecodeError:
+                current_app.logger.error(f"Could not parse level_specific_data for class {char_class.name}")
+                flash("Error reading class progression data.", "error")
+        
+        level_up_data['new_features_list'] = new_features_at_this_level
+        level_up_data['asi_count_available'] = asi_count_at_this_level
+        level_up_data.setdefault('chosen_asi', {}) 
+        level_up_data.setdefault('asi_choices_log', [])
+        session.modified = True
+            
+    if request.method == 'POST':
+        asi_count_available_in_session = level_up_data.get('asi_count_available', 0)
+        # Important: work on a copy for ability scores until all validation passes
+        current_ability_scores_copy = level_up_data.get('ability_scores', {}).copy()
+        asi_choices_log_list = [] 
+
+        for i in range(asi_count_available_in_session):
+            choice_type = request.form.get(f'asi_{i}_choice_type')
+            
+            score1_plus_two_field = f'asi_{i}_score1_plus_two'
+            score1_plus_one_field = f'asi_{i}_score1_plus_one'
+            score2_plus_one_field = f'asi_{i}_score2_plus_one'
+
+            if choice_type == "plus_two":
+                score1_abbr = request.form.get(score1_plus_two_field)
+                if not score1_abbr or score1_abbr not in ABILITY_NAMES_FULL_SESSION_KEYS: 
+                    flash(f"Invalid ability selected for ASI choice #{i+1} (+2). Please select an ability.", "error")
+                    return render_template('level_up/level_up_features_asi.html',
+                                           character_id=character_id, class_name=level_up_data.get('class_name'),
+                                           new_level_number=new_level_number, current_ability_scores=level_up_data.get('ability_scores'),
+                                           new_features=level_up_data.get('new_features_list', []), asi_count=asi_count_available_in_session, 
+                                           ability_names=ABILITY_NAMES_FULL)
+                
+                current_ability_scores_copy[score1_abbr] = current_ability_scores_copy.get(score1_abbr, 10) + 2
+                asi_choices_log_list.append(f"ASI #{i+1}: +2 to {score1_abbr}")
+
+            elif choice_type == "plus_one_plus_one":
+                score1_abbr = request.form.get(score1_plus_one_field)
+                score2_abbr = request.form.get(score2_plus_one_field)
+
+                if not score1_abbr or score1_abbr not in ABILITY_NAMES_FULL_SESSION_KEYS or \
+                   not score2_abbr or score2_abbr not in ABILITY_NAMES_FULL_SESSION_KEYS:
+                    flash(f"Invalid ability selected for ASI choice #{i+1} (+1/+1). Please select two abilities.", "error")
+                    return render_template('level_up/level_up_features_asi.html',
+                                           character_id=character_id, class_name=level_up_data.get('class_name'),
+                                           new_level_number=new_level_number, current_ability_scores=level_up_data.get('ability_scores'),
+                                           new_features=level_up_data.get('new_features_list', []), asi_count=asi_count_available_in_session,
+                                           ability_names=ABILITY_NAMES_FULL)
+                if score1_abbr == score2_abbr:
+                    flash(f"For ASI choice #{i+1} (+1/+1), you must select two different abilities.", "error")
+                    return render_template('level_up/level_up_features_asi.html',
+                                           character_id=character_id, class_name=level_up_data.get('class_name'),
+                                           new_level_number=new_level_number, current_ability_scores=level_up_data.get('ability_scores'),
+                                           new_features=level_up_data.get('new_features_list', []), asi_count=asi_count_available_in_session,
+                                           ability_names=ABILITY_NAMES_FULL)
+
+                current_ability_scores_copy[score1_abbr] = current_ability_scores_copy.get(score1_abbr, 10) + 1
+                current_ability_scores_copy[score2_abbr] = current_ability_scores_copy.get(score2_abbr, 10) + 1
+                asi_choices_log_list.append(f"ASI #{i+1}: +1 to {score1_abbr}, +1 to {score2_abbr}")
+            
+            elif not choice_type or choice_type == "none": 
+                 asi_choices_log_list.append(f"ASI #{i+1}: No ability score increase taken.")
+            else: 
+                flash(f"Invalid ASI choice type '{choice_type}' for ASI #{i+1}.", "error")
+                return render_template('level_up/level_up_features_asi.html',
+                                       character_id=character_id, class_name=level_up_data.get('class_name'),
+                                       new_level_number=new_level_number, current_ability_scores=level_up_data.get('ability_scores'),
+                                       new_features=level_up_data.get('new_features_list', []), asi_count=asi_count_available_in_session,
+                                       ability_names=ABILITY_NAMES_FULL)
+
+
+        level_up_data['ability_scores'] = current_ability_scores_copy 
+        level_up_data['asi_choices_log'] = asi_choices_log_list 
+        level_up_data['chosen_features_details_list'] = level_up_data.get('new_features_list', [])
+        session['level_up_data'] = level_up_data
+        session.modified = True
+        
+        flash("Features and ASI choices processed.", "success")
+        if char_class.spellcasting_ability:
+            cantrips_known_map = json.loads(char_class.cantrips_known_by_level or '{}')
+            spells_known_map = json.loads(char_class.spells_known_by_level or '{}')
+            
+            cantrips_now = int(cantrips_known_map.get(str(new_level_number), 0))
+            cantrips_before = int(cantrips_known_map.get(str(level_up_data['current_level_number']), 0))
+            
+            spells_now = int(spells_known_map.get(str(new_level_number), 0))
+            spells_before = int(spells_known_map.get(str(level_up_data['current_level_number']), 0))
+
+            learns_new_cantrips = cantrips_now > cantrips_before
+            learns_new_spells = spells_now > spells_before
+            if char_class.name == "Wizard": # Wizards always get to add 2 spells
+                learns_new_spells = True 
+
+            if learns_new_cantrips or learns_new_spells or char_class.can_prepare_spells:
+                 return redirect(url_for('main.level_up_spells', character_id=character_id))
+        return redirect(url_for('main.level_up_review', character_id=character_id))
+
+    # For GET request
+    return render_template('level_up/level_up_features_asi.html',
+                            character_id=character_id,
+                            class_name=level_up_data.get('class_name'),
+                            new_level_number=new_level_number,
+                            current_ability_scores=level_up_data.get('ability_scores'), 
+                            new_features=new_features_at_this_level, 
+                            asi_count=asi_count_at_this_level, 
+                            ability_names=ABILITY_NAMES_FULL 
+                           )
+
+
+@bp.route('/character/<int:character_id>/level_up/spells', methods=['GET', 'POST'])
+@login_required
+def level_up_spells(character_id):
+    level_up_data = session.get('level_up_data')
+    if not level_up_data or level_up_data.get('character_id') != character_id \
+            or not level_up_data.get('hp_info') \
+            or not level_up_data.get('new_features_list'): 
+        flash("Level up process not started correctly or a step was missed. Please start over.", "error")
+        return redirect(url_for('main.level_up_start', character_id=character_id))
+
+    char_class_id = level_up_data.get('class_id')
+    char_class = Class.query.get(char_class_id)
+    new_level_number_str = str(level_up_data.get('new_level_number'))
+    current_level_number_str = str(level_up_data.get('current_level_number'))
+
+    if not char_class or not char_class.spellcasting_ability:
+        level_up_data['selected_new_cantrip_ids'] = [] 
+        level_up_data['selected_new_spell_ids'] = []
+        session['level_up_data'] = level_up_data
+        session.modified = True
+        return redirect(url_for('main.level_up_review', character_id=character_id))
+
+    num_new_cantrips_to_choose = 0
+    num_new_spells_to_choose = 0
+
+    try:
+        cantrips_known_map = json.loads(char_class.cantrips_known_by_level or '{}')
+        spells_known_map = json.loads(char_class.spells_known_by_level or '{}')
+
+        cantrips_at_new_level = int(cantrips_known_map.get(new_level_number_str, 0))
+        cantrips_at_current_level = int(cantrips_known_map.get(current_level_number_str, 0))
+        num_new_cantrips_to_choose = max(0, cantrips_at_new_level - cantrips_at_current_level)
+
+        spells_at_new_level = int(spells_known_map.get(new_level_number_str, 0))
+        spells_at_current_level = int(spells_known_map.get(current_level_number_str, 0))
+        
+        if char_class.name == "Wizard": 
+            num_new_spells_to_choose = 2 
+        else: 
+            num_new_spells_to_choose = max(0, spells_at_new_level - spells_at_current_level)
+
+    except (json.JSONDecodeError, ValueError) as e:
+        current_app.logger.error(f"Could not parse cantrips/spells known for class {char_class.name}: {e}")
+        flash("Error reading class spell progression data.", "error")
+        return redirect(url_for('main.level_up_review', character_id=character_id))
+
+    if num_new_cantrips_to_choose == 0 and num_new_spells_to_choose == 0 and not char_class.can_prepare_spells:
+        level_up_data['selected_new_cantrip_ids'] = []
+        level_up_data['selected_new_spell_ids'] = []
+        session['level_up_data'] = level_up_data
+        session.modified = True
+        flash("No new spells to learn or choose at this level.", "info")
+        return redirect(url_for('main.level_up_review', character_id=character_id))
     
-    # For now, just a placeholder page that leads to review or next step
-    flash("HP step complete. Next: Features/ASI (Not Implemented). Placeholder redirect.", "info")
-    # This would redirect to a spells step if applicable, or a review step
-    return redirect(url_for('main.level_up_review', character_id=character_id))
+    previous_spells_known_ids = set(level_up_data.get('previous_spells_known_ids', []))
+    
+    max_spell_level_castable = 0
+    if char_class.spell_slots_by_level:
+        try:
+            slots_by_char_level = json.loads(char_class.spell_slots_by_level)
+            slots_for_new_level = slots_by_char_level.get(new_level_number_str, [])
+            for i, num_slots in reversed(list(enumerate(slots_for_new_level))):
+                if num_slots > 0:
+                    max_spell_level_castable = i + 1 
+                    break
+        except json.JSONDecodeError:
+            current_app.logger.error(f"Could not parse spell_slots_by_level for class {char_class.name}")
+
+
+    available_cantrips_query = Spell.query.filter(
+        Spell.level == 0, 
+        Spell.classes_that_can_use.like(f'%"{char_class.name}"%')
+    )
+    if previous_spells_known_ids: 
+        available_cantrips_query = available_cantrips_query.filter(~Spell.id.in_(previous_spells_known_ids))
+    available_cantrips = available_cantrips_query.order_by(Spell.name).all()
+    
+    available_spells_query = Spell.query.filter(
+        Spell.level > 0,
+        Spell.level <= max_spell_level_castable, 
+        Spell.classes_that_can_use.like(f'%"{char_class.name}"%')
+    )
+    if previous_spells_known_ids: 
+        available_spells_query = available_spells_query.filter(~Spell.id.in_(previous_spells_known_ids))
+    available_spells = available_spells_query.order_by(Spell.level, Spell.name).all()
+
+
+    if request.method == 'POST':
+        selected_cantrip_ids = [int(id_str) for id_str in request.form.getlist('new_cantrips')]
+        selected_spell_ids = [int(id_str) for id_str in request.form.getlist('new_spells')]
+
+        if len(selected_cantrip_ids) != num_new_cantrips_to_choose:
+            flash(f"Please select exactly {num_new_cantrips_to_choose} new cantrip(s).", "error")
+            return render_template('level_up/level_up_spells.html', character_id=character_id, 
+                                   level_up_data=level_up_data, char_class=char_class,
+                                   num_new_cantrips_to_choose=num_new_cantrips_to_choose, 
+                                   num_new_spells_to_choose=num_new_spells_to_choose,
+                                   available_cantrips=available_cantrips, available_spells=available_spells,
+                                   previous_spells_known_ids=list(previous_spells_known_ids),
+                                   max_spell_level_castable=max_spell_level_castable)
+
+        if len(selected_spell_ids) != num_new_spells_to_choose:
+            flash(f"Please select exactly {num_new_spells_to_choose} new spell(s).", "error")
+            return render_template('level_up/level_up_spells.html', character_id=character_id,
+                                   level_up_data=level_up_data, char_class=char_class,
+                                   num_new_cantrips_to_choose=num_new_cantrips_to_choose, 
+                                   num_new_spells_to_choose=num_new_spells_to_choose,
+                                   available_cantrips=available_cantrips, available_spells=available_spells,
+                                   previous_spells_known_ids=list(previous_spells_known_ids),
+                                   max_spell_level_castable=max_spell_level_castable)
+        
+        level_up_data['selected_new_cantrip_ids'] = selected_cantrip_ids
+        level_up_data['selected_new_spell_ids'] = selected_spell_ids
+        session['level_up_data'] = level_up_data
+        session.modified = True
+
+        flash("Spell selections saved.", "success")
+        return redirect(url_for('main.level_up_review', character_id=character_id))
+
+    return render_template('level_up/level_up_spells.html', 
+                           character_id=character_id,
+                           level_up_data=level_up_data,
+                           char_class=char_class,
+                           num_new_cantrips_to_choose=num_new_cantrips_to_choose,
+                           num_new_spells_to_choose=num_new_spells_to_choose,
+                           available_cantrips=available_cantrips,
+                           available_spells=available_spells,
+                           previous_spells_known_ids=list(previous_spells_known_ids), 
+                           max_spell_level_castable=max_spell_level_castable
+                           )
 
 
 @bp.route('/character/<int:character_id>/level_up/review', methods=['GET'])
 @login_required
 def level_up_review(character_id):
-    # Placeholder for reviewing all level up choices before applying
     level_up_data = session.get('level_up_data')
-    if not level_up_data or level_up_data.get('character_id') != character_id: # Add more checks as needed
+    if not level_up_data or level_up_data.get('character_id') != character_id: 
         flash("Level up process not started correctly or a step was missed. Please start over.", "error")
         return redirect(url_for('main.level_up_start', character_id=character_id))
     
-    # Fetch data from session to display
-    # In a real app, you'd render a template with all choices made.
-    # For now, directly redirect to apply (which is also a placeholder)
-    flash("Review step (Not Implemented). Proceeding to apply changes.", "info")
-    return redirect(url_for('main.level_up_apply', character_id=character_id))
+    # Prepare data for review template
+    review_data = {
+        'character_id': character_id,
+        'class_name': level_up_data.get('class_name'),
+        'current_level_number': level_up_data.get('current_level_number'),
+        'new_level_number': level_up_data.get('new_level_number'),
+        'hp_info': level_up_data.get('hp_info'),
+        'new_features_list': level_up_data.get('new_features_list', []),
+        'asi_choices_log': level_up_data.get('asi_choices_log', []),
+        'final_ability_scores': level_up_data.get('ability_scores', {}), # These are the scores *after* ASI
+        'selected_new_cantrips': Spell.query.filter(Spell.id.in_(level_up_data.get('selected_new_cantrip_ids', []))).all(),
+        'selected_new_spells': Spell.query.filter(Spell.id.in_(level_up_data.get('selected_new_spell_ids', []))).all()
+    }
+    return render_template('level_up/level_up_review.html', **review_data)
 
 
-@bp.route('/character/<int:character_id>/level_up/apply', methods=['POST']) # Should be POST from a review page
+@bp.route('/character/<int:character_id>/level_up/apply', methods=['POST']) 
 @login_required
 def level_up_apply(character_id):
-    # Logic to process selections made during level up (e.g., ability score increases, new spells, features)
-    # Create a new CharacterLevel record with the updated data
-    # Update Character's main level if still using that (though current_level should now be derived)
     character = Character.query.get_or_404(character_id)
     if character.user_id != current_user.id:
         flash("Unauthorized", "error")
@@ -1751,33 +2014,60 @@ def level_up_apply(character_id):
          flash(f"DM has not allowed leveling up to {level_up_data['new_level_number']} yet.", "error")
          return redirect(url_for('main.adventure', character_id=character_id))
     
-    # Create a new CharacterLevel by copying previous level and then modifying
+    final_ability_scores = level_up_data.get('ability_scores', {}).copy() 
+
+    gained_features_list = level_up_data.get('new_features_list', [])
+    asi_log_list = level_up_data.get('asi_choices_log', [])
+    combined_features_log = gained_features_list + asi_log_list
+
+    old_spells_known_ids = set(level_up_data.get('previous_spells_known_ids', []))
+    newly_selected_cantrips = set(level_up_data.get('selected_new_cantrip_ids', []))
+    newly_selected_spells = set(level_up_data.get('selected_new_spell_ids', []))
+    all_known_spell_ids = list(old_spells_known_ids.union(newly_selected_cantrips).union(newly_selected_spells))
+
+    # Update spell_slots_snapshot based on new level and class data
+    new_spell_slots_snapshot_dict = {}
+    char_class = Class.query.get(level_up_data['class_id'])
+    if char_class and char_class.spell_slots_by_level:
+        try:
+            all_slots_data = json.loads(char_class.spell_slots_by_level)
+            slots_for_new_level_list = all_slots_data.get(str(level_up_data['new_level_number'])) # list like [4,2,0,0...]
+            if slots_for_new_level_list:
+                for i, num_slots in enumerate(slots_for_new_level_list):
+                    if num_slots > 0:
+                        new_spell_slots_snapshot_dict[str(i + 1)] = num_slots # Store as {"1": count, "2": count}
+        except json.JSONDecodeError:
+            current_app.logger.error(f"Could not parse spell_slots_by_level for class {char_class.name} during level up apply.")
+            # Fallback to previous level's snapshot if parsing fails
+            new_spell_slots_snapshot_dict = json.loads(current_level_entry.spell_slots_snapshot or '{}')
+
+
     new_level_data = CharacterLevel(
         character_id=character.id,
         level_number=level_up_data['new_level_number'],
         xp_at_level_up=character.current_xp, 
-        strength=level_up_data['ability_scores'].get('STR', current_level_entry.strength), # Apply ASI if any
-        dexterity=level_up_data['ability_scores'].get('DEX', current_level_entry.dexterity),
-        constitution=level_up_data['ability_scores'].get('CON', current_level_entry.constitution),
-        intelligence=level_up_data['ability_scores'].get('INT', current_level_entry.intelligence),
-        wisdom=level_up_data['ability_scores'].get('WIS', current_level_entry.wisdom),
-        charisma=level_up_data['ability_scores'].get('CHA', current_level_entry.charisma),
+        strength=final_ability_scores.get('STR', current_level_entry.strength), 
+        dexterity=final_ability_scores.get('DEX', current_level_entry.dexterity),
+        constitution=final_ability_scores.get('CON', current_level_entry.constitution),
+        intelligence=final_ability_scores.get('INT', current_level_entry.intelligence),
+        wisdom=final_ability_scores.get('WIS', current_level_entry.wisdom),
+        charisma=final_ability_scores.get('CHA', current_level_entry.charisma),
         hp=current_level_entry.max_hp + level_up_data['hp_info']['gain'], 
         max_hp=current_level_entry.max_hp + level_up_data['hp_info']['gain'], 
         hit_dice_rolled=level_up_data['hp_info'].get('log_details', "N/A"), 
-        armor_class=current_level_entry.armor_class, # Placeholder - may change with new dex/armor
-        proficiencies=current_level_entry.proficiencies, # Placeholder - may add new profs
-        features_gained=json.dumps(level_up_data.get('chosen_features', [f"New Features for Level {level_up_data['new_level_number']}"])), # Placeholder
-        spells_known_ids=current_level_entry.spells_known_ids, # Placeholder - add new spells
-        spells_prepared_ids=current_level_entry.spells_prepared_ids, # Placeholder
-        spell_slots_snapshot=current_level_entry.spell_slots_snapshot, # Placeholder - update based on new level
+        armor_class=current_level_entry.armor_class, 
+        proficiencies=current_level_entry.proficiencies, # Placeholder - should update if new profs gained
+        features_gained=json.dumps(combined_features_log), 
+        spells_known_ids=json.dumps(all_known_spell_ids), 
+        spells_prepared_ids=current_level_entry.spells_prepared_ids, # Placeholder for prepared casters
+        spell_slots_snapshot=json.dumps(new_spell_slots_snapshot_dict), 
         created_at=datetime.utcnow()
     )
     
     db.session.add(new_level_data)
     try:
         db.session.commit()
-        session.pop('level_up_data', None) # Clear session data after successful level up
+        session.pop('level_up_data', None) 
         flash(f"Successfully leveled up to Level {new_level_data.level_number}!", "success")
         return redirect(url_for('main.adventure', character_id=character_id))
     except Exception as e:
