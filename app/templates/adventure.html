@@ -184,12 +184,6 @@
         <span id="rest-status-message" class="save-status-message" style="margin-left: 10px;"></span>
     </div>
 
-    <!-- Debug: Raw spell_slots_data -->
-    <p style="color: red; font-weight: bold; background-color: #fff; padding: 5px; border: 1px solid black;">
-        Debug: Raw spell_slots_data: {{ spell_slots_data }}<br>
-        Debug: Keys in spell_slots_data: {{ spell_slots_data.keys() if spell_slots_data else 'N/A (spell_slots_data is None or empty)' }}
-    </p>
-
     {% for L in range(10) %} {# Loop from 0 (Cantrips) to 9 #}
         {% if L == 0 %}
             {% if spells_by_level[0] %}
@@ -232,14 +226,7 @@
                     {% endif %}
                 </h4>
                 
-                <!-- Debug: Per-level spell_slots_data -->
                 {% set slot_info_for_level = spell_slots_data.get(L) %}
-                <p style="color: blue; background-color: #eee; padding: 3px; border: 1px solid #ccc;">
-                    Debug for Level {{ L }}:
-                    Slot Info: {{ slot_info_for_level }} |
-                    Total: {{ slot_info_for_level.slots_total if slot_info_for_level else 'N/A' }} |
-                    Used: {{ slot_info_for_level.slots_used if slot_info_for_level else 'N/A' }}
-                </p>
 
                 {% if slot_info_for_level %} {# Use the pre-fetched slot_info_for_level #}
                     <div class="spell-slot-tracker" id="slot-tracker-L{{L}}">
@@ -247,12 +234,9 @@
                             <div class="spell-slot-checkbox {% if i < slot_info_for_level.slots_used %}used{% endif %}" 
                                  data-level="{{ L }}" 
                                  data-slot-index="{{ i }}" 
-                                 data-character-id="{{ character.id }}"
-                                 style="border: 1px solid lime !important; width:15px; height:15px; display:inline-block; background-color: rgba(0,255,0,0.1);">X</div>{# Inner loop debug #}
+                                 data-character-id="{{ character.id }}"></div>
                         {% endfor %}
                     </div>
-                {% else %}
-                     <p style="color: purple; font-size: 0.8em;">Debug: No slot_info_for_level for Level {{ L }}, so slot tracker not rendered.</p>
                 {% endif %}
 
                 {% if spells_by_level[L] %}
