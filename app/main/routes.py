@@ -1998,7 +1998,7 @@ def level_up_review(character_id):
         'selected_new_cantrips': Spell.query.filter(Spell.id.in_(level_up_data.get('selected_new_cantrip_ids', []))).all(),
         'selected_new_spells': Spell.query.filter(Spell.id.in_(level_up_data.get('selected_new_spell_ids', []))).all()
     }
-    return render_template('level_up/level_up_review.html', **review_data)
+    return render_template('level_up/level_up_review.html', level_up_data=level_up_data, **review_data)
 
 
 @bp.route('/character/<int:character_id>/level_up/apply', methods=['POST']) 
