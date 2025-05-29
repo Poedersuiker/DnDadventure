@@ -1998,6 +1998,18 @@ def level_up_review(character_id):
         'selected_new_cantrips': Spell.query.filter(Spell.id.in_(level_up_data.get('selected_new_cantrip_ids', []))).all(),
         'selected_new_spells': Spell.query.filter(Spell.id.in_(level_up_data.get('selected_new_spell_ids', []))).all()
     }
+    
+    # Fetch the Class object to pass to the template
+    char_class = Class.query.get(level_up_data.get('class_id'))
+    if char_class:
+        review_data['char_class'] = char_class
+    else:
+        # Handle case where class_id might be invalid or not found, though session should be reliable.
+        # Setting to None or a default object, or flashing an error might be options.
+        # For now, if not found, it won't be in review_data, template needs to handle potential absence.
+        current_app.logger.warning(f"Could not find class with ID {level_up_data.get('class_id')} during level_up_review for char {character_id}.")
+        review_data['char_class'] = None # Explicitly set to None if not found
+
     return render_template('level_up/level_up_review.html', level_up_data=level_up_data, **review_data)
 
 

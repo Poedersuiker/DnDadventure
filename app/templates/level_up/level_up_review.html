@@ -61,7 +61,7 @@
     </div>
 
     {# Spells Information #}
-    {% if level_up_data.class_id and Class.query.get(level_up_data.class_id).spellcasting_ability %}
+    {% if char_class and char_class.spellcasting_ability %}
     <div class="card mb-3">
         <div class="card-header">Spells</div>
         <div class="card-body">
