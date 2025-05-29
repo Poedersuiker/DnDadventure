@@ -1034,7 +1034,7 @@ def send_chat_message(character_id):
         return jsonify(error=_("The Dungeon Master is currently re-reading the ancient texts (model/session init failed).")), 500
 
     # Call the refactored geminiai function
-    ai_response_text, _, error_from_geminiai = geminiai(
+    ai_response_text, _returned_chat_session, error_from_geminiai = geminiai(
         prompt_text_to_send=user_message,
         existing_chat_session=chat_session # Pass the session that includes history and system instruction
     )
