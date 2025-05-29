@@ -2075,5 +2075,3 @@ def level_up_apply(character_id):
         current_app.logger.error(f"Error applying level up for char {character_id} to L{new_level_data.level_number}: {str(e)}")
         flash("Error applying level up. Please try again.", "error")
         return redirect(url_for('main.level_up_start', character_id=character_id))
-
-[end of app/main/routes.py]
