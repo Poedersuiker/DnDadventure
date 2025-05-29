@@ -1014,42 +1014,67 @@ def adventure(character_id):
         flash(_('This character does not belong to you.'))
         return redirect(url_for('main.index'))
 
+    current_app.logger.debug(f"--- Starting spell slot management for Character: {character.name} (ID: {character.id}), Level: {character.level} ---")
+
     # --- Spell Slot Management ---
     if character.char_class and character.char_class.spell_slots_by_level:
+        current_app.logger.debug(f"Class: {character.char_class.name}, Raw Spell Slots JSON from DB: {character.char_class.spell_slots_by_level}")
         try:
             spell_slots_info_for_class = json.loads(character.char_class.spell_slots_by_level)
-            # Get the list of slots for the character's current level.
-            # The key in spell_slots_info_for_class is character level (as string).
-            slots_for_current_level = spell_slots_info_for_class.get(str(character.level))
+            # Key is character's class level (e.g., "1", "2")
+            # Value is an array of slot counts per spell level (index 0 = 1st level spell slots)
+            slots_for_char_level_list = spell_slots_info_for_class.get(str(character.level))
+            
+            current_app.logger.debug(f"Parsed slots_for_char_level_list for character level {character.level}: {slots_for_char_level_list}")
 
-            if slots_for_current_level:
-                # slots_for_current_level is an array like [4, 2], index 0 is 1st level spells.
-                for i, num_slots in enumerate(slots_for_current_level):
-                    spell_level_to_manage = i + 1 # Spell levels are 1-indexed
+            if slots_for_char_level_list:
+                # slots_for_char_level_list is an array like [2, 0, 0...] (slots for spell level 1, 2, 3...)
+                # Iterate from spell level 1 up to the number of spell levels defined for this class level
+                for spell_lvl_idx, total_slots_for_this_spell_level in enumerate(slots_for_char_level_list):
+                    actual_spell_level = spell_lvl_idx + 1 # Convert 0-indexed array to 1-indexed spell level
+
+                    current_app.logger.debug(f"Processing spell level {actual_spell_level} (index {spell_lvl_idx}) with total_slots: {total_slots_for_this_spell_level}")
 
                     existing_slot_record = CharacterSpellSlot.query.filter_by(
                         character_id=character.id,
-                        spell_level=spell_level_to_manage
+                        spell_level=actual_spell_level
                     ).first()
-
+                    
+                    needs_creation = False
                     if existing_slot_record:
-                        existing_slot_record.slots_total = num_slots
-                        if existing_slot_record.slots_used > num_slots:
-                            existing_slot_record.slots_used = num_slots # Cap used slots
+                        current_app.logger.debug(f"For spell level {actual_spell_level}, found existing slot record: {existing_slot_record}, current total: {existing_slot_record.slots_total}")
+                        if existing_slot_record.slots_total != total_slots_for_this_spell_level:
+                            current_app.logger.debug(f"Updating slots_total for spell level {actual_spell_level} from {existing_slot_record.slots_total} to {total_slots_for_this_spell_level}")
+                            existing_slot_record.slots_total = total_slots_for_this_spell_level
+                        # Cap used slots if total slots decreased below used slots
+                        if existing_slot_record.slots_used > existing_slot_record.slots_total:
+                            current_app.logger.debug(f"Capping slots_used for spell level {actual_spell_level} from {existing_slot_record.slots_used} to {existing_slot_record.slots_total}")
+                            existing_slot_record.slots_used = existing_slot_record.slots_total
                     else:
+                        needs_creation = True
+                        current_app.logger.debug(f"For spell level {actual_spell_level}, no existing slot record found. Creating new.")
                         new_slot_record = CharacterSpellSlot(
                             character_id=character.id,
-                            spell_level=spell_level_to_manage,
-                            slots_total=num_slots,
+                            spell_level=actual_spell_level,
+                            slots_total=total_slots_for_this_spell_level,
                             slots_used=0
                         )
                         db.session.add(new_slot_record)
-                db.session.commit() # Commit after processing all spell levels
+                    
+                    current_app.logger.debug(f"Spell level {actual_spell_level} will have total slots: {total_slots_for_this_spell_level}. Needs creation: {needs_creation}")
+
+                db.session.commit()
+                current_app.logger.debug(f"Committed spell slot changes to DB. Refreshed character.spell_slots: {character.spell_slots.all()}")
+            else:
+                current_app.logger.debug(f"No spell slot array defined for class {character.char_class.name} at character level {character.level}.")
+        
         except json.JSONDecodeError:
-            current_app.logger.error(f"Failed to parse spell_slots_by_level for class {character.char_class.name} (char_id: {character.id})")
+            current_app.logger.error(f"Failed to parse spell_slots_by_level JSON for class {character.char_class.name}: '{character.char_class.spell_slots_by_level}'")
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f"Error processing spell slots for char {character.id}: {str(e)}")
+            current_app.logger.error(f"Error processing spell slots for character {character.id}: {str(e)}", exc_info=True)
+    else:
+        current_app.logger.debug(f"Character {character.name} has no char_class or char_class.spell_slots_by_level. Skipping spell slot management.")
 
 
     try:
@@ -1225,8 +1250,11 @@ def adventure(character_id):
         spells_by_level[level].sort(key=lambda s: s.name)
 
     # Fetch CharacterSpellSlot data and organize it
+    # This query ensures we get the latest state from the DB after any commits.
     character_spell_slots_list = CharacterSpellSlot.query.filter_by(character_id=character.id).order_by(CharacterSpellSlot.spell_level).all()
     spell_slots_data = {slot.spell_level: slot for slot in character_spell_slots_list}
+    current_app.logger.debug(f"Final spell_slots_data for template: {spell_slots_data}")
+    current_app.logger.debug(f"--- Finished spell slot management for Character: {character.name} (ID: {character.id}) ---")
 
 
     # Prepare Saving Throws Data
