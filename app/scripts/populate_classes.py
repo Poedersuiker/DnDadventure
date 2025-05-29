@@ -81,12 +81,48 @@ def populate_classes_data():
                     # For this script, we'll keep it simpler and rely on what's in the main class or direct spellcasting object.
                     # The model fields spell_slots_by_level etc. expect a JSON of {level: value}
                     # This typically comes from the /levels endpoint which is not fetched here to keep it simple.
-                    print(f"Fetched additional spellcasting data for {class_index}")
-                except requests.exceptions.RequestException as e:
+            # print(f"Fetched additional spellcasting data for {class_index}") # Original print
+        except requests.exceptions.RequestException as e: # This try-except is for the /spellcasting endpoint, not /levels
                     print(f"Error fetching specific spellcasting details for {class_index}: {e}")
                 except json.JSONDecodeError:
                     print(f"Error decoding specific spellcasting JSON for {class_index}.")
 
+        # --- Fetch and process levels data for spell_slots_by_level ---
+        spell_slots_by_level_map = {}
+        levels_url = BASE_API_URL + f"/api/classes/{class_index}/levels"
+        print(f"Fetching levels data from: {levels_url}")
+        try:
+            levels_response = requests.get(levels_url)
+            levels_response.raise_for_status() # Raise an exception for HTTP errors
+            levels_data = levels_response.json()
+
+            for level_specific_data in levels_data:
+                char_level = level_specific_data.get('level')
+                if char_level is None:
+                    print(f"Skipping level data for {class_index} due to missing 'level' key: {level_specific_data}")
+                    continue
+
+                spellcasting_info_for_level = level_specific_data.get('spellcasting', {})
+                slots_at_this_char_level = [0] * 9 # Index 0 for spell_level_1, ..., Index 8 for spell_level_9
+
+                for i in range(9): # Spell levels 1 to 9
+                    slot_key = f'spell_slots_level_{i+1}'
+                    slots_at_this_char_level[i] = spellcasting_info_for_level.get(slot_key, 0)
+                
+                spell_slots_by_level_map[str(char_level)] = slots_at_this_char_level
+            
+            print(f"Successfully processed levels data for {class_index}. Map has {len(spell_slots_by_level_map)} entries.")
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching levels data for {class_index} from {levels_url}: {e}")
+            # spell_slots_by_level_map remains {}
+        except json.JSONDecodeError:
+            print(f"Error decoding JSON from levels data for {class_index} from {levels_url}.")
+            # spell_slots_by_level_map remains {}
+        except Exception as e: # Catch any other unexpected errors during levels processing
+            print(f"An unexpected error occurred while processing levels data for {class_index}: {e}")
+            # spell_slots_by_level_map remains {}
+        # --- End of levels data processing ---
 
             # Proficiencies
             all_proficiencies = class_data.get('proficiencies', [])
@@ -128,11 +164,10 @@ def populate_classes_data():
                     skill_proficiencies_options=json.dumps(skill_prof_options_list),
                     starting_equipment=starting_equipment_json, # Storing the direct equipment list
                     spellcasting_ability=spellcasting_data.get('spellcasting_ability', {}).get('name') if spellcasting_data else None,
-                    # The following fields usually require parsing the /levels endpoint, which is more complex.
-                    # For now, we'll store them as empty JSON if not directly available or simple.
-                    spell_slots_by_level=json.dumps(spellcasting_data.get('slots_by_spell_level', {}) if spellcasting_data else {}), # Placeholder
-                    cantrips_known_by_level=json.dumps(spellcasting_data.get('cantrips_known', {}) if spellcasting_data else {}), # Placeholder
-                    spells_known_by_level=json.dumps(spellcasting_data.get('spells_known', {}) if spellcasting_data else {}), # Placeholder
+                    spell_slots_by_level=json.dumps(spell_slots_by_level_map), # Updated
+                    # Placeholders for cantrips and spells known per level, as per instructions
+                    cantrips_known_by_level=json.dumps({}), # Placeholder
+                    spells_known_by_level=json.dumps({}), # Placeholder
                     can_prepare_spells=can_prepare
                 )
                 db.session.add(new_class)
