@@ -1,5 +1,6 @@
 from flask_login import UserMixin
 from app import db  # Assuming db will be initialized in app/__init__.py
+from datetime import datetime
 
 class User(db.Model, UserMixin):
     __tablename__ = 'user'  # Explicitly set table name
@@ -21,20 +22,10 @@ class Character(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     race_id = db.Column(db.Integer, db.ForeignKey('race.id'), nullable=False)
     class_id = db.Column(db.Integer, db.ForeignKey('class.id'), nullable=False)
-    level = db.Column(db.Integer, default=1)
-    xp = db.Column(db.Integer, default=0)
-    strength = db.Column(db.Integer, default=10)
-    dexterity = db.Column(db.Integer, default=10)
-    constitution = db.Column(db.Integer, default=10)
-    intelligence = db.Column(db.Integer, default=10)
-    wisdom = db.Column(db.Integer, default=10)
-    charisma = db.Column(db.Integer, default=10)
-    hp = db.Column(db.Integer, default=0)
-    max_hp = db.Column(db.Integer, default=0)
-    armor_class = db.Column(db.Integer, default=10)
-    speed = db.Column(db.Integer, default=30, nullable=False) # <-- ADD THIS LINE
-    current_proficiencies = db.Column(db.Text, nullable=True)  # JSON
+    speed = db.Column(db.Integer, default=30, nullable=False) 
     alignment = db.Column(db.String(100), nullable=True)
+    dm_allowed_level = db.Column(db.Integer, default=1, nullable=False)
+    current_xp = db.Column(db.Integer, default=0, nullable=False)
     background_name = db.Column(db.String(100), nullable=True)
     background_proficiencies = db.Column(db.Text, nullable=True)  # JSON
     adventure_log = db.Column(db.Text, nullable=True) # JSON chat history
@@ -45,41 +36,46 @@ class Character(db.Model):
     race = db.relationship('Race', backref='characters')
     char_class = db.relationship('Class', backref='characters')
 
-    known_spells = db.relationship('Spell', secondary='character_known_spells', lazy='subquery',
-                                   backref=db.backref('characters_that_know', lazy=True))
-    prepared_spells = db.relationship('Spell', secondary='character_prepared_spells', lazy='subquery',
-                                      backref=db.backref('characters_that_prepare', lazy=True))
-    
-    spell_slots = db.relationship('CharacterSpellSlot', backref='character', lazy=True, cascade='all, delete-orphan')
+    levels = db.relationship('CharacterLevel', backref='parent_character', lazy='dynamic', 
+                             order_by='CharacterLevel.level_number', cascade='all, delete-orphan')
 
     def __repr__(self):
         return f'<Character {self.name}>'
 
-
-# Association table for Character and known Spells (Many-to-Many)
-character_known_spells = db.Table('character_known_spells',
-    db.Column('character_id', db.Integer, db.ForeignKey('character.id'), primary_key=True),
-    db.Column('spell_id', db.Integer, db.ForeignKey('spell.id'), primary_key=True)
-)
-
-# Association table for Character and prepared Spells (Many-to-Many)
-character_prepared_spells = db.Table('character_prepared_spells',
-    db.Column('character_id', db.Integer, db.ForeignKey('character.id'), primary_key=True),
-    db.Column('spell_id', db.Integer, db.ForeignKey('spell.id'), primary_key=True)
-)
-
-
-class CharacterSpellSlot(db.Model):
-    __tablename__ = 'character_spell_slot'
+# New CharacterLevel Model
+class CharacterLevel(db.Model):
+    __tablename__ = 'character_level'
     id = db.Column(db.Integer, primary_key=True)
     character_id = db.Column(db.Integer, db.ForeignKey('character.id'), nullable=False)
-    spell_level = db.Column(db.Integer, nullable=False)
-    slots_total = db.Column(db.Integer, nullable=False)
-    slots_used = db.Column(db.Integer, nullable=False, default=0)
+    level_number = db.Column(db.Integer, nullable=False)
+    xp_at_level_up = db.Column(db.Integer, nullable=True)
+    strength = db.Column(db.Integer, nullable=False)
+    dexterity = db.Column(db.Integer, nullable=False)
+    constitution = db.Column(db.Integer, nullable=False)
+    intelligence = db.Column(db.Integer, nullable=False)
+    wisdom = db.Column(db.Integer, nullable=False)
+    charisma = db.Column(db.Integer, nullable=False)
+    hp = db.Column(db.Integer, nullable=False)
+    max_hp = db.Column(db.Integer, nullable=False)
+    hit_dice_rolled = db.Column(db.String(255), nullable=True)
+    armor_class = db.Column(db.Integer, nullable=True)
+    proficiencies = db.Column(db.Text, nullable=True)  # JSON
+    features_gained = db.Column(db.Text, nullable=True) # JSON or Text
+    spells_known_ids = db.Column(db.Text, nullable=True) # JSON list of Spell IDs
+    spells_prepared_ids = db.Column(db.Text, nullable=True) # JSON list of Spell IDs
+    spell_slots_snapshot = db.Column(db.Text, nullable=True) # JSON
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # The relationship back to Character is implicitly created by backref='parent_character' in Character.levels
+    # If explicit definition is needed:
+    # character = db.relationship('Character', backref=db.backref('level_details', lazy='joined'))
 
     def __repr__(self):
-        return f'<CharacterSpellSlot L{self.spell_level} ({self.slots_used}/{self.slots_total}) for Character ID {self.character_id}>'
+        return f'<CharacterLevel {self.level_number} for Character ID {self.character_id}>'
 
+# Removed character_known_spells table
+# Removed character_prepared_spells table
+# Removed CharacterSpellSlot model
 
 class Spell(db.Model):
     __tablename__ = 'spell'

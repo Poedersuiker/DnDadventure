@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Level Up HP - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Level Up: Hit Points</h1>
+    <p>Character: {{ character_id }}</p> {# For debugging or context if needed, remove if not #}
+    <h2>{{ class_name }} - Level {{ current_level_number }} to {{ new_level_number }}</h2>
+    <hr>
+
+    <p>Your Hit Die: <strong>{{ hit_die }}</strong></p>
+    <p>Your Constitution Modifier: <strong>{{ con_modifier }}</strong></p>
+    
+    <form method="POST" action="{{ url_for('main.level_up_hp', character_id=character_id) }}">
+        {{ form_hidden_tag() if form_hidden_tag }} {# Include CSRF token if using Flask-WTF #}
+
+        <h3>Choose HP Gain Method:</h3>
+
+        <div class="hp-choice-option card mb-3">
+            <div class="card-body">
+                <h4 class="card-title">Option 1: Roll Your Hit Die</h4>
+                <p>Roll 1{{ hit_die }} and add your Constitution modifier.</p>
+                <button type="button" id="roll-hp-button" class="btn btn-info mb-2">Roll {{ hit_die }}</button>
+                <p>
+                    You rolled: <strong id="rolled_value_display">-</strong>
+                </p>
+                <p>
+                    HP gained this level (roll + CON modifier): <strong id="total_hp_gain_roll_display">-</strong>
+                </p>
+                <input type="hidden" name="rolled_hp_value" id="rolled_hp_value_input">
+                <button type="submit" name="hp_choice" value="roll" id="accept-roll-button" class="btn btn-primary" disabled>Accept Rolled HP</button>
+            </div>
+        </div>
+
+        <div class="hp-choice-option card">
+            <div class="card-body">
+                <h4 class="card-title">Option 2: Take the Fixed Value</h4>
+                {% set total_fixed_gain = fixed_hp_gain_value + con_modifier %}
+                {% if total_fixed_gain < 1 %}{% set total_fixed_gain = 1 %}{% endif %}
+                <p>
+                    Take the average (rounded up) for your {{ hit_die }} (which is {{ fixed_hp_gain_value }}) 
+                    and add your Constitution modifier ({{ con_modifier }}).
+                </p>
+                <p>
+                    Total HP gained this level: <strong>{{ total_fixed_gain }}</strong>
+                </p>
+                <button type="submit" name="hp_choice" value="fixed" class="btn btn-success">Accept Fixed HP</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const rollHpButton = document.getElementById('roll-hp-button');
+    const rolledValueDisplay = document.getElementById('rolled_value_display');
+    const totalHpGainRollDisplay = document.getElementById('total_hp_gain_roll_display');
+    const rolledHpValueInput = document.getElementById('rolled_hp_value_input');
+    const acceptRollButton = document.getElementById('accept-roll-button');
+
+    const hitDieString = "{{ hit_die }}"; // e.g., "d8"
+    const conModifier = parseInt("{{ con_modifier }}", 10);
+
+    let dieSides = 8; // Default
+    if (hitDieString && hitDieString.startsWith('d')) {
+        try {
+            dieSides = parseInt(hitDieString.substring(1), 10);
+        } catch (e) {
+            console.error("Could not parse die sides from hit die string:", hitDieString);
+        }
+    }
+
+    if (rollHpButton) {
+        rollHpButton.addEventListener('click', function() {
+            const roll = Math.floor(Math.random() * dieSides) + 1;
+            rolledValueDisplay.textContent = roll;
+            rolledHpValueInput.value = roll;
+
+            let totalGain = roll + conModifier;
+            if (totalGain < 1) {
+                totalGain = 1;
+            }
+            totalHpGainRollDisplay.textContent = totalGain;
+            
+            if (acceptRollButton) {
+                acceptRollButton.disabled = false;
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
