@@ -7,7 +7,7 @@ from flask import render_template, redirect, url_for, flash, request, session, g
 from flask_babel import _
 from flask_login import login_required, current_user
 from app import db
-from app.models import User, Character, Race, Class, Spell, Setting, Item, Coinage
+from app.models import User, Character, Race, Class, Spell, Setting, Item, Coinage, CharacterSpellSlot
 from app.utils import roll_dice, parse_coinage # Changed import to parse_coinage
 from app.gemini import geminiai, GEMINI_DM_SYSTEM_RULES
 from app.main import bp
@@ -1014,6 +1014,69 @@ def adventure(character_id):
         flash(_('This character does not belong to you.'))
         return redirect(url_for('main.index'))
 
+    current_app.logger.debug(f"--- Starting spell slot management for Character: {character.name} (ID: {character.id}), Level: {character.level} ---")
+
+    # --- Spell Slot Management ---
+    if character.char_class and character.char_class.spell_slots_by_level:
+        current_app.logger.debug(f"Class: {character.char_class.name}, Raw Spell Slots JSON from DB: {character.char_class.spell_slots_by_level}")
+        try:
+            spell_slots_info_for_class = json.loads(character.char_class.spell_slots_by_level)
+            # Key is character's class level (e.g., "1", "2")
+            # Value is an array of slot counts per spell level (index 0 = 1st level spell slots)
+            slots_for_char_level_list = spell_slots_info_for_class.get(str(character.level))
+            
+            current_app.logger.debug(f"Parsed slots_for_char_level_list for character level {character.level}: {slots_for_char_level_list}")
+
+            if slots_for_char_level_list:
+                # slots_for_char_level_list is an array like [2, 0, 0...] (slots for spell level 1, 2, 3...)
+                # Iterate from spell level 1 up to the number of spell levels defined for this class level
+                for spell_lvl_idx, total_slots_for_this_spell_level in enumerate(slots_for_char_level_list):
+                    actual_spell_level = spell_lvl_idx + 1 # Convert 0-indexed array to 1-indexed spell level
+
+                    current_app.logger.debug(f"Processing spell level {actual_spell_level} (index {spell_lvl_idx}) with total_slots: {total_slots_for_this_spell_level}")
+
+                    existing_slot_record = CharacterSpellSlot.query.filter_by(
+                        character_id=character.id,
+                        spell_level=actual_spell_level
+                    ).first()
+                    
+                    needs_creation = False
+                    if existing_slot_record:
+                        current_app.logger.debug(f"For spell level {actual_spell_level}, found existing slot record: {existing_slot_record}, current total: {existing_slot_record.slots_total}")
+                        if existing_slot_record.slots_total != total_slots_for_this_spell_level:
+                            current_app.logger.debug(f"Updating slots_total for spell level {actual_spell_level} from {existing_slot_record.slots_total} to {total_slots_for_this_spell_level}")
+                            existing_slot_record.slots_total = total_slots_for_this_spell_level
+                        # Cap used slots if total slots decreased below used slots
+                        if existing_slot_record.slots_used > existing_slot_record.slots_total:
+                            current_app.logger.debug(f"Capping slots_used for spell level {actual_spell_level} from {existing_slot_record.slots_used} to {existing_slot_record.slots_total}")
+                            existing_slot_record.slots_used = existing_slot_record.slots_total
+                    else:
+                        needs_creation = True
+                        current_app.logger.debug(f"For spell level {actual_spell_level}, no existing slot record found. Creating new.")
+                        new_slot_record = CharacterSpellSlot(
+                            character_id=character.id,
+                            spell_level=actual_spell_level,
+                            slots_total=total_slots_for_this_spell_level,
+                            slots_used=0
+                        )
+                        db.session.add(new_slot_record)
+                    
+                    current_app.logger.debug(f"Spell level {actual_spell_level} will have total slots: {total_slots_for_this_spell_level}. Needs creation: {needs_creation}")
+
+                db.session.commit()
+                current_app.logger.debug(f"Committed spell slot changes to DB. Refreshed character.spell_slots: {character.spell_slots.all()}")
+            else:
+                current_app.logger.debug(f"No spell slot array defined for class {character.char_class.name} at character level {character.level}.")
+        
+        except json.JSONDecodeError:
+            current_app.logger.error(f"Failed to parse spell_slots_by_level JSON for class {character.char_class.name}: '{character.char_class.spell_slots_by_level}'")
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error processing spell slots for character {character.id}: {str(e)}", exc_info=True)
+    else:
+        current_app.logger.debug(f"Character {character.name} has no char_class or char_class.spell_slots_by_level. Skipping spell slot management.")
+
+
     try:
         log_entries = json.loads(character.adventure_log or '[]')
         if not isinstance(log_entries, list):
@@ -1174,9 +1237,25 @@ def adventure(character_id):
     character_items = character.items # List of Item objects
     character_coinage = character.coinage # List of Coinage objects
 
-    # Filter Spells
-    cantrips = [spell for spell in character.known_spells if spell.level == 0]
-    level_1_spells = [spell for spell in character.known_spells if spell.level == 1]
+    # Filter Spells and group by level
+    spells_by_level = {}
+    if character.known_spells:
+        for spell in character.known_spells:
+            if spell.level not in spells_by_level:
+                spells_by_level[spell.level] = []
+            spells_by_level[spell.level].append(spell)
+    
+    # Sort spells within each level by name for consistent display
+    for level in spells_by_level:
+        spells_by_level[level].sort(key=lambda s: s.name)
+
+    # Fetch CharacterSpellSlot data and organize it
+    # This query ensures we get the latest state from the DB after any commits.
+    character_spell_slots_list = CharacterSpellSlot.query.filter_by(character_id=character.id).order_by(CharacterSpellSlot.spell_level).all()
+    spell_slots_data = {slot.spell_level: slot for slot in character_spell_slots_list}
+    current_app.logger.debug(f"Final spell_slots_data for template: {spell_slots_data}")
+    current_app.logger.debug(f"--- Finished spell slot management for Character: {character.name} (ID: {character.id}) ---")
+
 
     # Prepare Saving Throws Data
     saving_throws_data = []
@@ -1250,11 +1329,11 @@ def adventure(character_id):
                            proficient_languages=proficient_languages,
                            proficient_armor=proficient_armor,
                            proficient_weapons=proficient_weapons,
-                           # equipment_list is replaced by character_items and character_coinage
                            character_items=character_items,
                            character_coinage=character_coinage,
-                           cantrips=cantrips,
-                           level_1_spells=level_1_spells,
+                           # Pass new spell data to template
+                           spells_by_level=spells_by_level,
+                           spell_slots_data=spell_slots_data,
                            # New pre-calculated data for template:
                            saving_throws_data=saving_throws_data,
                            skills_data=skills_data,
@@ -1645,3 +1724,133 @@ def edit_item_in_inventory(character_id, item_id):
         db.session.rollback()
         current_app.logger.error(f"Error updating item {item_id} for character {character_id}: {str(e)}")
         return jsonify(status="error", message="An internal error occurred while updating the item."), 500
+
+
+# --- Spell Slot and Rest Management Routes ---
+
+@bp.route('/character/<int:character_id>/spellslot/use/<int:spell_level>', methods=['POST'])
+@login_required
+def use_spell_slot(character_id, spell_level):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(status="error", message="Unauthorized"), 403
+
+    spell_slot_info = CharacterSpellSlot.query.filter_by(
+        character_id=character.id,
+        spell_level=spell_level
+    ).first()
+
+    if spell_slot_info and spell_slot_info.slots_used < spell_slot_info.slots_total:
+        spell_slot_info.slots_used += 1
+        try:
+            db.session.commit()
+            return jsonify(
+                status="success",
+                message="Spell slot used",
+                slots_used=spell_slot_info.slots_used,
+                slots_total=spell_slot_info.slots_total,
+                spell_level=spell_level
+            ), 200
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error using spell slot for char {character_id}, level {spell_level}: {str(e)}")
+            return jsonify(status="error", message="Database error using spell slot."), 500
+    else:
+        return jsonify(
+            status="error", 
+            message="No slots available or slot data not found",
+            slots_used=spell_slot_info.slots_used if spell_slot_info else -1, # Provide current state if possible
+            slots_total=spell_slot_info.slots_total if spell_slot_info else -1,
+            spell_level=spell_level
+        ), 400
+
+
+@bp.route('/character/<int:character_id>/spellslot/regain/<int:spell_level>/<int:count>', methods=['POST'])
+@login_required
+def regain_spell_slot(character_id, spell_level, count):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(status="error", message="Unauthorized"), 403
+
+    if count <= 0:
+        return jsonify(status="error", message="Invalid count for regaining slots."), 400
+
+    spell_slot_info = CharacterSpellSlot.query.filter_by(
+        character_id=character.id,
+        spell_level=spell_level
+    ).first()
+
+    if spell_slot_info:
+        spell_slot_info.slots_used = max(0, spell_slot_info.slots_used - count)
+        try:
+            db.session.commit()
+            return jsonify(
+                status="success",
+                message=f"{count} spell slot(s) regained for level {spell_level}",
+                slots_used=spell_slot_info.slots_used,
+                slots_total=spell_slot_info.slots_total,
+                spell_level=spell_level
+            ), 200
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error regaining spell slot for char {character_id}, level {spell_level}: {str(e)}")
+            return jsonify(status="error", message="Database error regaining spell slot."), 500
+    else:
+        return jsonify(status="error", message="Slot data not found for this level."), 404
+
+
+@bp.route('/character/<int:character_id>/rest/short', methods=['POST'])
+@login_required
+def short_rest(character_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(status="error", message="Unauthorized"), 403
+
+    # Placeholder for future short rest mechanics (e.g., hit dice, class features)
+    current_app.logger.info(f"Character {character.name} (ID: {character.id}) takes a short rest.")
+    
+    # Here, you could also add a system message to the character's adventure_log
+    # to inform the DM within the game context if desired.
+    # For now, the message is primarily for the client-side to display.
+
+    return jsonify(
+        status="success",
+        message=f"{character.name} takes a short rest. DM has been notified." 
+    ), 200
+
+
+@bp.route('/character/<int:character_id>/rest/long', methods=['POST'])
+@login_required
+def long_rest(character_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(status="error", message="Unauthorized"), 403
+
+    # Reset all spell slots for the character
+    updated_slots_info = []
+    spell_slots_for_character = CharacterSpellSlot.query.filter_by(character_id=character.id).all()
+    for slot_info in spell_slots_for_character:
+        slot_info.slots_used = 0
+        updated_slots_info.append({
+            'spell_level': slot_info.spell_level,
+            'slots_used': slot_info.slots_used,
+            'slots_total': slot_info.slots_total
+        })
+    
+    # (Future: Implement other long rest mechanics like full HP recovery, hit dice regain, etc.)
+    # Example: character.hp = character.max_hp 
+    # (if you add this, ensure character.max_hp is correctly populated)
+
+    try:
+        db.session.commit()
+        current_app.logger.info(f"Character {character.name} (ID: {character.id}) takes a long rest. Spell slots refreshed.")
+        return jsonify(
+            status="success",
+            message=f"{character.name} takes a long rest. Spell slots have been refreshed. DM has been notified.",
+            refreshed_slots=True,
+            all_slots_data=updated_slots_info # Send back the state of all slots
+        ), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error during long rest for char {character_id}: {str(e)}")
+        return jsonify(status="error", message="Database error during long rest."), 500

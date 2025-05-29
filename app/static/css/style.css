@@ -328,7 +328,7 @@ form textarea {
 form input[type="text"]:focus,
 form textarea:focus {
     border-color: #5D4037; /* Darker brown border on focus */
-    box-shadow: 0 0 5px rgba(93, 64, 55, 0.3); /* Subtle shadow, using dark brown color */
+    box-shadow: 0 0 5px rgba(93, 64, 55, 0.3); /* Subtle shadow, using a dark brown color */
     outline: none; /* Remove default browser outline */
 }
 
@@ -979,4 +979,171 @@ footer {
     margin-left: auto;
     margin-right: auto;
 }
-[end of app/static/css/style.css]
+
+
+/* --- Spell Management Styles --- */
+/* Overall wrapper for spells if one exists, not explicitly asked but good for grouping */
+/* .spells-section { margin-bottom: 15px; } */
+
+.spell-level-header {
+    font-family: 'Cinzel', serif;
+    font-size: 1.1em; /* Slightly smaller than main section titles */
+    color: #5D4037; /* Dark Brown */
+    font-weight: 700;
+    margin-top: 10px;
+    margin-bottom: 5px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid #A0522D; /* Sienna border, consistent */
+}
+
+.spells-list {
+    list-style-type: none;
+    padding-left: 5px; /* Minimal padding */
+    margin-bottom: 10px; /* Space after each spell list */
+}
+
+.spell-list-item {
+    padding: 2px 0;
+    margin-bottom: 1px; /* Minimal space between spell items */
+    /* position: relative; For spell card positioning - REMOVED */
+}
+
+.spell-name {
+    cursor: pointer;
+    font-weight: normal; /* Regular Merriweather for spell names */
+    color: #3B2F2F; /* Standard text color */
+    padding: 1px 3px;
+    border-radius: 2px;
+    transition: background-color 0.2s, color 0.2s;
+}
+.spell-name:hover {
+    background-color: #A0522D; /* Sienna background on hover */
+    color: #fdf5e6; /* Light text on hover */
+}
+
+/* Spell Slot Tracker */
+.spell-slot-tracker { /* Renamed from .spell-slot-level-tracker for brevity */
+    display: flex; /* Align slots in a row */
+    flex-wrap: wrap; /* Allow wrapping if many slots */
+    gap: 5px; /* Space between slot checkboxes */
+    margin-bottom: 8px; /* Space below the tracker */
+    padding-left: 5px;
+}
+
+.spell-slot-checkbox {
+    display: inline-block;
+    width: 14px; /* Slightly smaller */
+    height: 14px;
+    border: 1px solid #5D4037; /* Darker, more prominent border */
+    border-radius: 50%; /* Circle */
+    margin-right: 3px;
+    cursor: pointer;
+    background-color: #fff9e6; /* Light parchment for available */
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    position: relative; /* For potential pseudo-elements if needed */
+}
+
+.spell-slot-checkbox.used {
+    background-color: #5D4037; /* Dark brown for used */
+    border-color: #3B2F2F; /* Even darker border for used state */
+}
+.spell-slot-checkbox:hover {
+    border-color: #8B0000; /* Dark Red border on hover for interactivity */
+}
+
+/* Slot count text is part of .spell-level-header, e.g. (Slots: 3/4) */
+/* Style for the spans holding used/total counts if needed directly: */
+#character-sheet-overlay .spell-level-header span {
+    font-weight: normal; /* Less emphasis than the header itself */
+    font-size: 0.9em;
+    color: #3B2F2F;
+}
+
+
+/* Spell Card Popup */
+.spell-card-details {
+    display: none; /* Hidden by default, JS will toggle */
+    position: absolute; /* Positioned relative to nearest positioned ancestor or body */
+    background-color: #fffdf5; /* Very light parchment, slightly off-white */
+    border: 1px solid #5D4037; /* Dark brown border */
+    padding: 10px 12px; /* Slightly more horizontal padding */
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.25);
+    width: 280px; /* Default width */
+    max-width: 320px;
+    z-index: 1050; /* Higher than character sheet overlay */
+    border-radius: 3px;
+    font-size: 0.85em; /* Slightly smaller base font for card */
+    line-height: 1.4;
+    color: #3B2F2F;
+}
+
+.spell-card-details h4 { /* Spell name in card */
+    font-family: 'Cinzel', serif;
+    font-size: 1.2em; /* Larger for spell title */
+    color: #8B0000; /* Dark red */
+    margin-top: 0;
+    margin-bottom: 5px;
+    padding-bottom: 3px;
+    border-bottom: 1px solid #A0522D; /* Sienna underline */
+}
+
+.spell-card-details p {
+    margin-bottom: 4px; /* Tighter spacing in card */
+}
+
+.spell-card-details em { /* School, level, ritual info */
+    font-family: 'Merriweather', serif;
+    font-style: italic;
+    color: #5D4037; /* Dark brown */
+    font-size: 0.9em;
+}
+
+.spell-card-details strong { /* Labels like "Casting Time:" */
+    font-family: 'Merriweather', serif;
+    font-weight: bold;
+    color: #3B2F2F; /* Slightly less prominent than main headers */
+}
+
+.spell-card-details .spell-description {
+    margin-top: 5px;
+    padding-top: 5px;
+    border-top: 1px dashed #D1C7B7; /* Light dashed separator before description */
+}
+.spell-card-details .spell-description p {
+    font-size: 0.95em; /* Normal size for description text */
+    margin-bottom: 3px;
+}
+
+
+/* Rest Buttons */
+.rest-buttons {
+    margin-bottom: 10px; /* Space below rest buttons */
+    padding-left: 5px;
+}
+
+#short-rest-button, #long-rest-button {
+    /* Use existing .button-small styles, or define new ones */
+    /* Example: ensure they use .button-small from existing styles */
+    /* If more specific styling is needed: */
+    /* padding: 4px 8px; */
+    /* font-size: 0.8em; */
+    /* background-color: #8B4513; */
+    /* color: #f5e8c3; */
+    /* border-radius: 3px; */
+    /* cursor: pointer; */
+    margin-right: 5px;
+}
+
+#rest-status-message {
+    /* Uses .save-status-message, which is already defined */
+    /* font-style: italic; */
+    /* font-size: 0.8em; */
+    /* margin-left: 8px; */
+    color: #2E8B57; /* Default to green for success */
+}
+#rest-status-message.error { /* Add a class for error messages if needed */
+    color: #8B0000; /* Red for errors */
+}
+#rest-status-message.pending { /* Add a class for pending messages */
+    color: #8B4513; /* Brown for pending */
+}

@@ -49,6 +49,8 @@ class Character(db.Model):
                                    backref=db.backref('characters_that_know', lazy=True))
     prepared_spells = db.relationship('Spell', secondary='character_prepared_spells', lazy='subquery',
                                       backref=db.backref('characters_that_prepare', lazy=True))
+    
+    spell_slots = db.relationship('CharacterSpellSlot', backref='character', lazy=True, cascade='all, delete-orphan')
 
     def __repr__(self):
         return f'<Character {self.name}>'
@@ -65,6 +67,18 @@ character_prepared_spells = db.Table('character_prepared_spells',
     db.Column('character_id', db.Integer, db.ForeignKey('character.id'), primary_key=True),
     db.Column('spell_id', db.Integer, db.ForeignKey('spell.id'), primary_key=True)
 )
+
+
+class CharacterSpellSlot(db.Model):
+    __tablename__ = 'character_spell_slot'
+    id = db.Column(db.Integer, primary_key=True)
+    character_id = db.Column(db.Integer, db.ForeignKey('character.id'), nullable=False)
+    spell_level = db.Column(db.Integer, nullable=False)
+    slots_total = db.Column(db.Integer, nullable=False)
+    slots_used = db.Column(db.Integer, nullable=False, default=0)
+
+    def __repr__(self):
+        return f'<CharacterSpellSlot L{self.spell_level} ({self.slots_used}/{self.slots_total}) for Character ID {self.character_id}>'
 
 
 class Spell(db.Model):
