@@ -1048,38 +1048,39 @@ def send_chat_message(character_id):
     log_entries.append({"sender": "user", "text": user_message})
 
     original_ai_response_text = ai_response_text # Keep a copy for the return value if not modified for display
+    
+    # Variable to hold the successfully parsed level if a level-up command occurs
+    processed_levelup_level = None
 
     if ai_response_text:
         # Check for level-up command
-        # Using re.MULTILINE and ^$ to ensure the command is on its own line.
-        # Adjusted regex to capture potential preceding/succeeding newlines to remove the line cleanly.
         levelup_pattern = r"^(SYSTEM: LEVELUP GRANTED TO LEVEL (\d+))\s*$"
         levelup_match = re.search(levelup_pattern, ai_response_text, re.IGNORECASE | re.MULTILINE)
 
         if levelup_match:
-            command_full_line = levelup_match.group(0) # The whole line e.g., "SYSTEM: LEVELUP GRANTED TO LEVEL 2\n"
+            command_full_line = levelup_match.group(0)
             extracted_level_str = levelup_match.group(2)
             try:
-                extracted_level_int = int(extracted_level_str)
-                character.dm_allowed_level = extracted_level_int
-                # db.session.add(character) # Character is already in session, commit will save it.
+                extracted_level_int_val = int(extracted_level_str)
+                # Ensure character.dm_allowed_level is updated as per requirement 1
+                character.dm_allowed_level = extracted_level_int_val 
                 
-                system_message_text = _("Congratulations! You can now advance to Level %(level)s.", level=extracted_level_int)
+                system_message_text = _("Congratulations! You can now advance to Level %(level)s.", level=extracted_level_int_val)
                 log_entries.append({"sender": "system", "text": system_message_text})
-                current_app.logger.info(f"Level up to {extracted_level_int} granted for character {character_id}.")
+                current_app.logger.info(f"Level up to {extracted_level_int_val} granted for character {character_id}.")
 
-                # Remove the command line from ai_response_text for display
                 ai_response_text = ai_response_text.replace(command_full_line, "").strip()
+                processed_levelup_level = extracted_level_int_val # Store for JSON response
                 
             except ValueError:
                 current_app.logger.error(f"Extracted level '{extracted_level_str}' is not a valid integer for character {character_id}.")
+                # processed_levelup_level remains None if parsing fails, so levelUpGranted won't be added
         
         # Add DM's response to log if it's not empty after potentially stripping the command
         if ai_response_text and not ai_response_text.isspace():
             log_entries.append({"sender": "dm", "text": ai_response_text})
-        elif not levelup_match: # If no level up command and response is empty/whitespace
-             current_app.logger.warning(f"AI response was empty or whitespace for char {character_id}. User message: '{user_message}'")
-             # This case will be handled by the final check for original_ai_response_text below
+        elif not levelup_match and (not ai_response_text or ai_response_text.isspace()): 
+             current_app.logger.warning(f"AI response was empty or whitespace (and not a levelup command processing error) for char {character_id}. User message: '{user_message}'")
 
     character.adventure_log = json.dumps(log_entries)
     try:
@@ -1089,21 +1090,29 @@ def send_chat_message(character_id):
         db.session.rollback()
         return jsonify(error=_("An error occurred saving your conversation to the chronicles.")), 500
 
-    # Return the original AI response (or parts of it if command was stripped but other text remained)
-    # If original_ai_response_text was None or empty, and no system message was added, this could still be an issue.
-    # The check below handles if the AI truly sent nothing.
-    if original_ai_response_text:
-         # If we stripped the command and ai_response_text became empty,
-         # we should still return a success, but the 'reply' might be empty.
-         # The system message in log_entries is the main notification for level up.
-         # The client will receive original_ai_response_text (which may or may not include the command line based on UX preference)
-         # For this implementation, we send back the potentially modified ai_response_text (command stripped).
-         # If UX prefers to see the command, send original_ai_response_text.
-         # Let's send back the version *without* the command for cleaner display.
-        return jsonify(reply=ai_response_text if ai_response_text and not ai_response_text.isspace() else _("DM's message processed.")), 200
-    else: # AI genuinely sent no text and no error occurred
+    # Prepare the JSON response payload
+    response_payload = {}
+    if processed_levelup_level is not None:
+        response_payload['levelUpGranted'] = True
+        response_payload['newDmAllowedLevel'] = processed_levelup_level
+
+    # Determine the reply text based on original_ai_response_text and if a level up occurred
+    if original_ai_response_text or processed_levelup_level is not None:
+        # If ai_response_text (potentially stripped of command) is not empty, use it.
+        # Else, if a level up happened (even if command was the only text), use "DM's message processed."
+        if ai_response_text and not ai_response_text.isspace():
+            response_payload['reply'] = ai_response_text
+        elif processed_levelup_level is not None: # Level up occurred, but no other text from AI after stripping command
+            response_payload['reply'] = _("DM's message processed.")
+        else: # Original AI response was empty/whitespace, and no level up occurred.
+            current_app.logger.warning(f"Received no text (original was empty/whitespace) and no error from geminiai for char {character_id}. User message: '{user_message}'")
+            response_payload['reply'] = _("The Dungeon Master ponders your words but remains silent for now...")
+    else: # AI genuinely sent no text (original_ai_response_text was None or empty) AND no level up occurred
         current_app.logger.warning(f"Received no text and no error from geminiai for char {character_id}. User message: '{user_message}'")
-        return jsonify(reply=_("The Dungeon Master ponders your words but remains silent for now...")), 200
+        response_payload['reply'] = _("The Dungeon Master ponders your words but remains silent for now...")
+        # Note: if processed_levelup_level was somehow set without original_ai_response_text, it's already in payload.
+
+    return jsonify(response_payload), 200
 
 
 @bp.route('/character/<int:character_id>/inventory/add_item', methods=['POST'])
@@ -1989,7 +1998,19 @@ def level_up_review(character_id):
         'selected_new_cantrips': Spell.query.filter(Spell.id.in_(level_up_data.get('selected_new_cantrip_ids', []))).all(),
         'selected_new_spells': Spell.query.filter(Spell.id.in_(level_up_data.get('selected_new_spell_ids', []))).all()
     }
-    return render_template('level_up/level_up_review.html', **review_data)
+    
+    # Fetch the Class object to pass to the template
+    char_class = Class.query.get(level_up_data.get('class_id'))
+    if char_class:
+        review_data['char_class'] = char_class
+    else:
+        # Handle case where class_id might be invalid or not found, though session should be reliable.
+        # Setting to None or a default object, or flashing an error might be options.
+        # For now, if not found, it won't be in review_data, template needs to handle potential absence.
+        current_app.logger.warning(f"Could not find class with ID {level_up_data.get('class_id')} during level_up_review for char {character_id}.")
+        review_data['char_class'] = None # Explicitly set to None if not found
+
+    return render_template('level_up/level_up_review.html', level_up_data=level_up_data, **review_data)
 
 
 @bp.route('/character/<int:character_id>/level_up/apply', methods=['POST']) 
@@ -2063,8 +2084,19 @@ def level_up_apply(character_id):
         spell_slots_snapshot=json.dumps(new_spell_slots_snapshot_dict), 
         created_at=datetime.utcnow()
     )
-    
+
+    # Update the main Character object with new HP, Max HP, and AC
+    character.hp = new_level_data.hp
+    character.max_hp = new_level_data.max_hp
+    # Only update AC if it's actually changing.
+    # For now, level up process doesn't change AC, it's taken from current_level_entry.armor_class.
+    # If future level up steps can change AC, this line should be:
+    # character.armor_class = new_level_data.armor_class
+    # However, to match the new_level_data, which currently just copies AC from previous level:
+    character.armor_class = new_level_data.armor_class # This will reflect the AC stored for the new level.
+
     db.session.add(new_level_data)
+    # character object is already in the session, so changes will be committed.
     try:
         db.session.commit()
         session.pop('level_up_data', None) 
