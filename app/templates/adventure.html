@@ -27,7 +27,7 @@
                 <input type="number" id="current-hp-input" style="width: 60px; text-align: right; margin-right: 2px;" aria-label="Current Hit Points">
                 <span style="margin-right: 5px;">/</span>
                 <span id="max-hp-display" style="margin-right: 5px;">{{ character.max_hp }}</span>
-                <button id="save-hp-button" class="button-small" style="padding: 3px 6px;">Save</button>
+                {# Removed save-hp-button #}
             </div>
             <span id="hp-save-status" class="save-status-message" style="font-size: 0.8em; display: block; text-align: center; height: 1em; margin-top: 2px;"></span>
         </div>
@@ -409,7 +409,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // const hpDisplay = document.getElementById('hp-display'); // Replaced by current-hp-input
     const currentHpInput = document.getElementById('current-hp-input');
     const maxHpDisplay = document.getElementById('max-hp-display');
-    const saveHpButton = document.getElementById('save-hp-button');
+    // const saveHpButton = document.getElementById('save-hp-button'); // Button removed
     const hpSaveStatus = document.getElementById('hp-save-status');
     const acDisplay = document.getElementById('ac-display');
     const speedDisplay = document.getElementById('speed-display'); 
@@ -525,9 +525,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
 
             if (data.levelUpGranted === true && typeof data.newDmAllowedLevel !== 'undefined') {
-                dmAllowedLevel = data.newDmAllowedLevel; // Update global variable
-                updateNavigationButtonStates(); // Refresh button visibility
-                console.log(`Level up detected! New DM Allowed Level: ${dmAllowedLevel}`);
+                dmAllowedLevel = data.newDmAllowedLevel; // Update JS variable
+                updateNavigationButtonStates(); // Explicitly call to refresh button visibility
+                console.log(`Level up detected! New DM Allowed Level: ${dmAllowedLevel}. Button states updated.`);
             }
 
             if (data.reply) {
@@ -1320,18 +1320,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 const fullAbilityName = nameSpan.textContent.trim();
                 const shortAbilityAbbr = Object.keys(ABILITY_SHORT_TO_FULL_JS).find(key => ABILITY_SHORT_TO_FULL_JS[key] === fullAbilityName);
                 
-                if (shortAbilityAbbr) {
-                    const abilityScore = statsObject[shortAbilityAbbr.toLowerCase()] !== undefined ? statsObject[shortAbilityAbbr.toLowerCase()] : 10;
-                    let finalModifier = Math.floor((abilityScore - 10) / 2);
-                    const isProficient = currentSaves.includes(shortAbilityAbbr.toUpperCase());
+                if (shortAbilityAbbr) { // shortAbilityAbbr is "STR", "DEX" etc.
+                    const abilityNameFull = ABILITY_SHORT_TO_FULL_JS[shortAbilityAbbr.toLowerCase()]; // Get "Strength" from "str"
+                    if (abilityNameFull) {
+                        const abilityNameFullLower = abilityNameFull.toLowerCase(); // "strength"
+                        const abilityScore = statsObject[abilityNameFullLower] !== undefined ? statsObject[abilityNameFullLower] : 10;
+                        let finalModifier = Math.floor((abilityScore - 10) / 2);
+                        const isProficient = currentSaves.includes(shortAbilityAbbr.toUpperCase()); // Check with "STR"
 
-                    if (isProficient) {
-                        finalModifier += profBonus;
-                        profIndicator.textContent = '●';
+                        if (isProficient) {
+                            finalModifier += profBonus;
+                            profIndicator.textContent = '●';
+                        } else {
+                            profIndicator.textContent = '○';
+                        }
+                        modifierSpan.textContent = `${finalModifier >= 0 ? '+' : ''}${finalModifier}`;
                     } else {
-                        profIndicator.textContent = '○';
+                        console.error(`Could not find full ability name for short form: ${shortAbilityAbbr}`);
+                        modifierSpan.textContent = '+0';
                     }
-                    modifierSpan.textContent = `${finalModifier >= 0 ? '+' : ''}${finalModifier}`;
                 }
             }
         });
@@ -1348,26 +1355,34 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (nameSpan && profIndicator && modifierSpan) {
                 const skillName = nameSpan.textContent.trim();
-                const baseAbilityShort = SKILL_TO_ABILITY_MAP_JS[skillName];
+                const baseAbilityShort = SKILL_TO_ABILITY_MAP_JS[skillName]; // e.g., "str", "dex"
 
                 if (baseAbilityShort) {
-                    const abilityScore = statsObject[baseAbilityShort.toLowerCase()] !== undefined ? statsObject[baseAbilityShort.toLowerCase()] : 10;
-                    let finalModifier = Math.floor((abilityScore - 10) / 2);
-                    const isProficient = currentSkillsProficiencies.includes(skillName);
+                    const abilityNameFull = ABILITY_SHORT_TO_FULL_JS[baseAbilityShort]; // Get "Strength" from "str"
+                    if (abilityNameFull) {
+                        const abilityNameFullLower = abilityNameFull.toLowerCase(); // "strength"
+                        const abilityScore = statsObject[abilityNameFullLower] !== undefined ? statsObject[abilityNameFullLower] : 10;
+                        let finalModifier = Math.floor((abilityScore - 10) / 2);
+                        const isProficient = currentSkillsProficiencies.includes(skillName);
 
-                    if (isProficient) {
-                        finalModifier += profBonus;
-                        profIndicator.textContent = '●';
+                        if (isProficient) {
+                            finalModifier += profBonus;
+                            profIndicator.textContent = '●';
+                        } else {
+                            profIndicator.textContent = '○';
+                        }
+                        modifierSpan.textContent = `${finalModifier >= 0 ? '+' : ''}${finalModifier}`;
                     } else {
-                        profIndicator.textContent = '○';
+                        console.error(`Could not find full ability name for skill's base ability: ${baseAbilityShort}`);
+                        modifierSpan.textContent = '+0';
                     }
-                    modifierSpan.textContent = `${finalModifier >= 0 ? '+' : ''}${finalModifier}`;
                 }
             }
         });
     }
     
     function updateProficienciesDisplay(proficienciesData) {
+
         if (!proficienciesData) return;
         const profMap = {
             'armor': armorProficienciesList, 'weapons': weaponProficienciesList,
@@ -1690,27 +1705,40 @@ document.addEventListener('DOMContentLoaded', function() {
     // This will also populate the notes text area via Jinja templating on initial load.
     fetchAndDisplayLevelData(currentActualLevel); 
 
-    // --- HP Save Button Event Listener ---
-    if (saveHpButton && currentHpInput && maxHpDisplay && hpSaveStatus) {
-        saveHpButton.addEventListener('click', async function() {
-            const newHp = parseInt(currentHpInput.value);
+    // --- HP Auto-Save on Blur Event Listener ---
+    if (currentHpInput && maxHpDisplay && hpSaveStatus) { // saveHpButton removed from condition
+        currentHpInput.addEventListener('blur', async function() {
+            // Store the original value in case of invalid input, to revert
+            const originalHpValue = this.dataset.originalValue || this.value;
+            this.dataset.originalValue = this.value; // Update original value for next time if save is successful
+
+            const newHp = parseInt(this.value);
             const maxHp = parseInt(maxHpDisplay.textContent); // Max HP for the currently viewed level
+
+            // Basic check: if value hasn't changed meaningfully, don't save.
+            // This check is simple; more robust would compare against last successfully saved value.
+            // For now, if it's the same as what was there when blur happened, and it's a valid number,
+            // it might still proceed. This can be refined if it causes too many saves for no reason.
+            // A better check might be: if (newHp === parseInt(originalHpValueForComparison)) return;
+            // where originalHpValueForComparison is the value from the last successful save.
+            // For now, will proceed with validation.
 
             if (isNaN(newHp)) {
                 hpSaveStatus.textContent = 'Not a number.';
+                // this.value = originalHpValue; // Revert to original value
                 hpSaveStatus.style.color = 'red';
                 return;
             }
             if (newHp < 0) {
                 hpSaveStatus.textContent = 'HP cannot be negative.';
                 hpSaveStatus.style.color = 'red';
-                // currentHpInput.value = 0; // Optionally reset
+                // this.value = originalHpValue; // Revert
                 return;
             }
             if (newHp > maxHp) {
                 hpSaveStatus.textContent = `Cannot exceed Max HP (${maxHp}).`;
                 hpSaveStatus.style.color = 'red';
-                // currentHpInput.value = maxHp; // Optionally cap
+                // this.value = maxHp; // Revert to max HP or original value
                 return;
             }
 
@@ -1735,18 +1763,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     hpSaveStatus.textContent = data.message || 'HP Saved!';
                     hpSaveStatus.style.color = 'green';
                     currentHpInput.value = data.new_hp; // Update input with confirmed value from server
-                    if (maxHpDisplay) maxHpDisplay.textContent = data.max_hp; // Update max_hp display too, if it changed (unlikely here)
+                    if (maxHpDisplay) maxHpDisplay.textContent = data.max_hp;
 
-                    // If the HP was updated for the character's actual current level,
-                    // and the main character object's HP is also shown/used elsewhere,
-                    // this ensures it reflects the change. (This part is conceptual, as direct update of character.hp is not done here)
-                    if (currentlyViewedLevel === currentActualLevel) {
-                        // No direct update to a {{ character.hp }} element here, as it's managed by currentHpInput now
-                    }
+                    // Successfully saved, so the current input value is the new "original" for next time
+                    this.dataset.originalValue = currentHpInput.value;
 
                 } else {
                     hpSaveStatus.textContent = data.message || 'Error saving HP.';
                     hpSaveStatus.style.color = 'red';
+                    // currentHpInput.value = originalHpValue; // Revert on error
                 }
             } catch (error) {
                 console.error('Error updating HP:', error);
