@@ -123,13 +123,28 @@ def creation_stats():
     standard_array = [15, 14, 13, 12, 10, 8]
     racial_bonuses_dict = {bonus['name']: bonus['bonus'] for bonus in racial_bonuses_list}
 
-    if request.method == 'POST' and request.form.get('action') != 'roll_stats':
-        # ... (stat processing logic - assuming it's correct and leads to setting session data)
-        # For brevity, direct jump to success if logic were here
-        session['new_character_data']['ability_scores'] = {} # Placeholder for actual scores
-        session.modified = True
-        return redirect(url_for('main.creation_background'))
+    if request.method == 'POST':
+        if request.form.get('action') == 'roll_stats':
+            rolled_stats = [roll_dice(num_dice=4, num_sides=6, drop_lowest=1) for _ in range(6)]
+            session['rolled_stats'] = rolled_stats
+            session.modified = True
+            # Re-render the page to show the rolled stats
+            return render_template('create_character_stats.html',
+                                   race_name=selected_race.name,
+                                   class_name=selected_class.name,
+                                   racial_bonuses_dict=racial_bonuses_dict,
+                                   primary_ability=primary_ability,
+                                   standard_array=standard_array,
+                                   rolled_stats=session.get('rolled_stats'), # Use updated session data
+                                   submitted_scores=None) # Clear submitted scores as we just rolled
+        else: # This is the existing logic for submitting chosen stats
+            # ... (stat processing logic - assuming it's correct and leads to setting session data)
+            # For brevity, direct jump to success if logic were here
+            session['new_character_data']['ability_scores'] = {} # Placeholder for actual scores
+            session.modified = True
+            return redirect(url_for('main.creation_background'))
 
+    # GET request or initial load
     return render_template('create_character_stats.html',
                            race_name=selected_race.name, class_name=selected_class.name,
                            racial_bonuses_dict=racial_bonuses_dict, primary_ability=primary_ability,
