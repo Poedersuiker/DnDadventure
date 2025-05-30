@@ -60,6 +60,12 @@ app.logger.info('Application logging configured to file.')
 # Store log file path in app config for easy access in routes
 app.config['APP_LOG_FILE'] = log_file_path
 
+# Initialize extensions dictionary and population_tasks
+if not hasattr(app, 'extensions'):
+    app.extensions = {}
+app.extensions['population_tasks'] = {}
+app.logger.info("Initialized app.extensions['population_tasks'].")
+
 db = SQLAlchemy(app)
 migrate = Migrate(app, db) # Initialized Flask-Migrate
 

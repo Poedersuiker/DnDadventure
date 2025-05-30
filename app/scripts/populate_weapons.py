@@ -1,6 +1,7 @@
 import json
 import re
-from app import db
+from flask import current_app # Added
+from app import app, db # Added app
 from app.models import Weapon
 
 def parse_range_from_properties(properties_list, property_prefix):
@@ -17,13 +18,23 @@ def parse_range_from_properties(properties_list, property_prefix):
                 return int(match.group(1)), int(match.group(2))
     return None, None
 
-def populate_weapons_data():
+def populate_weapons_data(task_id=None): # Added task_id
     """
     Populates the database with a list of D&D 5e weapons.
+    Optionally reports progress if task_id is provided.
     """
-    weapons_data = [
-        # Simple Melee Weapons
-        {"name": "Club", "category": "Simple Melee", "cost": "1 sp", "damage_dice": "1d4", "damage_type": "Bludgeoning", "weight": "2 lb.", "properties": ["light"], "range": "5 ft."},
+    with app.app_context(): # Ensure app context for current_app and db
+        if task_id:
+            if 'population_tasks' not in current_app.extensions:
+                current_app.extensions['population_tasks'] = {}
+            current_app.extensions['population_tasks'][task_id] = {
+                'progress': 0,
+                'status': 'Starting weapon population...'
+            }
+
+        weapons_data = [
+            # Simple Melee Weapons
+            {"name": "Club", "category": "Simple Melee", "cost": "1 sp", "damage_dice": "1d4", "damage_type": "Bludgeoning", "weight": "2 lb.", "properties": ["light"], "range": "5 ft."},
         {"name": "Dagger", "category": "Simple Melee", "cost": "2 gp", "damage_dice": "1d4", "damage_type": "Piercing", "weight": "1 lb.", "properties": ["finesse", "light", "thrown (range 20/60)"], "range": "5 ft."},
         {"name": "Greatclub", "category": "Simple Melee", "cost": "2 sp", "damage_dice": "1d8", "damage_type": "Bludgeoning", "weight": "10 lb.", "properties": ["two-handed"], "range": "5 ft."},
         {"name": "Handaxe", "category": "Simple Melee", "cost": "5 gp", "damage_dice": "1d6", "damage_type": "Slashing", "weight": "2 lb.", "properties": ["light", "thrown (range 20/60)"], "range": "5 ft."},
@@ -68,17 +79,23 @@ def populate_weapons_data():
         {"name": "Net", "category": "Martial Ranged", "cost": "1 gp", "damage_dice": "-", "damage_type": "-", "weight": "3 lb.", "properties": ["special", "thrown (range 5/15)"], "range": "5/15 ft."} # Special: creature hit is Restrained.
     ]
 
-    existing_weapons = {w.name for w in Weapon.query.all()}
-    count_added = 0
-    count_skipped = 0
+        total_weapons = len(weapons_data)
+        if task_id:
+            current_app.extensions['population_tasks'][task_id]['status'] = f"Processing {total_weapons} predefined weapons..."
 
-    for data in weapons_data:
-        if data["name"] in existing_weapons:
-            # print(f"Skipping existing weapon: {data['name']}")
-            count_skipped += 1
-            continue
+        existing_weapons = {w.name for w in Weapon.query.all()}
+        count_added = 0
+        count_skipped = 0
+        processed_count = 0
 
-        is_martial_weapon = "martial" in data["category"].lower()
+        for i, data in enumerate(weapons_data):
+            weapon_name = data.get("name", f"Unknown Weapon {i+1}")
+
+            if data["name"] in existing_weapons:
+                # print(f"Skipping existing weapon: {data['name']}")
+                count_skipped += 1
+            else:
+                is_martial_weapon = "martial" in data["category"].lower()
 
         normal_rng, long_rng = None, None
         throw_norm_rng, throw_long_rng = None, None
@@ -93,48 +110,79 @@ def populate_weapons_data():
                 # print(f"Could not parse direct range for {data['name']}: {data['range']}")
                 pass # Keep them None
 
-        # Parse ranges from properties
-        # For weapons like Dart, Javelin, Handaxe (thrown)
-        tnr, tlr = parse_range_from_properties(data["properties"], "thrown (range")
-        if tnr is not None:
-            throw_norm_rng, throw_long_rng = tnr, tlr
-            # If it's primarily a thrown weapon and normal_rng wasn't set from main range field (e.g. Dart)
-            if normal_rng is None and data["category"] == "Simple Ranged": # Darts are simple ranged
-                 normal_rng, long_rng = tnr, tlr
+                normal_rng, long_rng = None, None
+                throw_norm_rng, throw_long_rng = None, None
 
+                if data.get("range") and "/" in data["range"]:
+                    range_parts = data["range"].split('/')
+                    try:
+                        normal_rng = int(range_parts[0].replace("ft.", "").strip())
+                        long_rng = int(range_parts[1].replace("ft.", "").strip())
+                    except ValueError:
+                        pass
 
-        # For weapons like bows, crossbows (ammunition)
-        # This might overwrite normal_rng/long_rng if they were also set by direct range field, which is fine.
-        anr, alr = parse_range_from_properties(data["properties"], "ammunition (range")
-        if anr is not None:
-            normal_rng, long_rng = anr, alr
+                tnr, tlr = parse_range_from_properties(data["properties"], "thrown (range")
+                if tnr is not None:
+                    throw_norm_rng, throw_long_rng = tnr, tlr
+                    if normal_rng is None and data["category"] == "Simple Ranged":
+                         normal_rng, long_rng = tnr, tlr
 
+                anr, alr = parse_range_from_properties(data["properties"], "ammunition (range")
+                if anr is not None:
+                    normal_rng, long_rng = anr, alr
 
-        weapon = Weapon(
-            name=data["name"],
-            category=data["category"],
-            cost=data.get("cost"),
-            damage_dice=data["damage_dice"],
-            damage_type=data["damage_type"],
-            weight=data.get("weight"),
-            properties=json.dumps(data.get("properties", [])),
-            range=data.get("range"), # Store the original string range too
-            normal_range=normal_rng,
-            long_range=long_rng,
-            throw_range_normal=throw_norm_rng,
-            throw_range_long=throw_long_rng,
-            is_martial=is_martial_weapon
-        )
-        db.session.add(weapon)
-        count_added += 1
-        # print(f"Adding weapon: {weapon.name}")
+                weapon = Weapon(
+                    name=data["name"],
+                    category=data["category"],
+                    cost=data.get("cost"),
+                    damage_dice=data["damage_dice"],
+                    damage_type=data["damage_type"],
+                    weight=data.get("weight"),
+                    properties=json.dumps(data.get("properties", [])),
+                    range=data.get("range"),
+                    normal_range=normal_rng,
+                    long_range=long_rng,
+                    throw_range_normal=throw_norm_rng,
+                    throw_range_long=throw_long_rng,
+                    is_martial=is_martial_weapon
+                )
+                db.session.add(weapon)
+                count_added += 1
+                # print(f"Adding weapon: {weapon.name}")
 
-    try:
-        db.session.commit()
-        print(f"Successfully added {count_added} new weapons. Skipped {count_skipped} existing weapons.")
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error populating weapons: {e}")
+            processed_count = count_added + count_skipped
+            if task_id:
+                percentage = int((processed_count / total_weapons) * 100) if total_weapons > 0 else 0
+                current_app.extensions['population_tasks'][task_id].update({
+                    'progress': percentage,
+                    'status': f"Processing weapon {processed_count}/{total_weapons}: {weapon_name}"
+                })
+
+        try:
+            final_progress_before_commit = int(((count_added + count_skipped) / total_weapons) * 100) if total_weapons > 0 else 0
+            if task_id:
+                current_app.extensions['population_tasks'][task_id].update({
+                    'progress': final_progress_before_commit,
+                    'status': f'Committing {count_added} new weapons. Skipped {count_skipped} existing.'
+                })
+            db.session.commit()
+            print(f"Successfully added {count_added} new weapons. Skipped {count_skipped} existing weapons.")
+            if task_id:
+                current_app.extensions['population_tasks'][task_id] = {
+                    'progress': 100,
+                    'status': f'Weapon population complete. Added {count_added}, Skipped {count_skipped}.'
+                }
+        except Exception as e:
+            db.session.rollback()
+            error_msg = f"Error committing weapons: {e}"
+            print(error_msg)
+            if task_id:
+                error_progress = int((count_added / total_weapons) * 100) if total_weapons > 0 else 0
+                current_app.extensions['population_tasks'][task_id] = {
+                    'progress': error_progress,
+                    'status': error_msg,
+                    'error': True
+                }
 
 if __name__ == '__main__':
     # This part is for running the script directly, e.g., via `python -m app.scripts.populate_weapons`

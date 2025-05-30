@@ -1,5 +1,7 @@
-import os # Add os import
-from flask import render_template, abort, current_app, redirect, url_for, flash, request
+import os
+import threading # Added
+import uuid # Added
+from flask import render_template, abort, current_app, redirect, url_for, flash, request, jsonify # Added jsonify
 from flask_login import login_required, current_user
 from . import admin_bp
 from app.utils import list_gemini_models
@@ -81,58 +83,129 @@ def db_population_status():
 def run_populate_races():
     if not current_user.is_authenticated or current_user.email != current_app.config.get('ADMIN_EMAIL'):
         abort(403)
+
+    task_id = str(uuid.uuid4())
+    # Ensure the root 'population_tasks' dictionary exists in extensions
+    current_app.extensions.setdefault('population_tasks', {})
+    # Initialize this specific task
+    current_app.extensions['population_tasks'][task_id] = {
+        'progress': 0,
+        'status': 'Initializing race population...',
+        'script': 'races', # To identify which script this task is for
+        'error': False # Initialize error state
+    }
+
     try:
-        flash("Race population script started. Check server console for progress.", "info")
-        populate_races_data()
-        flash("Race population script finished successfully.", "success") # Changed message for clarity
+        # Run populate_races_data in a separate thread
+        thread = threading.Thread(target=populate_races_data, kwargs={'task_id': task_id})
+        thread.start()
+        # flash("Race population script started. You will be notified upon completion.", "info") # Optional flash
+        return jsonify({'message': 'Race population started.', 'task_id': task_id})
     except Exception as e:
-        current_app.logger.error(f"Error during race population: {str(e)}")
-        flash(f"Error during race population: {str(e)}", "danger")
-    return redirect(url_for('admin.db_population_status'))
+        current_app.logger.error(f"Error starting race population thread: {str(e)}")
+        # Update task status to reflect error during initiation
+        current_app.extensions['population_tasks'][task_id].update({
+            'status': f"Error initiating population: {str(e)}",
+            'error': True,
+            'progress': 0 # Or some other error indication
+        })
+        return jsonify({'error': f"Error starting race population: {str(e)}"}), 500
+
+@admin_bp.route('/db-populate/progress/<task_id>', methods=['GET'])
+@login_required
+def task_progress(task_id):
+    if not current_user.is_authenticated or current_user.email != current_app.config.get('ADMIN_EMAIL'):
+        abort(403) # Or return jsonify({'error': 'Forbidden'}), 403
+
+    # Safely get the task_info
+    tasks_dict = current_app.extensions.get('population_tasks', {})
+    task_info = tasks_dict.get(task_id)
+
+    if not task_info:
+        return jsonify({'error': 'Task not found or completed and cleared.'}), 404 # Changed message slightly
+
+    return jsonify(task_info)
 
 @admin_bp.route('/db-populate/classes', methods=['POST'])
 @login_required
 def run_populate_classes():
     if not current_user.is_authenticated or current_user.email != current_app.config.get('ADMIN_EMAIL'):
         abort(403)
+
+    task_id = str(uuid.uuid4())
+    current_app.extensions.setdefault('population_tasks', {})
+    current_app.extensions['population_tasks'][task_id] = {
+        'progress': 0,
+        'status': 'Initializing class population...',
+        'script': 'classes',
+        'error': False
+    }
+
     try:
-        flash("Class population script started. Check server console for progress.", "info")
-        populate_classes_data()
-        flash("Class population script finished successfully.", "success") # Changed message for clarity
+        thread = threading.Thread(target=populate_classes_data, kwargs={'task_id': task_id})
+        thread.start()
+        return jsonify({'message': 'Class population started.', 'task_id': task_id})
     except Exception as e:
-        current_app.logger.error(f"Error during class population: {str(e)}")
-        flash(f"Error during class population: {str(e)}", "danger")
-    return redirect(url_for('admin.db_population_status'))
+        current_app.logger.error(f"Error starting class population thread: {str(e)}")
+        current_app.extensions['population_tasks'][task_id].update({
+            'status': f"Error initiating population: {str(e)}",
+            'error': True
+        })
+        return jsonify({'error': f"Error starting class population: {str(e)}"}), 500
 
 @admin_bp.route('/db-populate/spells', methods=['POST'])
 @login_required
 def run_populate_spells():
     if not current_user.is_authenticated or current_user.email != current_app.config.get('ADMIN_EMAIL'):
         abort(403)
+
+    task_id = str(uuid.uuid4())
+    current_app.extensions.setdefault('population_tasks', {})
+    current_app.extensions['population_tasks'][task_id] = {
+        'progress': 0,
+        'status': 'Initializing spell population...',
+        'script': 'spells',
+        'error': False
+    }
+
     try:
-        flash("Spell population script started. Check server console for progress.", "info")
-        populate_spells_data()
-        flash("Spell population script finished successfully.", "success") # Changed message for clarity
+        thread = threading.Thread(target=populate_spells_data, kwargs={'task_id': task_id})
+        thread.start()
+        return jsonify({'message': 'Spell population started.', 'task_id': task_id})
     except Exception as e:
-        current_app.logger.error(f"Error during spell population: {str(e)}")
-        flash(f"Error during spell population: {str(e)}", "danger")
-    return redirect(url_for('admin.db_population_status'))
+        current_app.logger.error(f"Error starting spell population thread: {str(e)}")
+        current_app.extensions['population_tasks'][task_id].update({
+            'status': f"Error initiating population: {str(e)}",
+            'error': True
+        })
+        return jsonify({'error': f"Error starting spell population: {str(e)}"}), 500
 
 @admin_bp.route('/db-populate/weapons', methods=['POST'])
 @login_required
 def run_populate_weapons():
     if not current_user.is_authenticated or current_user.email != current_app.config.get('ADMIN_EMAIL'):
-        abort(403) # Ensure only admin can access
+        abort(403)
+
+    task_id = str(uuid.uuid4())
+    current_app.extensions.setdefault('population_tasks', {})
+    current_app.extensions['population_tasks'][task_id] = {
+        'progress': 0,
+        'status': 'Initializing weapon population...',
+        'script': 'weapons',
+        'error': False
+    }
+
     try:
-        # Call the weapon population function
-        # The populate_weapons_data function in the script already handles db.session.commit() and rollback.
-        # It also prints to console, so flashing a message here is good for UI feedback.
-        populate_weapons_data() # This function prints to console, consider capturing its output or just relying on its internal prints + flash.
-        flash("Weapon population script triggered. Check server console for detailed status (added/skipped).", "success")
+        thread = threading.Thread(target=populate_weapons_data, kwargs={'task_id': task_id})
+        thread.start()
+        return jsonify({'message': 'Weapon population started.', 'task_id': task_id})
     except Exception as e:
-        current_app.logger.error(f"Error triggering weapon population: {str(e)}")
-        flash(f"An error occurred while triggering weapon population: {str(e)}", "danger")
-    return redirect(url_for('admin.db_population_status'))
+        current_app.logger.error(f"Error starting weapon population thread: {str(e)}")
+        current_app.extensions['population_tasks'][task_id].update({
+            'status': f"Error initiating population: {str(e)}",
+            'error': True
+        })
+        return jsonify({'error': f"Error starting weapon population: {str(e)}"}), 500
 
 @admin_bp.route('/server-logs')
 @login_required
