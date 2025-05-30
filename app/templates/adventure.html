@@ -526,6 +526,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (data.levelUpGranted === true && typeof data.newDmAllowedLevel !== 'undefined') {
                 dmAllowedLevel = data.newDmAllowedLevel; // Update JS variable
+                console.log('[sendMessage] Before calling updateNavigationButtonStates: dmAllowedLevel (updated)=', dmAllowedLevel, 'currentActualLevel=', currentActualLevel, 'currentlyViewedLevel=', currentlyViewedLevel);
                 updateNavigationButtonStates(); // Explicitly call to refresh button visibility
                 console.log(`Level up detected! New DM Allowed Level: ${dmAllowedLevel}. Button states updated.`);
             }
@@ -1212,6 +1213,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateNavigationButtonStates() {
+        console.log('[updateNavigationButtonStates] Function called. Initial values: currentlyViewedLevel=', currentlyViewedLevel, 'currentActualLevel=', currentActualLevel, 'dmAllowedLevel=', dmAllowedLevel);
         if (!prevLevelButton || !nextLevelButton) return;
 
         if (achievedLevelsList.length > 1) {
@@ -1220,7 +1222,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             prevLevelButton.style.display = 'none';
             nextLevelButton.style.display = 'none';
-            return; 
+            // Still need to check the levelUpButton even if prev/next are hidden
         }
 
         const currentIndex = achievedLevelsList.indexOf(currentlyViewedLevel);
@@ -1229,10 +1231,17 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Hide level up button if not viewing current actual level
         if (levelUpButton) {
-            if (currentlyViewedLevel === currentActualLevel && currentActualLevel < dmAllowedLevel) {
+            console.log('[updateNavigationButtonStates] Checking levelUpButton visibility. Condition: (currentlyViewedLevel === currentActualLevel && currentActualLevel < dmAllowedLevel)');
+            console.log('[updateNavigationButtonStates] Values for check: currentlyViewedLevel ===', currentlyViewedLevel, 'currentActualLevel ===', currentActualLevel, 'dmAllowedLevel ===', dmAllowedLevel);
+            const shouldDisplayLevelUpButton = (currentlyViewedLevel === currentActualLevel && currentActualLevel < dmAllowedLevel);
+            console.log('[updateNavigationButtonStates] shouldDisplayLevelUpButton =', shouldDisplayLevelUpButton);
+
+            if (shouldDisplayLevelUpButton) {
                 levelUpButton.style.display = 'inline-block';
+                console.log('[updateNavigationButtonStates] LevelUpButton display set to inline-block');
             } else {
                 levelUpButton.style.display = 'none';
+                console.log('[updateNavigationButtonStates] LevelUpButton display set to none');
             }
         }
     }
