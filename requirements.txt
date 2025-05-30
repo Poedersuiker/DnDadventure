@@ -7,3 +7,4 @@ SQLAlchemy
 Flask-Babel
 google-generativeai
 Flask-Migrate
+requests
