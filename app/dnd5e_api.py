@@ -77,5 +77,5 @@ def get_all_races() -> list:
         requests.exceptions.RequestException: If an error occurs while making the request.
         json.JSONDecodeError: If an error occurs while decoding the JSON response.
     """
-    data = _make_request("/api/races")
+    data = _make_request("/races")
     return data.get('results', [])
