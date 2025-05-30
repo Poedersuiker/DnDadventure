@@ -8,17 +8,30 @@ class User(db.Model, UserMixin):
     google_id = db.Column(db.String(255), unique=True, nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=True)
     
-    # Relationship to Character model
     characters = db.relationship('Character', backref='user', lazy=True)
 
     def __repr__(self):
         return f'<User {self.email or self.google_id}>'
 
+class CharacterWeaponAssociation(db.Model):
+    __tablename__ = 'character_weapon_association'
+    character_id = db.Column(db.Integer, db.ForeignKey('character.id'), primary_key=True)
+    weapon_id = db.Column(db.Integer, db.ForeignKey('weapon.id'), primary_key=True)
+    quantity = db.Column(db.Integer, default=1, nullable=False)
+    is_equipped_main_hand = db.Column(db.Boolean, default=False, nullable=False)
+    is_equipped_off_hand = db.Column(db.Boolean, default=False, nullable=False)
+
+    character = db.relationship("Character", back_populates="weapon_associations")
+    weapon = db.relationship("Weapon") # No back_populates needed on Weapon side for this simple association
+
+    def __repr__(self):
+        return f"<CharacterWeaponAssociation char_id={self.character_id} wep_id={self.weapon_id} qty={self.quantity}>"
+
 class Character(db.Model):
     __tablename__ = 'character'  # Explicitly set table name
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.Text, nullable=True)  # General character description
+    description = db.Column(db.Text, nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     race_id = db.Column(db.Integer, db.ForeignKey('race.id'), nullable=False)
     class_id = db.Column(db.Integer, db.ForeignKey('class.id'), nullable=False)
@@ -27,10 +40,10 @@ class Character(db.Model):
     dm_allowed_level = db.Column(db.Integer, default=1, nullable=False)
     current_xp = db.Column(db.Integer, default=0, nullable=False)
     background_name = db.Column(db.String(100), nullable=True)
-    background_proficiencies = db.Column(db.Text, nullable=True)  # JSON
-    adventure_log = db.Column(db.Text, nullable=True) # JSON chat history
-    current_hit_dice = db.Column(db.Integer, default=1, nullable=False) # Added for short rest
-    player_notes = db.Column(db.Text, nullable=True) # Added for player notes
+    background_proficiencies = db.Column(db.Text, nullable=True)
+    adventure_log = db.Column(db.Text, nullable=True)
+    current_hit_dice = db.Column(db.Integer, default=1, nullable=False)
+    player_notes = db.Column(db.Text, nullable=True)
 
     items = db.relationship('Item', back_populates='character', lazy=True)
     coinage = db.relationship('Coinage', back_populates='character', lazy=True)
@@ -41,10 +54,16 @@ class Character(db.Model):
     levels = db.relationship('CharacterLevel', backref='parent_character', lazy='dynamic', 
                              order_by='CharacterLevel.level_number', cascade='all, delete-orphan')
 
+    weapon_associations = db.relationship(
+        "CharacterWeaponAssociation",
+        back_populates="character",
+        cascade="all, delete-orphan",
+        lazy='dynamic'
+    )
+
     def __repr__(self):
         return f'<Character {self.name}>'
 
-# New CharacterLevel Model
 class CharacterLevel(db.Model):
     __tablename__ = 'character_level'
     id = db.Column(db.Integer, primary_key=True)
@@ -68,94 +87,66 @@ class CharacterLevel(db.Model):
     spell_slots_snapshot = db.Column(db.Text, nullable=True) # JSON
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # The relationship back to Character is implicitly created by backref='parent_character' in Character.levels
-    # If explicit definition is needed:
-    # character = db.relationship('Character', backref=db.backref('level_details', lazy='joined'))
-
     def __repr__(self):
         return f'<CharacterLevel {self.level_number} for Character ID {self.character_id}>'
 
-# Removed character_known_spells table
-# Removed character_prepared_spells table
-# Removed CharacterSpellSlot model
-
-# Association table for Character and Weapon (Many-to-Many)
-character_weapon_association = db.Table('character_weapon_association',
-    db.Column('id', db.Integer, primary_key=True, autoincrement=True), # Added primary key for easier referencing if needed
-    db.Column('character_id', db.Integer, db.ForeignKey('character.id'), nullable=False),
-    db.Column('weapon_id', db.Integer, db.ForeignKey('weapon.id'), nullable=False),
-    db.Column('quantity', db.Integer, default=1),
-    db.Column('is_equipped_main_hand', db.Boolean, default=False),
-    db.Column('is_equipped_off_hand', db.Boolean, default=False),
-    db.UniqueConstraint('character_id', 'weapon_id', name='uq_character_weapon') # Ensure a character doesn't have multiple stacks of the exact same weapon type; they should increment quantity.
-)
+# Comment out old association table definition
+# character_weapon_association = db.Table('character_weapon_association',
+#     db.Column('id', db.Integer, primary_key=True, autoincrement=True),
+#     db.Column('character_id', db.Integer, db.ForeignKey('character.id'), nullable=False),
+#     db.Column('weapon_id', db.Integer, db.ForeignKey('weapon.id'), nullable=False),
+#     db.Column('quantity', db.Integer, default=1),
+#     db.Column('is_equipped_main_hand', db.Boolean, default=False),
+#     db.Column('is_equipped_off_hand', db.Boolean, default=False),
+#     db.UniqueConstraint('character_id', 'weapon_id', name='uq_character_weapon')
+# )
 
 class Weapon(db.Model):
     __tablename__ = 'weapon'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), unique=True, nullable=False)
-    category = db.Column(db.String(100), nullable=False)  # e.g., "Simple Melee", "Martial Ranged"
-    cost = db.Column(db.String(50), nullable=True)  # e.g., "5 gp"
-    damage_dice = db.Column(db.String(20), nullable=False)  # e.g., "1d8", "2d6"
-    damage_type = db.Column(db.String(50), nullable=False)  # e.g., "Slashing", "Piercing"
-    weight = db.Column(db.String(20), nullable=True)  # e.g., "2 lb."
-    properties = db.Column(db.Text, nullable=True)  # JSON string list, e.g., ["light", "finesse"]
-    range = db.Column(db.String(50), nullable=True) # e.g., "5 ft." for melee, or "80/320 ft." for ranged.
-    normal_range = db.Column(db.Integer, nullable=True) # Parsed normal range for ranged weapons.
-    long_range = db.Column(db.Integer, nullable=True) # Parsed long range for ranged weapons.
-    throw_range_normal = db.Column(db.Integer, nullable=True) # Parsed normal throw range.
-    throw_range_long = db.Column(db.Integer, nullable=True) # Parsed long throw range.
+    category = db.Column(db.String(100), nullable=False)
+    cost = db.Column(db.String(50), nullable=True)
+    damage_dice = db.Column(db.String(20), nullable=False)
+    damage_type = db.Column(db.String(50), nullable=False)
+    weight = db.Column(db.String(20), nullable=True)
+    properties = db.Column(db.Text, nullable=True)
+    range = db.Column(db.String(50), nullable=True)
+    normal_range = db.Column(db.Integer, nullable=True)
+    long_range = db.Column(db.Integer, nullable=True)
+    throw_range_normal = db.Column(db.Integer, nullable=True)
+    throw_range_long = db.Column(db.Integer, nullable=True)
     is_martial = db.Column(db.Boolean, default=False)
 
-    # Relationship for Character-Weapon association
-    # characters = db.relationship('Character', secondary=character_weapon_association, backref=db.backref('weapons', lazy='dynamic'))
-    # The above is one way; another is to have it on Character model if preferred.
-    # Let's define it on Character model for more direct access like character.weapons.
+    # Omitted: character_associations = db.relationship("CharacterWeaponAssociation", back_populates="weapon")
+    # This side of the relationship is not strictly needed for the current task and is implicitly handled.
 
     def __repr__(self):
         return f'<Weapon {self.name}>'
 
-# Add the relationship to Character model (if not already there in this form)
-Character.weapons = db.relationship(
-    'Weapon',
-    secondary=character_weapon_association,
-    back_populates='characters_associated', # New backref name for Weapon side
-    lazy='dynamic' # Or 'select', 'joined' as needed
-)
-
-# Add a backref to Weapon model for the association
-Weapon.characters_associated = db.relationship(
-    'Character',
-    secondary=character_weapon_association,
-    back_populates='weapons', # Matches the relationship name in Character
-    lazy='dynamic'
-)
-
-
 class Spell(db.Model):
     __tablename__ = 'spell'
     id = db.Column(db.Integer, primary_key=True)
-    index = db.Column(db.String(100), unique=True, nullable=False) # from dnd5eapi
+    index = db.Column(db.String(100), unique=True, nullable=False)
     name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.Text, nullable=False)  # JSON list as string
-    higher_level = db.Column(db.Text, nullable=True)  # JSON list as string
+    description = db.Column(db.Text, nullable=False)
+    higher_level = db.Column(db.Text, nullable=True)
     range = db.Column(db.String(100))
-    components = db.Column(db.String(50))  # e.g., "V, S, M"
+    components = db.Column(db.String(50))
     material = db.Column(db.Text, nullable=True)
     ritual = db.Column(db.Boolean, default=False)
     duration = db.Column(db.String(100))
     concentration = db.Column(db.Boolean, default=False)
     casting_time = db.Column(db.String(100))
-    level = db.Column(db.Integer, nullable=False) # Spell level, 0 for cantrips
-    attack_type = db.Column(db.String(100), nullable=True) # e.g., "melee", "ranged"
-    damage_type = db.Column(db.String(50), nullable=True) # e.g., "Fire", "Cold"
-    damage_at_slot_level = db.Column(db.Text, nullable=True)  # JSON dict as string
-    school = db.Column(db.String(50), nullable=False) # e.g., "Evocation"
-    classes_that_can_use = db.Column(db.Text, nullable=False) # JSON list of class names
-    subclasses_that_can_use = db.Column(db.Text, nullable=True) # JSON list of subclass names
+    level = db.Column(db.Integer, nullable=False)
+    attack_type = db.Column(db.String(100), nullable=True)
+    damage_type = db.Column(db.String(50), nullable=True)
+    damage_at_slot_level = db.Column(db.Text, nullable=True)
+    school = db.Column(db.String(50), nullable=False)
+    classes_that_can_use = db.Column(db.Text, nullable=False)
+    subclasses_that_can_use = db.Column(db.Text, nullable=True)
     requires_attack_roll = db.Column(db.Boolean, default=False)
-    spell_attack_ability = db.Column(db.String(20), nullable=True) # e.g., "spellcasting", "dex", "str"
-
+    spell_attack_ability = db.Column(db.String(20), nullable=True)
 
     def __repr__(self):
         return f'<Spell {self.name}>'
@@ -165,20 +156,20 @@ class Class(db.Model):
     __tablename__ = 'class'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)
-    hit_die = db.Column(db.String(10)) # e.g., "d8"
-    proficiencies_armor = db.Column(db.Text, nullable=True) # JSON list
-    proficiencies_weapons = db.Column(db.Text, nullable=True) # JSON list
-    proficiencies_tools = db.Column(db.Text, nullable=True) # JSON list
-    proficiency_saving_throws = db.Column(db.Text, nullable=False) # JSON list, e.g., ["INT", "WIS"]
+    hit_die = db.Column(db.String(10))
+    proficiencies_armor = db.Column(db.Text, nullable=True)
+    proficiencies_weapons = db.Column(db.Text, nullable=True)
+    proficiencies_tools = db.Column(db.Text, nullable=True)
+    proficiency_saving_throws = db.Column(db.Text, nullable=False)
     skill_proficiencies_option_count = db.Column(db.Integer, nullable=False)
-    skill_proficiencies_options = db.Column(db.Text, nullable=False) # JSON list of skill choices
-    starting_equipment = db.Column(db.Text, nullable=False) # JSON structure
-    spellcasting_ability = db.Column(db.String(20), nullable=True) # e.g., "WIS", "CHA"
-    spell_slots_by_level = db.Column(db.Text, nullable=True) # JSON: {level: [slots]}
-    cantrips_known_by_level = db.Column(db.Text, nullable=True) # JSON: {level: count}
-    spells_known_by_level = db.Column(db.Text, nullable=True) # JSON: {level: count}
-    can_prepare_spells = db.Column(db.Boolean, default=False) # For classes like Wizard vs Sorcerer
-    level_specific_data = db.Column(db.Text, nullable=True) # JSON: {level: {"features": ["Feature Name"], "asi_count": 0/1}}
+    skill_proficiencies_options = db.Column(db.Text, nullable=False)
+    starting_equipment = db.Column(db.Text, nullable=False)
+    spellcasting_ability = db.Column(db.String(20), nullable=True)
+    spell_slots_by_level = db.Column(db.Text, nullable=True)
+    cantrips_known_by_level = db.Column(db.Text, nullable=True)
+    spells_known_by_level = db.Column(db.Text, nullable=True)
+    can_prepare_spells = db.Column(db.Boolean, default=False)
+    level_specific_data = db.Column(db.Text, nullable=True)
 
     def __repr__(self):
         return f'<Class {self.name}>'
@@ -189,14 +180,14 @@ class Race(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)
     speed = db.Column(db.Integer, nullable=False)
-    ability_score_increases = db.Column(db.Text, nullable=False) # JSON: { "STR": 1, "DEX": 2 }
+    ability_score_increases = db.Column(db.Text, nullable=False)
     age_description = db.Column(db.Text, nullable=True)
     alignment_description = db.Column(db.Text, nullable=True)
-    size = db.Column(db.String(20)) # e.g., "Medium", "Small"
+    size = db.Column(db.String(20))
     size_description = db.Column(db.Text, nullable=True)
-    languages = db.Column(db.Text, nullable=False) # JSON list
-    traits = db.Column(db.Text, nullable=True) # JSON list of trait names/descriptions
-    skill_proficiencies = db.Column(db.Text, nullable=True) # JSON list, optional choices
+    languages = db.Column(db.Text, nullable=False)
+    traits = db.Column(db.Text, nullable=True)
+    skill_proficiencies = db.Column(db.Text, nullable=True)
 
     def __repr__(self):
         return f'<Race {self.name}>'
@@ -227,7 +218,7 @@ class Item(db.Model):
 class Coinage(db.Model):
     __tablename__ = 'coinage'
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), nullable=False)  # e.g., "Gold", "Silver", "Copper"
+    name = db.Column(db.String(50), nullable=False)
     quantity = db.Column(db.Integer, default=0)
     character_id = db.Column(db.Integer, db.ForeignKey('character.id'), nullable=False)
 
