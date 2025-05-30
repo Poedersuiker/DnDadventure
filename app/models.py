@@ -79,6 +79,35 @@ class CharacterLevel(db.Model):
 # Removed character_prepared_spells table
 # Removed CharacterSpellSlot model
 
+# Association table for Character and Weapon (Many-to-Many)
+character_weapon_association = db.Table('character_weapon_association',
+    db.Column('character_id', db.Integer, db.ForeignKey('character.id'), primary_key=True),
+    db.Column('weapon_id', db.Integer, db.ForeignKey('weapon.id'), primary_key=True),
+    db.Column('quantity', db.Integer, default=1),
+    db.Column('is_equipped_main_hand', db.Boolean, default=False),
+    db.Column('is_equipped_off_hand', db.Boolean, default=False)
+)
+
+class Weapon(db.Model):
+    __tablename__ = 'weapon'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), unique=True, nullable=False)
+    category = db.Column(db.String(100), nullable=False)  # e.g., "Simple Melee", "Martial Ranged"
+    cost = db.Column(db.String(50), nullable=True)  # e.g., "5 gp"
+    damage_dice = db.Column(db.String(20), nullable=False)  # e.g., "1d8", "2d6"
+    damage_type = db.Column(db.String(50), nullable=False)  # e.g., "Slashing", "Piercing"
+    weight = db.Column(db.String(20), nullable=True)  # e.g., "2 lb."
+    properties = db.Column(db.Text, nullable=True)  # JSON string list, e.g., ["light", "finesse"]
+    range = db.Column(db.String(50), nullable=True) # e.g., "5 ft." for melee, or "80/320 ft." for ranged.
+    normal_range = db.Column(db.Integer, nullable=True) # Parsed normal range for ranged weapons.
+    long_range = db.Column(db.Integer, nullable=True) # Parsed long range for ranged weapons.
+    throw_range_normal = db.Column(db.Integer, nullable=True) # Parsed normal throw range.
+    throw_range_long = db.Column(db.Integer, nullable=True) # Parsed long throw range.
+    is_martial = db.Column(db.Boolean, default=False)
+
+    def __repr__(self):
+        return f'<Weapon {self.name}>'
+
 class Spell(db.Model):
     __tablename__ = 'spell'
     id = db.Column(db.Integer, primary_key=True)
@@ -100,6 +129,9 @@ class Spell(db.Model):
     school = db.Column(db.String(50), nullable=False) # e.g., "Evocation"
     classes_that_can_use = db.Column(db.Text, nullable=False) # JSON list of class names
     subclasses_that_can_use = db.Column(db.Text, nullable=True) # JSON list of subclass names
+    requires_attack_roll = db.Column(db.Boolean, default=False)
+    spell_attack_ability = db.Column(db.String(20), nullable=True) # e.g., "spellcasting", "dex", "str"
+
 
     def __repr__(self):
         return f'<Spell {self.name}>'

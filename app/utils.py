@@ -32,37 +32,55 @@ XP_THRESHOLDS = {
 }
 
 
-def roll_dice(num_dice: int, num_sides: int, drop_lowest: int = 0) -> tuple[int, list[int]]:
+def roll_dice(num_dice: int, num_sides: int, drop_lowest: int = 0, advantage_disadvantage: bool = False) -> tuple[int, list[int]]:
     '''
     Rolls a specified number of dice with a given number of sides,
     optionally dropping a specified number of the lowest rolls.
+    Can also roll with advantage or disadvantage.
 
     Args:
         num_dice (int): The number of dice to roll.
         num_sides (int): The number of sides on each die.
         drop_lowest (int): The number of lowest dice rolls to drop. Default is 0.
+        advantage_disadvantage (bool): If True, rolls twice and returns both sets of rolls.
+                                       The caller decides whether to use the higher or lower roll.
+                                       Default is False.
 
     Returns:
-        tuple[int, list[int]]: A tuple containing the sum of the final rolls
-                               and a list of all dice rolls made.
+        tuple[int, list[int]]: A tuple containing:
+                               - The sum of the chosen rolls (if advantage_disadvantage is False, or first roll if True).
+                               - A list of all actual physical die rolls made. If advantage_disadvantage is True,
+                                 this list will contain all rolls from both sets (e.g., [roll1_set1, roll2_set1, roll1_set2, roll2_set2]).
     '''
     if num_dice <= 0 or num_sides <= 0:
         raise ValueError("Number of dice and sides must be positive.")
-    if drop_lowest < 0 or drop_lowest >= num_dice:
+    if drop_lowest < 0 or drop_lowest >= num_dice: # This validation applies to each roll set
         raise ValueError("Number of dice to drop must be non-negative and less than the number of dice.")
 
-    rolls = [random.randint(1, num_sides) for _ in range(num_dice)]
-    
-    if drop_lowest > 0:
-        # To get the sum of the highest rolls, we sort and then slice off the lowest ones.
-        # The 'rolls' list itself is not modified for the return value if drop_lowest is used.
-        sorted_rolls_for_sum = sorted(rolls)
-        final_rolls_for_sum = sorted_rolls_for_sum[drop_lowest:]
-        sum_of_rolls = sum(final_rolls_for_sum)
+    def _perform_roll_set(current_num_dice, current_num_sides, current_drop_lowest):
+        """Helper to perform one set of rolls and apply drop_lowest."""
+        actual_rolls = [random.randint(1, current_num_sides) for _ in range(current_num_dice)]
+        if current_drop_lowest > 0:
+            sorted_rolls_for_sum = sorted(actual_rolls)
+            final_rolls_for_sum = sorted_rolls_for_sum[current_drop_lowest:]
+            current_sum_of_rolls = sum(final_rolls_for_sum)
+        else:
+            current_sum_of_rolls = sum(actual_rolls)
+        return current_sum_of_rolls, actual_rolls
+
+    if advantage_disadvantage:
+        # Roll twice
+        sum1, rolls1 = _perform_roll_set(num_dice, num_sides, drop_lowest)
+        sum2, rolls2 = _perform_roll_set(num_dice, num_sides, drop_lowest)
+
+        # The 'sum_of_rolls' returned in this case is from the first roll,
+        # as the caller will decide which sum (sum1 or sum2) to use.
+        # The 'all_rolls' list contains both sets of physical rolls.
+        return sum1, rolls1 + rolls2 # Caller will use sum1 or sum2 based on adv/disadv
     else:
-        sum_of_rolls = sum(rolls)
-    
-    return sum_of_rolls, rolls # Return original rolls for transparency
+        # Original behavior
+        sum_of_rolls, rolls = _perform_roll_set(num_dice, num_sides, drop_lowest)
+        return sum_of_rolls, rolls
 
 def list_gemini_models():
     api_key = current_app.config.get('GEMINI_API_KEY')

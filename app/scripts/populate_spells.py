@@ -65,15 +65,18 @@ def populate_spells_data():
                     concentration=spell_data.get('concentration', False),
                     casting_time=spell_data.get('casting_time'),
                     level=spell_data.get('level', 0),
-                    attack_type=spell_data.get('attack_type'),
+                    attack_type=spell_data.get('attack_type'), # e.g., "ranged", "melee"
                     damage_type=spell_data.get('damage', {}).get('damage_type', {}).get('name'),
                     damage_at_slot_level=json.dumps(spell_data.get('damage', {}).get('damage_at_slot_level', {})),
                     school=spell_data.get('school', {}).get('name'),
                     classes_that_can_use=json.dumps([c.get('name') for c in spell_data.get('classes', []) if c.get('name')]),
-                    subclasses_that_can_use=json.dumps([sc.get('name') for sc in spell_data.get('subclasses', []) if sc.get('name')])
+                    subclasses_that_can_use=json.dumps([sc.get('name') for sc in spell_data.get('subclasses', []) if sc.get('name')]),
+                    # New fields
+                    requires_attack_roll=bool(spell_data.get('attack_type')), # True if attack_type exists
+                    spell_attack_ability="spellcasting" if spell_data.get('attack_type') else None # Default to spellcasting if it's an attack
                 )
                 db.session.add(new_spell)
-                print(f"Added '{new_spell.name}' to session.")
+                print(f"Added '{new_spell.name}' to session. Attack roll: {new_spell.requires_attack_roll}, Ability: {new_spell.spell_attack_ability}")
 
             except KeyError as e:
                 print(f"Missing critical key for spell {spell_index}: {e}. Skipping this spell.")

@@ -6,9 +6,10 @@ import re # Added for gold parsing
 from flask import render_template, redirect, url_for, flash, request, session, get_flashed_messages, jsonify, current_app
 from flask_babel import _
 from flask_login import login_required, current_user
+from sqlalchemy.orm import aliased
 from app import db
 # CharacterSpellSlot removed, CharacterLevel added
-from app.models import User, Character, Race, Class, Spell, Setting, Item, Coinage, CharacterLevel 
+from app.models import User, Character, Race, Class, Spell, Setting, Item, Coinage, CharacterLevel, Weapon, character_weapon_association
 from app.utils import roll_dice, parse_coinage, ALL_SKILLS_LIST, XP_THRESHOLDS, generate_character_sheet_text # Added generate_character_sheet_text
 from app.gemini import geminiai, GEMINI_DM_SYSTEM_RULES
 from datetime import datetime
@@ -91,8 +92,12 @@ def clear_character_progress(character_id):
     Item.query.filter_by(character_id=character.id).delete()
     Coinage.query.filter_by(character_id=character.id).delete()
 
+    # Clear weapon associations
+    stmt = db.delete(character_weapon_association).where(character_weapon_association.c.character_id == character_id)
+    db.session.execute(stmt)
+
     db.session.commit()
-    flash('Adventure progress cleared. Your character has been reset. Inventory and coinage have been cleared.', 'success')
+    flash('Adventure progress cleared. Your character has been reset. Inventory, coinage, and weapons have been cleared.', 'success')
     return redirect(url_for('main.index'))
 
 # Character Creation Step 1: Race Selection
@@ -640,7 +645,10 @@ def creation_review():
 @bp.route('/<int:character_id>/adventure', methods=['GET', 'POST'])
 @login_required
 def adventure(character_id):
-    character = Character.query.get_or_404(character_id)
+    character = Character.query.options(
+        db.joinedload(Character.weapons) # Eagerly load weapons through the association
+    ).get_or_404(character_id)
+
     if character.user_id != current_user.id:
         flash(_('This character does not belong to you.'))
         return redirect(url_for('main.index'))
@@ -789,6 +797,50 @@ def adventure(character_id):
     # --- Data Preparation for Character Sheet (for template rendering) ---
     proficiency_bonus = (viewed_level_number - 1) // 4 + 2
 
+    # Character Owned Weapons (including equipped status)
+    character_owned_weapons_list = []
+    equipped_weapons_details = [] # For the attack buttons section
+
+    # Query for all weapons associated with the character using the association table
+    # This gives us Weapon objects along with their association attributes (quantity, equipped status)
+    # The character.weapons relationship is already set up to use character_weapon_association
+
+    # We need to iterate through the association objects if we want quantity and equipped status easily.
+    # The `character.weapons` relationship gives a list of `Weapon` objects directly.
+    # To get association attributes, we query the association table directly or use the association_proxy if set up.
+    # For this purpose, querying the association table is more direct.
+
+    weapon_associations = db.session.query(
+        character_weapon_association.c.weapon_id,
+        character_weapon_association.c.quantity,
+        character_weapon_association.c.is_equipped_main_hand,
+        character_weapon_association.c.is_equipped_off_hand,
+        Weapon
+    ).join(Weapon, character_weapon_association.c.weapon_id == Weapon.id)\
+     .filter(character_weapon_association.c.character_id == character.id).all()
+
+    for weapon_id, quantity, is_main, is_off, weapon_obj in weapon_associations:
+        weapon_detail = {
+            'id': weapon_obj.id, # from Weapon object
+            'name': weapon_obj.name,
+            'damage_dice': weapon_obj.damage_dice,
+            'damage_type': weapon_obj.damage_type,
+            'properties': json.loads(weapon_obj.properties) if weapon_obj.properties else [],
+            'range': weapon_obj.range,
+            'normal_range': weapon_obj.normal_range,
+            'long_range': weapon_obj.long_range,
+            'throw_range_normal': weapon_obj.throw_range_normal,
+            'throw_range_long': weapon_obj.throw_range_long,
+            'category': weapon_obj.category,
+            'is_martial': weapon_obj.is_martial,
+            'quantity': quantity, # from association
+            'is_equipped_main_hand': is_main, # from association
+            'is_equipped_off_hand': is_off # from association
+        }
+        character_owned_weapons_list.append(weapon_detail)
+        if is_main or is_off:
+            equipped_weapons_details.append(weapon_detail)
+
     proficiencies_data = {}
     try:
         proficiencies_data = json.loads(current_character_level_data.proficiencies or '{}')
@@ -904,6 +956,9 @@ def adventure(character_id):
                            saving_throws_data=saving_throws_data,
                            skills_data=skills_data,
                            abilities_data=abilities_data,
+                           equipped_weapons=equipped_weapons_details,
+                           character_owned_weapons_list=character_owned_weapons_list, # Pass all owned weapons
+                           character_spellcasting_ability=character.char_class.spellcasting_ability if character.char_class else None,
                            # New context variables
                            current_actual_level=current_actual_level,
                            dm_allowed_level=character.dm_allowed_level,
@@ -947,17 +1002,405 @@ def roll_dice_from_sheet():
     # The prompt implies `actual_rolls, subtotal = roll_dice(...)`
     # My utils.roll_dice returns `sum_of_rolls, rolls`. So:
     # subtotal = sum_of_rolls, actual_rolls = rolls
-    subtotal, actual_rolls = roll_dice(num_dice, num_sides) 
-    total = subtotal + modifier
+    # subtotal, actual_rolls = roll_dice(num_dice, num_sides)
+    # total = subtotal + modifier
 
-    return jsonify({
+    # return jsonify({
+    #     "roll_name": roll_name,
+    #     "dice_formula": dice_formula,
+    #     "modifier": modifier,
+    #     "rolls": actual_rolls,
+    #     "subtotal": subtotal,
+    #     "total": total
+    # })
+
+    roll_condition = data.get('roll_condition', 'normal') # "normal", "advantage", "disadvantage"
+    response_data = {
         "roll_name": roll_name,
         "dice_formula": dice_formula,
         "modifier": modifier,
-        "rolls": actual_rolls,
-        "subtotal": subtotal,
-        "total": total
-    })
+        "roll_condition_fulfilled": roll_condition if roll_condition in ["advantage", "disadvantage"] else "normal"
+    }
+
+    if roll_condition == "advantage" or roll_condition == "disadvantage":
+        # The modified roll_dice returns (sum_of_first_roll, list_of_all_physical_rolls)
+        # where list_of_all_physical_rolls contains rolls from both sets.
+        # e.g. for 1d20 adv, it might return (15, [15, 8]) if first roll was 15, second was 8.
+        # We need to determine the actual subtotal (adv/disadv outcome) from the rolls.
+
+        # We expect num_dice to define how many dice are in ONE SET of rolls.
+        # For a typical advantage/disadvantage roll, num_dice is 1 (e.g., 1d20).
+        # The advantage_disadvantage=True flag in roll_dice handles rolling this set twice.
+        # The returned list of rolls will contain num_dice * 2 elements.
+        _, all_rolls = roll_dice(num_dice, num_sides, advantage_disadvantage=True)
+
+        if len(all_rolls) != num_dice * 2:
+            # This should not happen if roll_dice works as specified for advantage_disadvantage=True
+            current_app.logger.error(f"Adv/Disadv roll for {dice_formula} did not return expected number of rolls. Got: {all_rolls}")
+            return jsonify(error="Error processing advantage/disadvantage roll internals."), 500
+
+        # Split the rolls into the two sets.
+        # Each set has 'num_dice' rolls.
+        rolls1_list = all_rolls[:num_dice]
+        rolls2_list = all_rolls[num_dice:]
+
+        sum1 = sum(rolls1_list)
+        sum2 = sum(rolls2_list)
+
+        if roll_condition == "advantage":
+            subtotal = max(sum1, sum2)
+        else: # disadvantage
+            subtotal = min(sum1, sum2)
+
+        response_data["rolls"] = all_rolls # Return all physical rolls made
+        response_data["subtotal"] = subtotal
+        # Add which sums were considered for clarity, though not strictly required by prompt
+        response_data["roll_details"] = {
+            "roll1_sum": sum1,
+            "roll1_dice": rolls1_list,
+            "roll2_sum": sum2,
+            "roll2_dice": rolls2_list,
+        }
+
+    else: # Normal roll
+        subtotal, actual_rolls = roll_dice(num_dice, num_sides)
+        response_data["rolls"] = actual_rolls
+        response_data["subtotal"] = subtotal
+        response_data["roll_condition_fulfilled"] = "normal"
+
+
+    total = response_data["subtotal"] + modifier
+    response_data["total"] = total
+
+    return jsonify(response_data)
+
+# --- Weapon Management Routes ---
+@bp.route('/get_all_weapons_for_inventory_modal', methods=['GET'])
+@login_required
+def get_all_weapons_for_inventory_modal():
+    all_weapons = Weapon.query.order_by(Weapon.category, Weapon.name).all()
+    weapons_data = [{
+        "id": weapon.id,
+        "name": weapon.name,
+        "category": weapon.category,
+        "damage_dice": weapon.damage_dice,
+        "damage_type": weapon.damage_type,
+        "properties": json.loads(weapon.properties) if weapon.properties else []
+    } for weapon in all_weapons]
+    return jsonify(weapons_data)
+
+@bp.route('/character/<int:character_id>/inventory/add_weapon', methods=['POST'])
+@login_required
+def add_weapon_to_inventory_route(character_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(status="error", message="Unauthorized: You do not own this character."), 403
+
+    data = request.json
+    if not data:
+        return jsonify(status="error", message="No data provided."), 400
+
+    weapon_id = data.get('weapon_id')
+    try:
+        quantity_to_add = int(data.get('quantity', 1))
+    except ValueError:
+        return jsonify(status="error", message="Invalid quantity format."), 400
+
+    if not weapon_id or quantity_to_add <= 0:
+        return jsonify(status="error", message="Weapon ID and positive quantity are required."), 400
+
+    weapon_master_record = Weapon.query.get(weapon_id)
+    if not weapon_master_record:
+        return jsonify(status="error", message="Weapon not found in master list."), 404
+
+    # Check if this weapon is already associated with the character
+    existing_association = db.session.query(character_weapon_association).filter_by(
+        character_id=character_id,
+        weapon_id=weapon_id
+    ).first()
+
+    item_for_response = {
+        'id': weapon_master_record.id,
+        'name': weapon_master_record.name,
+        'category': weapon_master_record.category,
+        'damage_dice': weapon_master_record.damage_dice,
+        'damage_type': weapon_master_record.damage_type,
+        'properties': json.loads(weapon_master_record.properties) if weapon_master_record.properties else []
+    }
+    message = ""
+    status_code = 200
+
+    if existing_association:
+        # Update quantity
+        new_quantity = existing_association.quantity + quantity_to_add
+        stmt = db.update(character_weapon_association).where(
+            character_weapon_association.c.character_id == character_id,
+            character_weapon_association.c.weapon_id == weapon_id
+        ).values(quantity=new_quantity)
+        db.session.execute(stmt)
+        item_for_response['quantity'] = new_quantity
+        item_for_response['association_id'] = existing_association.id # association id does not change
+        item_for_response['is_equipped_main_hand'] = existing_association.is_equipped_main_hand
+        item_for_response['is_equipped_off_hand'] = existing_association.is_equipped_off_hand
+        message = f"{quantity_to_add} {weapon_master_record.name}(s) added. You now have {new_quantity}."
+    else:
+        # Insert new association
+        # We need to get the ID of the new association row.
+        # Using core insert and then selecting might be one way if Flask-SQLAlchemy doesn't return it easily.
+        # However, character_weapon_association is a Table, not an ORM model here.
+        # Let's try inserting and then querying for it.
+        stmt = db.insert(character_weapon_association).values(
+            character_id=character_id,
+            weapon_id=weapon_id,
+            quantity=quantity_to_add,
+            is_equipped_main_hand=False,
+            is_equipped_off_hand=False
+        )
+        db.session.execute(stmt)
+        # To get the new association_id, we need to query it.
+        # Assuming (character_id, weapon_id) is unique for non-equipped items, or we handle multiple stacks later.
+        # For now, let's assume simple case.
+        # The `id` primary key on the association table is auto-incrementing.
+        # We can fetch the last inserted row for this session if the DB supports it, or query by char_id/weapon_id.
+
+        # Fetch the newly created or updated association to get its ID and other details
+        # This is a bit tricky as character_weapon_association.c.id is the PK of the association table itself.
+        # Let's re-query the association using character_id and weapon_id.
+        # Note: if multiple entries for same weapon_id for a character are allowed (e.g. magic vs non-magic), this needs refinement.
+        # For now, assuming one stack per weapon type.
+        newly_added_or_updated_assoc = db.session.query(
+            character_weapon_association.c.id,
+            character_weapon_association.c.quantity,
+            character_weapon_association.c.is_equipped_main_hand,
+            character_weapon_association.c.is_equipped_off_hand
+        ).filter_by(character_id=character_id, weapon_id=weapon_id).first()
+
+
+        if not newly_added_or_updated_assoc:
+             # This should not happen if insert was successful
+            current_app.logger.error(f"Failed to retrieve association for char {character_id}, weapon {weapon_id} after insert/update.")
+            db.session.rollback()
+            return jsonify(status="error", message="Failed to confirm weapon addition."), 500
+
+        item_for_response['quantity'] = newly_added_or_updated_assoc.quantity
+        item_for_response['association_id'] = newly_added_or_updated_assoc.id
+        item_for_response['is_equipped_main_hand'] = newly_added_or_updated_assoc.is_equipped_main_hand
+        item_for_response['is_equipped_off_hand'] = newly_added_or_updated_assoc.is_equipped_off_hand
+        message = f"{weapon_master_record.name} (x{quantity_to_add}) added to inventory."
+        status_code = 201
+
+    try:
+        db.session.commit()
+        return jsonify(
+            status="success",
+            message=message,
+            weapon=item_for_response
+        ), status_code
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error adding/updating weapon for character {character_id}: {str(e)}")
+        return jsonify(status="error", message="An internal error occurred while saving the weapon."), 500
+
+@bp.route('/character/<int:character_id>/inventory/remove_weapon/<int:association_id_in_path>', methods=['POST'])
+@login_required
+def remove_weapon_from_inventory_route(character_id, association_id_in_path):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(status="error", message="Unauthorized: You do not own this character."), 403
+
+    # The association_id is the primary key of the character_weapon_association table
+    association_to_remove = db.session.query(character_weapon_association).filter_by(
+        id=association_id_in_path,
+        character_id=character_id # Ensure it belongs to the character
+    ).first()
+
+    if not association_to_remove:
+        return jsonify(status="error", message="Weapon inventory entry not found or does not belong to this character."), 404
+
+    weapon_master_record = Weapon.query.get(association_to_remove.weapon_id)
+    weapon_name = weapon_master_record.name if weapon_master_record else "Unknown Weapon"
+
+    # Check if quantity is 1, then delete. If > 1, decrement.
+    # The prompt implies removing the "association", so we delete the row.
+    # If we wanted to support decrementing quantity, the route might be /inventory/update_weapon_quantity
+
+    stmt = db.delete(character_weapon_association).where(
+        character_weapon_association.c.id == association_id_in_path,
+        character_weapon_association.c.character_id == character_id # Extra safety
+    )
+    result = db.session.execute(stmt)
+
+    if result.rowcount == 0: # Should not happen if association_to_remove was found
+        db.session.rollback() # Rollback if for some reason delete failed after finding it
+        return jsonify(status="error", message="Failed to remove weapon entry, it might have been removed already."), 404
+
+    try:
+        db.session.commit()
+        return jsonify(status="success", message=f"'{weapon_name}' (entry) removed from inventory."), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error removing weapon association {association_id_in_path} for char {character_id}: {str(e)}")
+        return jsonify(status="error", message="An internal error occurred while removing the weapon."), 500
+
+
+@bp.route('/character/<int:character_id>/inventory/equip_weapon', methods=['POST'])
+@login_required
+def equip_weapon_route(character_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(status="error", message="Unauthorized."), 403
+
+    data = request.json
+    if not data:
+        return jsonify(status="error", message="No data provided."), 400
+
+    association_id = data.get('association_id') # This is the PK of character_weapon_association
+    equip_slot = data.get('equip_slot') # "main_hand" or "off_hand"
+
+    if not association_id or equip_slot not in ["main_hand", "off_hand"]:
+        return jsonify(status="error", message="Valid association ID and equip_slot ('main_hand' or 'off_hand') are required."), 400
+
+    # Fetch the specific weapon association entry
+    weapon_assoc_to_equip = db.session.query(character_weapon_association).filter_by(
+        id=association_id,
+        character_id=character_id
+    ).first()
+
+    if not weapon_assoc_to_equip:
+        return jsonify(status="error", message="Weapon inventory entry not found."), 404
+
+    weapon_details = Weapon.query.get(weapon_assoc_to_equip.weapon_id)
+    if not weapon_details:
+        return jsonify(status="error", message="Weapon master data not found for this item."), 500 # Should not happen
+
+    # Unequip all weapons first, then equip the new one(s)
+    # This simplifies logic for two-handed, etc.
+    db.session.execute(
+        db.update(character_weapon_association)
+        .where(character_weapon_association.c.character_id == character_id)
+        .values(is_equipped_main_hand=False, is_equipped_off_hand=False)
+    )
+
+    weapon_properties = json.loads(weapon_details.properties) if weapon_details.properties else []
+    is_two_handed = any(prop.get("index") == "two-handed" for prop in weapon_properties)
+
+    # Update the target weapon
+    update_values = {}
+    if equip_slot == "main_hand":
+        update_values['is_equipped_main_hand'] = True
+        if is_two_handed:
+            update_values['is_equipped_off_hand'] = True # Also occupies off-hand
+    elif equip_slot == "off_hand":
+        if is_two_handed: # Cannot equip a two-handed weapon primarily in the off-hand
+            db.session.rollback() # Rollback the unequip all
+            return jsonify(status="error", message="Cannot equip a two-handed weapon in the off-hand slot primarily."), 400
+        update_values['is_equipped_off_hand'] = True
+
+    db.session.execute(
+        db.update(character_weapon_association)
+        .where(character_weapon_association.c.id == association_id)
+        .values(**update_values)
+    )
+
+    try:
+        db.session.commit()
+        # Fetch all currently equipped weapons to return to client
+        equipped_weapons_after_change = db.session.query(
+            character_weapon_association.c.weapon_id,
+            character_weapon_association.c.is_equipped_main_hand,
+            character_weapon_association.c.is_equipped_off_hand,
+            Weapon
+        ).join(Weapon, character_weapon_association.c.weapon_id == Weapon.id)\
+         .filter(character_weapon_association.c.character_id == character.id)\
+         .filter(db.or_(character_weapon_association.c.is_equipped_main_hand == True, character_weapon_association.c.is_equipped_off_hand == True)).all()
+
+        equipped_list_for_json = []
+        for wid, is_main, is_off, w_obj in equipped_weapons_after_change:
+            equipped_list_for_json.append({
+                'weapon_id': wid,
+                'name': w_obj.name,
+                'is_equipped_main_hand': is_main,
+                'is_equipped_off_hand': is_off,
+                'damage_dice': w_obj.damage_dice,
+                'damage_type': w_obj.damage_type,
+                'properties': json.loads(w_obj.properties) if w_obj.properties else []
+            })
+
+        return jsonify(status="success", message=f"{weapon_details.name} equipped to {equip_slot}.", equipped_weapons=equipped_list_for_json), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error equipping weapon for char {character_id}: {str(e)}")
+        return jsonify(status="error", message="An internal error occurred while equipping the weapon."), 500
+
+@bp.route('/character/<int:character_id>/inventory/unequip_weapon', methods=['POST'])
+@login_required
+def unequip_weapon_route(character_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(status="error", message="Unauthorized."), 403
+
+    data = request.json
+    if not data:
+        return jsonify(status="error", message="No data provided."), 400
+
+    association_id = data.get('association_id')
+    # equip_slot = data.get('equip_slot') # "main_hand" or "off_hand" - not strictly needed if un-equipping the item itself
+
+    if not association_id: # or equip_slot not in ["main_hand", "off_hand"]:
+        return jsonify(status="error", message="Valid association ID is required."), 400
+
+    weapon_assoc_to_unequip = db.session.query(character_weapon_association).filter_by(
+        id=association_id,
+        character_id=character_id
+    ).first()
+
+    if not weapon_assoc_to_unequip:
+        return jsonify(status="error", message="Weapon inventory entry not found."), 404
+
+    weapon_details = Weapon.query.get(weapon_assoc_to_unequip.weapon_id)
+    if not weapon_details: # Should not happen
+        return jsonify(status="error", message="Weapon master data missing."), 500
+
+    # Regardless of which slot it was in, or if it was two-handed, just unequip from both.
+    update_values = {
+        'is_equipped_main_hand': False,
+        'is_equipped_off_hand': False
+    }
+
+    db.session.execute(
+        db.update(character_weapon_association)
+        .where(character_weapon_association.c.id == association_id)
+        .values(**update_values)
+    )
+
+    try:
+        db.session.commit()
+         # Fetch all currently equipped weapons to return to client (should be none if this was the only one)
+        equipped_weapons_after_change = db.session.query(
+            character_weapon_association.c.weapon_id,
+            character_weapon_association.c.is_equipped_main_hand,
+            character_weapon_association.c.is_equipped_off_hand,
+            Weapon
+        ).join(Weapon, character_weapon_association.c.weapon_id == Weapon.id)\
+         .filter(character_weapon_association.c.character_id == character.id)\
+         .filter(db.or_(character_weapon_association.c.is_equipped_main_hand == True, character_weapon_association.c.is_equipped_off_hand == True)).all()
+
+        equipped_list_for_json = []
+        for wid, is_main, is_off, w_obj in equipped_weapons_after_change:
+            equipped_list_for_json.append({
+                'weapon_id': wid,
+                'name': w_obj.name,
+                'is_equipped_main_hand': is_main,
+                'is_equipped_off_hand': is_off,
+                'damage_dice': w_obj.damage_dice,
+                'damage_type': w_obj.damage_type,
+                'properties': json.loads(w_obj.properties) if w_obj.properties else []
+            })
+        return jsonify(status="success", message=f"{weapon_details.name} unequipped.", equipped_weapons=equipped_list_for_json), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error unequipping weapon for char {character_id}: {str(e)}")
+        return jsonify(status="error", message="An internal error occurred while unequipping the weapon."), 500
 
 
 @bp.route('/send_chat_message/<int:character_id>', methods=['POST'])
@@ -2369,3 +2812,5 @@ def update_notes(character_id):
         db.session.rollback()
         current_app.logger.error(f"Error saving player notes for char {character_id}: {str(e)}")
         return jsonify(status="error", message="Database error while saving notes."), 500
+
+[end of app/main/routes.py]

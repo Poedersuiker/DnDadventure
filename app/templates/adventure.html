@@ -46,7 +46,14 @@
                         data-roll-type="stat" 
                         data-roll-name="{{ ability.name_full }} Check"
                         data-dice-formula="1d20"
-                        data-modifier="{{ ability.modifier }}">🎲</button>
+                        data-modifier="{{ ability.modifier }}"
+                        data-roll-mode="normal">🎲</button>
+                <button class="roll-button"
+                        data-roll-type="stat"
+                        data-roll-name="{{ ability.name_full }} Check"
+                        data-dice-formula="1d20"
+                        data-modifier="{{ ability.modifier }}"
+                        data-roll-mode="advdis">🎲🎲</button>
             </div>
         {% endfor %}
     </div>
@@ -65,7 +72,14 @@
                                     data-roll-type="save" 
                                     data-roll-name="{{ save_info.name }} Save"
                                     data-dice-formula="1d20"
-                                    data-modifier="{{ save_info.modifier }}">🎲</button>
+                                    data-modifier="{{ save_info.modifier }}"
+                                    data-roll-mode="normal">🎲</button>
+                            <button class="roll-button"
+                                    data-roll-type="save"
+                                    data-roll-name="{{ save_info.name }} Save"
+                                    data-dice-formula="1d20"
+                                    data-modifier="{{ save_info.modifier }}"
+                                    data-roll-mode="advdis">🎲🎲</button>
                         </p>
                     {% endfor %}
                 </div>
@@ -84,7 +98,14 @@
                                     data-roll-type="skill" 
                                     data-roll-name="{{ skill_info.name }}"
                                     data-dice-formula="1d20"
-                                    data-modifier="{{ skill_info.modifier }}">🎲</button>
+                                    data-modifier="{{ skill_info.modifier }}"
+                                    data-roll-mode="normal">🎲</button>
+                            <button class="roll-button"
+                                    data-roll-type="skill"
+                                    data-roll-name="{{ skill_info.name }}"
+                                    data-dice-formula="1d20"
+                                    data-modifier="{{ skill_info.modifier }}"
+                                    data-roll-mode="advdis">🎲🎲</button>
                         </p>
                     {% endfor %}
                 </div>
@@ -165,9 +186,29 @@
                     <button type="button" id="show-add-item-modal-btn" class="button-small">Add New Item</button>
                 </div>
             {% endif %}
+
+            <!-- Manage Weapons Section -->
+            <div id="manage-weapons-section" style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px;">
+                <h4 class="sheet-section-title">Manage Weapons</h4>
+                <button id="open-add-weapon-modal-btn" class="button-small">Add Weapon to Inventory</button>
+                <div id="owned-weapons-list-container" style="margin-top: 10px;">
+                    <!-- Owned weapons will be populated here by JavaScript -->
+                    <p>Loading owned weapons...</p>
+                </div>
+            </div>
+            <!-- End Manage Weapons Section -->
+
         </div> <!-- End inventory-column -->
     </div> <!-- End character-sheet-main-content -->
     
+    <!-- Equipped Weapons Section (for attacks, to be updated by JS) -->
+    <div id="equipped-weapons-attack-section" style="margin-top: 15px; padding: 10px; border-top: 1px solid #ccc;">
+        <h4 class="sheet-section-title">Equipped Weapons (for Attack)</h4>
+        <div id="equipped-weapons-attack-list" class="proficiencies-list">
+            <!-- Attack buttons for equipped weapons will be populated here by JavaScript -->
+            <p>No weapons currently equipped for attack.</p>
+        </div>
+    </div>
    
     {# Features Gained Section - Placed before proficiencies for better flow #}
     <h4 class="sheet-section-title">Features Gained at this Level</h4>
@@ -211,8 +252,35 @@
                 <h4 class="spell-level-header">Cantrips</h4>
                 <ul class="spells-list">
                     {% for spell in spells_by_level[0] %}
-                        <li class="spell-list-item" data-spell-index="{{ spell.index }}">
+                        {# Ensure spell object is available here from the loop in adventure route passed as spells_by_level[0] #}
+                        <li class="spell-list-item" data-spell-index="{{ spell.index }}" data-spell-id="{{ spell.id }}">
                             <span class="spell-name">{{ spell.name }}</span>
+                            {% if spell.requires_attack_roll %}
+                                <button class="roll-button spell-attack-button"
+                                        data-roll-type="spell-attack"
+                                        data-spell-id="{{ spell.id }}"
+                                        data-spell-name="{{ spell.name }}"
+                                        data-spell-attack-ability="{{ spell.spell_attack_ability }}"
+                                        data-dice-formula="1d20"
+                                        data-spell-level="{{ spell.level }}"
+                                        data-damage-info="{{ spell.damage_at_slot_level|tojson if spell.damage_at_slot_level else '{}'|tojson }}"
+                                        data-damage-type="{{ spell.damage_type|default('N/A') }}"
+                                        data-raw-damage-dice="{{ spell.damage_dice|default('N/A') }}" {# For cantrips that might not have slot level damage #}
+                                        data-roll-mode="normal"
+                                        title="Roll Spell Attack">🎯</button>
+                                <button class="roll-button spell-attack-button"
+                                        data-roll-type="spell-attack"
+                                        data-spell-id="{{ spell.id }}"
+                                        data-spell-name="{{ spell.name }}"
+                                        data-spell-attack-ability="{{ spell.spell_attack_ability }}"
+                                        data-dice-formula="1d20"
+                                        data-spell-level="{{ spell.level }}"
+                                        data-damage-info="{{ spell.damage_at_slot_level|tojson if spell.damage_at_slot_level else '{}'|tojson }}"
+                                        data-damage-type="{{ spell.damage_type|default('N/A') }}"
+                                        data-raw-damage-dice="{{ spell.damage_dice|default('N/A') }}" {# For cantrips #}
+                                        data-roll-mode="advdis"
+                                        title="Roll Spell Attack with Adv/Dis">🎲🎯</button>
+                            {% endif %}
                             <div class="spell-card-details" style="display: none; position: absolute; border: 1px solid black; background-color: white; padding: 10px; width: 300px; z-index: 100;">
                                 <h4>{{ spell.name }}</h4>
                                 <p><em>{{ spell.school }} Cantrip {% if spell.ritual %}(ritual){% endif %}</em></p>
@@ -263,8 +331,35 @@
                 {% if spells_by_level[L] %}
                     <ul class="spells-list">
                         {% for spell in spells_by_level[L] %}
-                            <li class="spell-list-item" data-spell-index="{{ spell.index }}">
+                            {# Ensure spell object is available here from the loop in adventure route passed as spells_by_level[L] #}
+                            <li class="spell-list-item" data-spell-index="{{ spell.index }}" data-spell-id="{{ spell.id }}">
                                 <span class="spell-name">{{ spell.name }}</span>
+                                {% if spell.requires_attack_roll %}
+                                    <button class="roll-button spell-attack-button"
+                                            data-roll-type="spell-attack"
+                                            data-spell-id="{{ spell.id }}"
+                                            data-spell-name="{{ spell.name }}"
+                                            data-spell-attack-ability="{{ spell.spell_attack_ability }}"
+                                            data-dice-formula="1d20"
+                                            data-spell-level="{{ spell.level }}"
+                                            data-damage-info="{{ spell.damage_at_slot_level|tojson if spell.damage_at_slot_level else '{}'|tojson }}"
+                                            data-damage-type="{{ spell.damage_type|default('N/A') }}"
+                                            data-raw-damage-dice="{{ spell.damage_dice|default('N/A') }}" {# For base level damage if not in slot_level dict #}
+                                            data-roll-mode="normal"
+                                            title="Roll Spell Attack">🎯</button>
+                                    <button class="roll-button spell-attack-button"
+                                            data-roll-type="spell-attack"
+                                            data-spell-id="{{ spell.id }}"
+                                            data-spell-name="{{ spell.name }}"
+                                            data-spell-attack-ability="{{ spell.spell_attack_ability }}"
+                                            data-dice-formula="1d20"
+                                            data-spell-level="{{ spell.level }}"
+                                            data-damage-info="{{ spell.damage_at_slot_level|tojson if spell.damage_at_slot_level else '{}'|tojson }}"
+                                            data-damage-type="{{ spell.damage_type|default('N/A') }}"
+                                            data-raw-damage-dice="{{ spell.damage_dice|default('N/A') }}"
+                                            data-roll-mode="advdis"
+                                            title="Roll Spell Attack with Adv/Dis">🎲🎯</button>
+                                {% endif %}
                                 <div class="spell-card-details" style="display: none; position: absolute; border: 1px solid black; background-color: white; padding: 10px; width: 300px; z-index: 100;">
                                     <h4>{{ spell.name }}</h4>
                                     <p><em>{{ spell.school }} {{ L }}-level {% if spell.ritual %}(ritual){% endif %}</em></p>
@@ -313,7 +408,7 @@
     <!-- Item Add/Edit Modal -->
     <div id="item-modal" class="modal" style="display: none;">
         <div class="modal-content">
-            <span class="close-modal-btn">&times;</span>
+            <span class="close-modal-btn" data-modal-id="item-modal">&times;</span>
             <h3 id="modal-title">Add New Item</h3>
             <form id="item-form" method="POST"> {# Action set by JS #}
                 <input type="hidden" id="edit-item-id" name="edit_item_id"> 
@@ -334,10 +429,31 @@
         </div>
     </div>
 
+    <!-- Add Weapon Modal -->
+    <div id="add-weapon-modal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close-modal-btn" data-modal-id="add-weapon-modal">&times;</span>
+            <h3>Add Weapon to Inventory</h3>
+            <form id="add-weapon-form">
+                <div>
+                    <label for="weapon-to-add-select">Weapon:</label>
+                    <select id="weapon-to-add-select" name="weapon_id" required>
+                        <!-- Options populated by JS -->
+                    </select>
+                </div>
+                <div>
+                    <label for="weapon-to-add-quantity">Quantity:</label>
+                    <input type="number" id="weapon-to-add-quantity" name="quantity" value="1" min="1" required>
+                </div>
+                <button type="submit" class="button">Add to Inventory</button>
+            </form>
+        </div>
+    </div>
+
     <!-- Short Rest Modal -->
     <div id="short-rest-modal" class="modal" style="display: none;">
         <div class="modal-content">
-            <span class="close-modal-btn" id="close-short-rest-modal-btn">&times;</span>
+            <span class="close-modal-btn" data-modal-id="short-rest-modal">&times;</span>
             <h3>Short Rest - Spend Hit Dice</h3>
             <p>
                 Available Hit Dice: <span id="available-hit-dice-display"></span>
@@ -424,8 +540,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const languageProficienciesList = document.getElementById('language-prof-list');
     const spellsSectionContainer = document.getElementById('spells-section-container');
     const featuresDisplayDiv = document.getElementById('features-gained-content');
+    const equippedWeaponsSection = document.getElementById('equipped-weapons-section'); // Added for weapons
 
     let ellipsisInterval = null; 
+    let characterProficienciesData = {}; // To store proficiencies for JS use
+    const characterSpellcastingAbility = "{{ character_spellcasting_ability|default('None') }}"; // Added
 
     // --- JS Constants for DOM updates ---
     const ABILITY_NAMES_FULL_JS = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma'];
@@ -589,16 +708,161 @@ document.addEventListener('DOMContentLoaded', function() {
     rollButtons.forEach(button => {
         button.addEventListener('click', function(event) {
             event.preventDefault();
+            event.preventDefault(); // Keep this
+
+            const rollType = this.dataset.rollType;
             const rollName = this.dataset.rollName;
             const diceFormula = this.dataset.diceFormula || '1d20';
-            const modifier = parseInt(this.dataset.modifier || '0');
+            let modifier = parseInt(this.dataset.modifier || '0'); // Default modifier for skills/saves/stats
+            const rollMode = this.dataset.rollMode || 'normal';
+
+            let rollCondition = "normal";
+            let fetchBody = {};
+            let isWeaponAttack = (rollType === "weapon-attack");
+            let isSpellAttack = (rollType === "spell-attack");
+
+            if (rollMode === 'advdis') {
+                const choicePrompt = window.prompt("Roll with Advantage (a), Disadvantage (d), or Normal (n)?", "n").toLowerCase();
+                if (choicePrompt === 'a') rollCondition = 'advantage';
+                else if (choicePrompt === 'd') rollCondition = 'disadvantage';
+                else rollCondition = 'normal'; // Default to normal if input is invalid or 'n'
+            }
+
+            if (isWeaponAttack) {
+                const weaponName = this.dataset.weaponName;
+                const weaponPropsString = this.dataset.weaponProperties;
+                const weaponCategory = this.dataset.weaponCategory;
+                const weaponIsMartial = this.dataset.weaponIsMartial === "true";
+                const damageDice = this.dataset.damageDice;
+                const damageType = this.dataset.damageType;
+
+                // 1. Get ability scores from the sheet for current level
+                let strScore = 10, dexScore = 10; // Defaults
+                const strBox = abilitiesGrid.querySelector('.ability-box[data-ability-name="Strength"] .ability-score');
+                const dexBox = abilitiesGrid.querySelector('.ability-box[data-ability-name="Dexterity"] .ability-score');
+                if (strBox) strScore = parseInt(strBox.textContent) || 10;
+                if (dexBox) dexScore = parseInt(dexBox.textContent) || 10;
+
+                const strMod = Math.floor((strScore - 10) / 2);
+                const dexMod = Math.floor((dexScore - 10) / 2);
+
+                // 2. Determine ability modifier for attack
+                let attackAbilityMod = strMod; // Default to STR
+                const weaponProperties = JSON.parse(weaponPropsString || "[]");
+
+                if (weaponProperties.includes("finesse")) {
+                    attackAbilityMod = Math.max(strMod, dexMod);
+                } else if (weaponCategory.toLowerCase().includes("ranged")) {
+                    attackAbilityMod = dexMod;
+                }
+                // Basic check for thrown - if it has normal_range (from ammunition) it's likely a bow/xbow, not thrown for STR.
+                // This is a simplification. Proper thrown property handling (e.g. Dagger uses STR/DEX, Javelin uses STR) is complex.
+                // For now, this means thrown weapons like daggers with finesse will use max(STR,DEX). Thrown javelins will use STR.
+
+                // 3. Determine proficiency bonus
+                let proficiencyBonusToAdd = 0;
+                const profBonusText = profBonusDisplay.textContent; // Format: "+2"
+                const charProfBonusValue = parseInt(profBonusText.replace('+', '')) || 0;
+
+                // Ensure characterProficienciesData.weapons is an array and available
+                const charWeaponProficiencies = Array.isArray(characterProficienciesData.weapons) ? characterProficienciesData.weapons : [];
+
+                let isProficient = false;
+                if (charWeaponProficiencies.includes(weaponName) || charWeaponProficiencies.includes(weaponCategory)) {
+                    isProficient = true;
+                } else if (charWeaponProficiencies.includes("Simple Weapons") && !weaponIsMartial) {
+                    isProficient = true;
+                } else if (charWeaponProficiencies.includes("Martial Weapons") && weaponIsMartial) {
+                    isProficient = true;
+                }
+                // Add more specific category checks if needed, e.g., "Simple Melee Weapons"
+
+                if (isProficient) {
+                    proficiencyBonusToAdd = charProfBonusValue;
+                }
+
+                modifier = attackAbilityMod + proficiencyBonusToAdd; // Override default modifier for weapon attacks
+
+                fetchBody = {
+                    roll_name: `${weaponName} Attack`,
+                    dice_formula: diceFormula, // 1d20 for attack
+                    modifier: modifier,
+                    roll_condition: rollCondition,
+                    // Add weapon-specific details for the message construction later
+                    _weapon_name_internal: weaponName, // Use a slightly different key to avoid conflict if 'roll_name' is too generic
+                    _damage_dice_internal: damageDice,
+                    _damage_type_internal: damageType
+                };
+            } else if (isSpellAttack) {
+                const spellName = this.dataset.spellName;
+                const spellAttackAbilityType = this.dataset.spellAttackAbility; // "spellcasting", "dex", "str"
+                const spellLevel = parseInt(this.dataset.spellLevel);
+                const damageInfoString = this.dataset.damageInfo;
+                const damageType = this.dataset.damageType;
+                const rawDamageDice = this.dataset.rawDamageDice; // For cantrips/base damage
+
+                let spellAbilityMod = 0;
+                const charProfBonusValue = parseInt(profBonusDisplay.textContent.replace('+', '')) || 0;
+
+                // Determine the ability score to use for spell attack
+                let abilityToUseShort = "";
+                if (spellAttackAbilityType === "spellcasting") {
+                    abilityToUseShort = characterSpellcastingAbility;
+                } else {
+                    abilityToUseShort = spellAttackAbilityType.toUpperCase();
+                }
+
+                let selectedAbilityScore = 10;
+                const fullAbilityNameKey = ABILITY_SHORT_TO_FULL_JS[abilityToUseShort.toLowerCase()];
+                if (fullAbilityNameKey) {
+                    const abilityBox = abilitiesGrid.querySelector(`.ability-box[data-ability-name="${fullAbilityNameKey}"] .ability-score`);
+                    if (abilityBox) selectedAbilityScore = parseInt(abilityBox.textContent) || 10;
+                } else {
+                    console.warn("Could not map spell attack ability short form to full name:", abilityToUseShort);
+                }
+                spellAbilityMod = Math.floor((selectedAbilityScore - 10) / 2);
+
+                modifier = spellAbilityMod + charProfBonusValue;
+
+                let spellDamageToDisplay = "N/A";
+                try {
+                    const damageInfo = JSON.parse(damageInfoString);
+                    if (spellLevel === 0) {
+                        spellDamageToDisplay = rawDamageDice !== "null" && rawDamageDice !== "N/A" ? rawDamageDice : "N/A";
+                    } else {
+                        spellDamageToDisplay = damageInfo[spellLevel.toString()] || rawDamageDice || "N/A";
+                    }
+                     if (spellDamageToDisplay === "N/A" && spellLevel === 0 && rawDamageDice && rawDamageDice !== "N/A") {
+                        spellDamageToDisplay = rawDamageDice;
+                    }
+                } catch(e) {
+                    console.error("Could not parse spell damage info:", damageInfoString, e);
+                    if(rawDamageDice && rawDamageDice !== "N/A") spellDamageToDisplay = rawDamageDice;
+                }
+
+                fetchBody = {
+                    roll_name: `${spellName} Spell Attack`,
+                    dice_formula: diceFormula,
+                    modifier: modifier,
+                    roll_condition: rollCondition,
+                    _spell_name_internal: spellName,
+                    _damage_dice_internal: spellDamageToDisplay,
+                    _damage_type_internal: damageType
+                };
+
+            } else { // For stats, saves, skills (non-weapon or spell attacks)
+                fetchBody = {
+                    roll_name: rollName,
+                    dice_formula: diceFormula,
+                    modifier: modifier,
+                    roll_condition: rollCondition
+                };
+            }
 
             fetch("{{ url_for('main.roll_dice_from_sheet') }}", {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                body: JSON.stringify({
-                    roll_name: rollName, dice_formula: diceFormula, modifier: modifier
-                })
+                body: JSON.stringify(fetchBody)
             })
             .then(response => response.json())
             .then(data => {
@@ -606,19 +870,46 @@ document.addEventListener('DOMContentLoaded', function() {
                     appendMessage(`Error rolling dice: ${data.error}`, 'dm');
                     return;
                 }
-                let rollDetails = `Rolling ${data.roll_name} (${data.dice_formula}`;
-                if (data.modifier > 0) rollDetails += `+${data.modifier}`;
-                else if (data.modifier < 0) rollDetails += `${data.modifier}`;
-                rollDetails += `): Rolled [${data.rolls.join(', ')}]`;
-                if (data.modifier !== 0 || data.rolls.length > 1) {
-                    if (data.modifier > 0) rollDetails += ` + ${data.modifier}`;
-                    else if (data.modifier < 0) rollDetails += ` - ${Math.abs(data.modifier)}`;
+
+                let rollDetailsMessage = `Rolling ${data.roll_name}`;
+                if (data.roll_condition_fulfilled === 'advantage') {
+                    rollDetailsMessage += ` with Advantage`;
+                } else if (data.roll_condition_fulfilled === 'disadvantage') {
+                    rollDetailsMessage += ` with Disadvantage`;
                 }
-                rollDetails += ` = **${data.total}**`;
+                if (data.roll_condition_fulfilled === 'advantage') {
+                    rollDetailsMessage += ` with Advantage`;
+                } else if (data.roll_condition_fulfilled === 'disadvantage') {
+                    rollDetailsMessage += ` with Disadvantage`;
+                }
                 
-                appendMessage(rollDetails, 'user'); 
+                let modifierString = "";
+                if (data.modifier > 0) modifierString = `+${data.modifier}`;
+                else if (data.modifier < 0) modifierString = `${data.modifier}`;
+
+                rollDetailsMessage += ` (${data.dice_formula}${modifierString}): `;
+
+                if (data.roll_condition_fulfilled === 'advantage' || data.roll_condition_fulfilled === 'disadvantage') {
+                    const numDiceRegex = /(\d+)d\d+/;
+                    const match = data.dice_formula.match(numDiceRegex);
+                    const numDicePerSet = match ? parseInt(match[1]) : 1;
+                    let set1Rolls = data.rolls.slice(0, numDicePerSet).join(', ');
+                    let set2Rolls = data.rolls.slice(numDicePerSet).join(', ');
+                    rollDetailsMessage += `Rolled Sets: [${set1Rolls}] (sum ${data.roll_details.roll1_sum}) and [${set2Rolls}] (sum ${data.roll_details.roll2_sum}). Chosen: ${data.subtotal}. Total: **${data.total}**.`;
+                } else { // Normal roll
+                    rollDetailsMessage += `Rolled [${data.rolls.join(', ')}]. Subtotal: ${data.subtotal}. Total: **${data.total}**.`;
+                }
+
+                // Append potential damage for weapon or spell attacks
+                if (isWeaponAttack) {
+                    rollDetailsMessage += ` Potential Damage: ${fetchBody._damage_dice_internal} ${fetchBody._damage_type_internal}.`;
+                } else if (isSpellAttack) {
+                    rollDetailsMessage += ` Potential Damage: ${fetchBody._damage_dice_internal} ${fetchBody._damage_type_internal}.`;
+                }
+
+                appendMessage(rollDetailsMessage, 'user');
                 characterSheetOverlay.style.display = 'none';
-                sendMessage(rollDetails, true); 
+                sendMessage(rollDetailsMessage, true);
             })
             .catch(error => {
                 console.error('Dice roll error:', error);
@@ -663,7 +954,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const itemModal = document.getElementById('item-modal');
     const showAddItemModalBtn = document.getElementById('show-add-item-modal-btn');
-    const closeModalBtn = itemModal.querySelector('.close-modal-btn');
+    const itemModal = document.getElementById('item-modal');
+    // const closeModalBtn = itemModal.querySelector('.close-modal-btn'); // Now handled by generic selector
     const modalTitle = document.getElementById('modal-title');
     const itemForm = document.getElementById('item-form');
     const editItemIdInput = document.getElementById('edit-item-id');
@@ -739,14 +1031,42 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    const editItemBtns = document.querySelectorAll('.edit-item-btn'); 
+    const editItemBtns = document.querySelectorAll('.edit-item-btn');
+    const allCloseModalBtns = document.querySelectorAll('.close-modal-btn');
+
+
+    // --- Weapon Management Globals ---
+    let characterOwnedWeapons = {{ character_owned_weapons_list|tojson|safe }};
+    let allAvailableWeaponsCache = null; // To cache weapons from /get_all_weapons_for_inventory_modal
+
+    // --- Weapon Management DOM Elements ---
+    const openAddWeaponModalBtn = document.getElementById('open-add-weapon-modal-btn');
+    const addWeaponModal = document.getElementById('add-weapon-modal');
+    const addWeaponForm = document.getElementById('add-weapon-form');
+    const weaponToAddSelect = document.getElementById('weapon-to-add-select');
+    const weaponToAddQuantityInput = document.getElementById('weapon-to-add-quantity');
+    const ownedWeaponsListContainer = document.getElementById('owned-weapons-list-container');
+    const equippedWeaponsAttackListDiv = document.getElementById('equipped-weapons-attack-list');
+
 
     function dynamicallyUpdateOrAddItemToSheet(itemData, isNew) {
         const itemsListUl = document.querySelector('.inventory-column .equipment-list ul'); 
         if (!itemsListUl) {
-            console.error("Items UL not found for dynamic update.");
-            return;
+            // If the UL doesn't exist (e.g., first item), create it.
+            const equipmentListDiv = document.querySelector('.inventory-column .equipment-list');
+            if (equipmentListDiv) {
+                const newUl = document.createElement('ul');
+                equipmentListDiv.appendChild(newUl);
+                // Now itemsListUl should refer to the new UL
+                // This part needs to be robust, potentially restructuring if no items were present at all.
+                // For now, assume `equipment-list` div exists.
+                console.warn("Items UL was not found, created a new one. Initial item addition might need UI refresh.");
+            } else {
+                console.error("Items UL and .equipment-list div not found for dynamic update.");
+                return;
+            }
         }
+
 
         let listItem = itemsListUl.querySelector(`li[data-item-row-id="${itemData.id}"]`);
 
@@ -780,7 +1100,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             style="margin-right: 5px;">✏️</button>
                     <form method="POST" action="/character/${characterId}/inventory/remove_item/${itemData.id}" style="display: inline;">
                         <input type="submit" value="🗑️" class="button-small" 
-                               onclick="return confirm('Are you sure you want to remove this item?');" 
+                               onclick="return confirm('Are you sure you want to remove this item? This action is permanent and will reload the page.');"
                                title="Remove ${itemData.name}">
                     </form>
                 </div>
@@ -796,7 +1116,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function openAddItemModal() {
         modalTitle.textContent = 'Add New Item';
-        itemForm.action = "{{ url_for('main.add_item_to_inventory', character_id=character.id) }}";
+        // itemForm.action = "{{ url_for('main.add_item_to_inventory', character_id=character.id) }}"; // Handled by fetch
         editItemIdInput.value = ''; 
         modalItemNameInput.value = '';
         modalItemQuantityInput.value = '1';
@@ -811,14 +1131,29 @@ document.addEventListener('DOMContentLoaded', function() {
         modalItemNameInput.value = itemData.itemName;
         modalItemQuantityInput.value = itemData.itemQuantity;
         modalItemDescriptionInput.value = itemData.itemDescription;
-        itemForm.action = `/character/${characterId}/inventory/edit_item/${itemData.itemId}`; 
+        // itemForm.action = `/character/${characterId}/inventory/edit_item/${itemData.itemId}`; // Handled by fetch
         itemModal.style.display = 'block';
         modalItemNameInput.focus();
     }
 
-    function closeModal() {
-        itemModal.style.display = 'none';
+    function closeModal(modalElement) {
+        if (modalElement) {
+            modalElement.style.display = 'none';
+        } else { // Fallback for old calls if any
+            itemModal.style.display = 'none';
+            addWeaponModal.style.display = 'none';
+        }
     }
+
+    allCloseModalBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const modalId = this.dataset.modalId;
+            const modalToClose = document.getElementById(modalId);
+            if (modalToClose) {
+                closeModal(modalToClose);
+            }
+        });
+    });
 
     if (showAddItemModalBtn) {
         showAddItemModalBtn.addEventListener('click', openAddItemModal);
@@ -830,13 +1165,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    if (closeModalBtn) {
-        closeModalBtn.addEventListener('click', closeModal);
-    }
-
     window.addEventListener('click', function(event) {
-        if (event.target === itemModal) {
-            closeModal();
+        if (event.target.classList.contains('modal')) {
+            closeModal(event.target);
         }
     });
     
@@ -847,8 +1178,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const data = Object.fromEntries(formData.entries());
         const itemId = data.edit_item_id; 
 
-        let url = itemForm.action; 
-        let method = 'POST';
+        let url;
+        // let method = 'POST'; // Method is always POST here
 
         if (itemId) { 
             url = `/character/${characterId}/inventory/edit_item/${itemId}`; 
@@ -873,7 +1204,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(responseData => {
                 if (responseData.status === 'success') {
                     dynamicallyUpdateOrAddItemToSheet(responseData.item, false); 
-                    closeModal();
+                    closeModal(itemModal);
                     alert(responseData.message || 'Item updated successfully!');
                 } else {
                     alert(responseData.message || 'Error updating item.');
@@ -884,7 +1215,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 alert('Failed to update item. ' + (error.message || ''));
             });
         } else { 
-            url = "{{ url_for('main.add_item_to_inventory', character_id=character.id) }}"; 
+            url = `/character/${characterId}/inventory/add_item`; // Using direct path
             fetch(url, {
                 method: 'POST',
                 headers: {
@@ -906,7 +1237,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(responseData => {
                 if (responseData.status === 'success') {
                     dynamicallyUpdateOrAddItemToSheet(responseData.item, true); 
-                    closeModal();
+                    closeModal(itemModal);
                     alert(responseData.message || 'Item added successfully!'); 
                 } else {
                     alert(responseData.message || 'Error adding item.');
@@ -918,6 +1249,497 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     });
+
+
+    // --- Weapon Management Functions ---
+    function renderOwnedWeaponsList() {
+        if (!ownedWeaponsListContainer) return;
+        ownedWeaponsListContainer.innerHTML = ''; // Clear previous list
+
+        if (!characterOwnedWeapons || characterOwnedWeapons.length === 0) {
+            ownedWeaponsListContainer.innerHTML = '<p>No weapons owned.</p>';
+            return;
+        }
+
+        const ul = document.createElement('ul');
+        ul.style.listStyle = 'none';
+        ul.style.paddingLeft = '0';
+
+        characterOwnedWeapons.forEach(weaponAssoc => {
+            // weaponAssoc directly contains weapon details and association details like quantity, equipped status, and association_id
+            const li = document.createElement('li');
+            li.setAttribute('data-association-id', weaponAssoc.association_id); // Association ID
+            li.setAttribute('data-weapon-id', weaponAssoc.id); // Actual Weapon ID
+            li.style.marginBottom = '10px';
+            li.style.padding = '5px';
+            li.style.border = '1px solid #eee';
+
+            let equippedStatus = "Not Equipped";
+            if (weaponAssoc.is_equipped_main_hand && weaponAssoc.is_equipped_off_hand) {
+                equippedStatus = "Equipped: Main & Off-Hand";
+            } else if (weaponAssoc.is_equipped_main_hand) {
+                equippedStatus = "Equipped: Main-Hand";
+            } else if (weaponAssoc.is_equipped_off_hand) {
+                equippedStatus = "Equipped: Off-Hand";
+            }
+
+            li.innerHTML = `
+                <strong>${weaponAssoc.name}</strong> (x${weaponAssoc.quantity}) - <em>${equippedStatus}</em><br>
+                <small>${weaponAssoc.damage_dice} ${weaponAssoc.damage_type}. Properties: ${(weaponAssoc.properties && weaponAssoc.properties.length > 0) ? weaponAssoc.properties.map(p=>p.name || p).join(', ') : 'None'}</small>
+                <div style="margin-top: 5px;">
+                    <button class="button-small equip-weapon-btn" data-assoc-id="${weaponAssoc.association_id}" data-slot="main_hand" ${weaponAssoc.is_equipped_main_hand ? 'disabled' : ''}>Equip Main</button>
+                    <button class="button-small equip-weapon-btn" data-assoc-id="${weaponAssoc.association_id}" data-slot="off_hand" ${weaponAssoc.is_equipped_off_hand ? 'disabled' : ''}>Equip Off</button>
+                    <button class="button-small unequip-weapon-btn" data-assoc-id="${weaponAssoc.association_id}" ${(!weaponAssoc.is_equipped_main_hand && !weaponAssoc.is_equipped_off_hand) ? 'disabled' : ''}>Unequip</button>
+                    <button class="button-small remove-weapon-btn" data-assoc-id="${weaponAssoc.association_id}">Remove</button>
+                </div>
+            `;
+            ul.appendChild(li);
+        });
+        ownedWeaponsListContainer.appendChild(ul);
+        attachWeaponActionListeners();
+    }
+
+    function attachWeaponActionListeners() {
+        document.querySelectorAll('.equip-weapon-btn').forEach(btn => {
+            btn.addEventListener('click', handleEquipWeapon);
+        });
+        document.querySelectorAll('.unequip-weapon-btn').forEach(btn => {
+            btn.addEventListener('click', handleUnequipWeapon);
+        });
+        document.querySelectorAll('.remove-weapon-btn').forEach(btn => {
+            btn.addEventListener('click', handleRemoveWeapon);
+        });
+    }
+
+    async function handleEquipWeapon(event) {
+        const associationId = event.target.dataset.assocId;
+        const slot = event.target.dataset.slot;
+        try {
+            const response = await fetch(`/character/${characterId}/inventory/equip_weapon`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                body: JSON.stringify({ association_id: associationId, equip_slot: slot })
+            });
+            const data = await response.json();
+            if (data.status === 'success') {
+                alert(data.message);
+                // Update the global characterOwnedWeapons array based on the response
+                const returnedEquippedWeapons = data.equipped_weapons || [];
+
+                // Create a map of returned equipped weapon states by their actual weapon_id
+                const equippedStateMap = new Map();
+                returnedEquippedWeapons.forEach(rw => {
+                    equippedStateMap.set(rw.weapon_id, {
+                        is_equipped_main_hand: rw.is_equipped_main_hand,
+                        is_equipped_off_hand: rw.is_equipped_off_hand
+                    });
+                });
+
+                // Update our global list
+                characterOwnedWeapons = characterOwnedWeapons.map(ownedWeapon => {
+                    const stateFromResponse = equippedStateMap.get(ownedWeapon.id); // ownedWeapon.id is weapon_id
+                    if (stateFromResponse) {
+                        return {
+                            ...ownedWeapon,
+                            is_equipped_main_hand: stateFromResponse.is_equipped_main_hand,
+                            is_equipped_off_hand: stateFromResponse.is_equipped_off_hand
+                        };
+                    } else {
+                        // If not in response's equipped list, it's not equipped
+                        return {
+                            ...ownedWeapon,
+                            is_equipped_main_hand: false,
+                            is_equipped_off_hand: false
+                        };
+                    }
+                });
+
+                renderOwnedWeaponsList();
+                renderEquippedWeaponsForAttack(characterOwnedWeapons.filter(w => w.is_equipped_main_hand || w.is_equipped_off_hand));
+            } else {
+                alert(`Error: ${data.message}`);
+            }
+        } catch (err) {
+            alert('Failed to equip weapon.');
+            console.error("Equip weapon error:", err);
+        }
+    }
+
+    async function handleUnequipWeapon(event) {
+        const associationId = event.target.dataset.assocId;
+         try {
+            const response = await fetch(`/character/${characterId}/inventory/unequip_weapon`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                body: JSON.stringify({ association_id: associationId })
+            });
+            const data = await response.json();
+            if (data.status === 'success') {
+                alert(data.message);
+                // Similar to equip, update global list based on returned equipped_weapons
+                const returnedEquippedWeapons = data.equipped_weapons || [];
+                const equippedStateMap = new Map();
+                returnedEquippedWeapons.forEach(rw => {
+                    equippedStateMap.set(rw.weapon_id, {
+                        is_equipped_main_hand: rw.is_equipped_main_hand,
+                        is_equipped_off_hand: rw.is_equipped_off_hand
+                    });
+                });
+
+                characterOwnedWeapons = characterOwnedWeapons.map(ownedWeapon => {
+                    const stateFromResponse = equippedStateMap.get(ownedWeapon.id);
+                    if (stateFromResponse) {
+                        return { ...ownedWeapon, ...stateFromResponse };
+                    } else {
+                        // If the unequipped weapon was this one, ensure its flags are false
+                        if (ownedWeapon.association_id == associationId) {
+                             return { ...ownedWeapon, is_equipped_main_hand: false, is_equipped_off_hand: false };
+                        }
+                        // For other weapons not in the response, they are also not equipped (or their state is unchanged if they weren't the target)
+                        // The logic here assumes server correctly sets all other weapons to unequipped if needed (e.g. two-handed)
+                        // Or that the response `equipped_weapons` is the definitive list of what's currently equipped.
+                        // So, if it's not in the map, it's not equipped.
+                        return { ...ownedWeapon, is_equipped_main_hand: false, is_equipped_off_hand: false };
+
+                    }
+                });
+                // More direct update for the specific unequipped item:
+                const unequippedAssoc = characterOwnedWeapons.find(w => w.association_id == associationId);
+                if (unequippedAssoc) {
+                    unequippedAssoc.is_equipped_main_hand = false;
+                    unequippedAssoc.is_equipped_off_hand = false;
+                }
+
+
+                renderOwnedWeaponsList();
+                renderEquippedWeaponsForAttack(characterOwnedWeapons.filter(w => w.is_equipped_main_hand || w.is_equipped_off_hand));
+            } else {
+                alert(`Error: ${data.message}`);
+            }
+        } catch (err) {
+            alert('Failed to unequip weapon.');
+            console.error("Unequip weapon error:", err);
+        }
+    }
+
+    async function handleRemoveWeapon(event) {
+        const associationId = event.target.dataset.assocId;
+        if (!confirm("Are you sure you want to remove this weapon from your inventory?")) return;
+        try {
+            const response = await fetch(`/character/${characterId}/inventory/remove_weapon/${associationId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
+            });
+            const data = await response.json();
+            if (data.status === 'success') {
+                alert(data.message);
+                // Remove from local list and re-render
+                characterOwnedWeapons = characterOwnedWeapons.filter(w => w.association_id != associationId);
+                renderOwnedWeaponsList();
+                renderEquippedWeaponsForAttack(characterOwnedWeapons.filter(w => w.is_equipped_main_hand || w.is_equipped_off_hand));
+            } else {
+                alert(`Error: ${data.message}`);
+            }
+        } catch (err) {
+            alert('Failed to remove weapon.');
+            console.error("Remove weapon error:", err);
+        }
+    }
+
+    async function loadAllWeaponsForModal() {
+        if (allAvailableWeaponsCache) { // Use cache if available
+            populateWeaponSelect(allAvailableWeaponsCache);
+            return;
+        }
+        try {
+            const response = await fetch("{{ url_for('main.get_all_weapons_for_inventory_modal') }}");
+            const weapons = await response.json();
+            if (response.ok) {
+                allAvailableWeaponsCache = weapons; // Cache the results
+                populateWeaponSelect(weapons);
+            } else {
+                console.error("Failed to load weapons for modal:", weapons.message);
+            }
+        } catch (err) {
+            console.error("Error fetching all weapons:", err);
+        }
+    }
+
+    function populateWeaponSelect(weapons) {
+        weaponToAddSelect.innerHTML = '<option value="">-- Select a Weapon --</option>'; // Clear old options
+        weapons.forEach(weapon => {
+            const option = document.createElement('option');
+            option.value = weapon.id;
+            option.textContent = `${weapon.name} (${weapon.category}, ${weapon.damage_dice} ${weapon.damage_type})`;
+            weaponToAddSelect.appendChild(option);
+        });
+    }
+
+    if (openAddWeaponModalBtn) {
+        openAddWeaponModalBtn.addEventListener('click', async () => {
+            if (!allAvailableWeaponsCache) { // Fetch only if not cached
+                await loadAllWeaponsForModal();
+            }
+            addWeaponModal.style.display = 'block';
+        });
+    }
+
+    if (addWeaponForm) {
+        addWeaponForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const weaponId = weaponToAddSelect.value;
+            const quantity = weaponToAddQuantityInput.value;
+
+            if (!weaponId) {
+                alert("Please select a weapon.");
+                return;
+            }
+            try {
+                const response = await fetch(`/character/${characterId}/inventory/add_weapon`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                    body: JSON.stringify({ weapon_id: weaponId, quantity: parseInt(quantity) })
+                });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    alert(data.message);
+                // Update local cache of owned weapons:
+                // The server response includes the 'weapon' object that was added/updated.
+                // It has 'association_id', 'quantity', 'is_equipped_main_hand', 'is_equipped_off_hand',
+                // and the base weapon details like 'id' (weapon_master_record.id), 'name', etc.
+                const returnedWeaponAssoc = data.weapon;
+
+                // Find if this weapon (by its master ID) is already in the characterOwnedWeapons list.
+                // Note: characterOwnedWeapons items have `id` (master weapon ID) and `association_id`.
+                const existingWeaponIndex = characterOwnedWeapons.findIndex(w => w.association_id == returnedWeaponAssoc.association_id);
+
+                    if (existingWeaponIndex > -1) {
+                    // This means an existing stack was updated (e.g. quantity increased)
+                    characterOwnedWeapons[existingWeaponIndex].quantity = returnedWeaponAssoc.quantity;
+                    } else {
+                    // This is a new weapon association for the character
+                    characterOwnedWeapons.push({
+                        id: returnedWeaponAssoc.id, // Actual weapon ID from master table
+                        name: returnedWeaponAssoc.name,
+                        category: returnedWeaponAssoc.category,
+                        damage_dice: returnedWeaponAssoc.damage_dice,
+                        damage_type: returnedWeaponAssoc.damage_type,
+                        properties: returnedWeaponAssoc.properties, // Assuming properties is already an array of objects
+                        // Association specific data:
+                        association_id: returnedWeaponAssoc.association_id,
+                        quantity: returnedWeaponAssoc.quantity,
+                        is_equipped_main_hand: returnedWeaponAssoc.is_equipped_main_hand,
+                        is_equipped_off_hand: returnedWeaponAssoc.is_equipped_off_hand
+                        // Add other fields from weaponAssoc if needed by renderOwnedWeaponsList
+                    });
+                    }
+                    renderOwnedWeaponsList();
+                renderEquippedWeaponsForAttack(characterOwnedWeapons.filter(w => w.is_equipped_main_hand || w.is_equipped_off_hand));
+                    closeModal(addWeaponModal);
+                } else {
+                    alert(`Error: ${data.message}`);
+                }
+            } catch (err) {
+                alert('Failed to add weapon.');
+                console.error("Add weapon error:", err);
+            }
+        });
+    }
+
+    function renderEquippedWeaponsForAttack(equippedWeaponsDetails) {
+        if (!equippedWeaponsAttackListDiv) return;
+        equippedWeaponsAttackListDiv.innerHTML = ''; // Clear previous
+
+        if (!equippedWeaponsDetails || equippedWeaponsDetails.length === 0) {
+            equippedWeaponsAttackListDiv.innerHTML = '<p>No weapons currently equipped for attack.</p>';
+            return;
+        }
+        const ul = document.createElement('ul');
+        ul.style.listStyle = 'none';
+        ul.style.paddingLeft = '0';
+
+        equippedWeaponsDetails.forEach(weapon => {
+            // weapon here should be an object from characterOwnedWeapons that has is_equipped flags true
+            const li = document.createElement('li');
+            li.setAttribute('data-weapon-id', weapon.id); // Weapon's actual ID
+            li.style.marginBottom = '8px';
+
+            let equipStatusText = "";
+            if (weapon.is_equipped_main_hand && weapon.is_equipped_off_hand) equipStatusText = "(Main & Off-Hand)";
+            else if (weapon.is_equipped_main_hand) equipStatusText = "(Main-Hand)";
+            else if (weapon.is_equipped_off_hand) equipStatusText = "(Off-Hand)";
+
+            const propertiesDisplay = (weapon.properties && weapon.properties.length > 0) ? (weapon.properties.map(p => p.name || p).join(', ')) : 'None';
+
+            li.innerHTML = `
+                <strong>${weapon.name}</strong> ${equipStatusText}<br>
+                <small>Damage: ${weapon.damage_dice} ${weapon.damage_type}. Properties: ${propertiesDisplay}.</small>
+                <button class="roll-button weapon-attack-button"
+                        data-roll-type="weapon-attack"
+                        data-weapon-id="${weapon.id}"
+                        data-weapon-name="${weapon.name}"
+                        data-weapon-properties='${JSON.stringify(weapon.properties || [])}'
+                        data-weapon-category="${weapon.category}"
+                        data-weapon-is-martial="${String(weapon.is_martial)}"
+                        data-dice-formula="1d20"
+                        data-damage-dice="${weapon.damage_dice}"
+                        data-damage-type="${weapon.damage_type}"
+                        data-roll-mode="normal">⚔️ Attack</button>
+                <button class="roll-button weapon-attack-button"
+                        data-roll-type="weapon-attack"
+                        data-weapon-id="${weapon.id}"
+                        data-weapon-name="${weapon.name}"
+                        data-weapon-properties='${JSON.stringify(weapon.properties || [])}'
+                        data-weapon-category="${weapon.category}"
+                        data-weapon-is-martial="${String(weapon.is_martial)}"
+                        data-dice-formula="1d20"
+                        data-damage-dice="${weapon.damage_dice}"
+                        data-damage-type="${weapon.damage_type}"
+                        data-roll-mode="advdis">🎲🎲 Attack</button>
+            `;
+            ul.appendChild(li);
+        });
+        equippedWeaponsAttackListDiv.appendChild(ul);
+
+        // Re-attach event listeners to these new buttons
+        equippedWeaponsAttackListDiv.querySelectorAll('.weapon-attack-button').forEach(button => {
+            button.addEventListener('click', weaponAttackButtonClickHandler); // Assume this handler exists or adapt
+        });
+    }
+
+    // Need to adapt the existing rollButton click handler or make a new one for weapon attacks
+    // For now, let's assume the original `rollButtons.forEach` will pick up these new buttons
+    // if they are added before that loop runs, OR we need to call a function to attach listeners
+    // to new buttons. The current `rollButtons` querySelectorAll runs once on DOMContentLoaded.
+    // We will need to make the weapon attack button handler more dynamic.
+    // For simplicity in this step, the `renderEquippedWeaponsForAttack` adds listeners directly.
+    // A more robust solution might use event delegation on `equippedWeaponsAttackListDiv`.
+
+    function weaponAttackButtonClickHandler(event) {
+        event.preventDefault();
+        const button = this; // 'this' is the button clicked
+        const rollType = button.dataset.rollType;
+        const rollName = button.dataset.rollName; // This might be undefined for weapon attacks if not set
+        const diceFormula = button.dataset.diceFormula || '1d20';
+        let modifier = parseInt(button.dataset.modifier || '0'); // This will be recalculated for weapons
+        const rollMode = button.dataset.rollMode || 'normal';
+
+        let rollCondition = "normal";
+        let fetchBody = {};
+        let isWeaponAttack = (rollType === "weapon-attack");
+
+        if (rollMode === 'advdis') {
+            const choicePrompt = window.prompt("Roll with Advantage (a), Disadvantage (d), or Normal (n)?", "n").toLowerCase();
+            if (choicePrompt === 'a') rollCondition = 'advantage';
+            else if (choicePrompt === 'd') rollCondition = 'disadvantage';
+            else rollCondition = 'normal';
+        }
+
+        if (isWeaponAttack) {
+            const weaponId = button.dataset.weaponId;
+            const weaponName = button.dataset.weaponName;
+            const weaponPropsString = button.dataset.weaponProperties;
+            const weaponCategory = button.dataset.weaponCategory;
+            const weaponIsMartial = button.dataset.weaponIsMartial === "true";
+            const damageDice = button.dataset.damageDice;
+            const damageType = button.dataset.damageType;
+
+            let strScore = 10, dexScore = 10;
+            const strBox = abilitiesGrid.querySelector('.ability-box[data-ability-name="Strength"] .ability-score');
+            const dexBox = abilitiesGrid.querySelector('.ability-box[data-ability-name="Dexterity"] .ability-score');
+            if (strBox) strScore = parseInt(strBox.textContent) || 10;
+            if (dexBox) dexScore = parseInt(dexBox.textContent) || 10;
+
+            const strMod = Math.floor((strScore - 10) / 2);
+            const dexMod = Math.floor((dexScore - 10) / 2);
+
+            let attackAbilityMod = strMod;
+            const weaponProperties = JSON.parse(weaponPropsString || "[]");
+
+            // Check for finesse property
+            const finesseProp = weaponProperties.find(prop => (prop.index || prop.name || "").toLowerCase() === 'finesse');
+            if (finesseProp) {
+                attackAbilityMod = Math.max(strMod, dexMod);
+            } else if (weaponCategory.toLowerCase().includes("ranged")) { // Broad category check for ranged
+                attackAbilityMod = dexMod;
+            }
+            // Thrown property might need specific handling if it's not finesse and not a typical ranged weapon.
+            // For simplicity, assume finesse covers DEX for thrown, otherwise STR.
+
+            let proficiencyBonusToAdd = 0;
+            const profBonusText = profBonusDisplay.textContent;
+            const charProfBonusValue = parseInt(profBonusText.replace('+', '')) || 0;
+
+            const charWeaponProficiencies = Array.isArray(characterProficienciesData.weapons) ? characterProficienciesData.weapons : [];
+            let isProficient = false;
+            if (charWeaponProficiencies.includes(weaponName) || charWeaponProficiencies.includes(weaponCategory)) {
+                isProficient = true;
+            } else if (charWeaponProficiencies.includes("Simple Weapons") && !weaponIsMartial) {
+                isProficient = true;
+            } else if (charWeaponProficiencies.includes("Martial Weapons") && weaponIsMartial) {
+                isProficient = true;
+            }
+
+            if (isProficient) {
+                proficiencyBonusToAdd = charProfBonusValue;
+            }
+
+            modifier = attackAbilityMod + proficiencyBonusToAdd;
+
+            fetchBody = {
+                roll_name: `${weaponName} Attack`,
+                dice_formula: diceFormula,
+                modifier: modifier,
+                roll_condition: rollCondition,
+                _weapon_name_internal: weaponName,
+                _damage_dice_internal: damageDice,
+                _damage_type_internal: damageType
+            };
+            // The rest of the fetch and message display logic is similar to the original rollButton handler
+            // This part can be refactored into a common function if desired.
+            fetch("{{ url_for('main.roll_dice_from_sheet') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                body: JSON.stringify(fetchBody)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    appendMessage(`Error rolling dice: ${data.error}`, 'dm');
+                    return;
+                }
+                let rollDetailsMessage = `Rolling ${data.roll_name}`;
+                if (data.roll_condition_fulfilled === 'advantage') rollDetailsMessage += ` with Advantage`;
+                else if (data.roll_condition_fulfilled === 'disadvantage') rollDetailsMessage += ` with Disadvantage`;
+
+                let modifierString = "";
+                if (data.modifier > 0) modifierString = `+${data.modifier}`;
+                else if (data.modifier < 0) modifierString = `${data.modifier}`;
+                rollDetailsMessage += ` (${data.dice_formula}${modifierString}): `;
+
+                if (data.roll_condition_fulfilled === 'advantage' || data.roll_condition_fulfilled === 'disadvantage') {
+                    const numDicePerSet = (data.dice_formula.match(/(\d+)d\d+/) || [0,1])[1];
+                    rollDetailsMessage += `Rolled Sets: [${data.rolls.slice(0, numDicePerSet).join(', ')}] (sum ${data.roll_details.roll1_sum}) and [${data.rolls.slice(numDicePerSet).join(', ')}] (sum ${data.roll_details.roll2_sum}). Chosen: ${data.subtotal}. Total: **${data.total}**.`;
+                } else {
+                    rollDetailsMessage += `Rolled [${data.rolls.join(', ')}]. Subtotal: ${data.subtotal}. Total: **${data.total}**.`;
+                }
+                rollDetailsMessage += ` Potential Damage: ${fetchBody._damage_dice_internal} ${fetchBody._damage_type_internal}.`;
+
+                appendMessage(rollDetailsMessage, 'user');
+                characterSheetOverlay.style.display = 'none';
+                sendMessage(rollDetailsMessage, true);
+            })
+            .catch(error => {
+                console.error('Dice roll error:', error);
+                appendMessage('Error performing dice roll.', 'dm');
+            });
+        } else {
+            // Handle other roll types if this function is generalized, or log error
+            console.error("weaponAttackButtonClickHandler called for non-weapon attack type:", rollType);
+        }
+    }
+    // --- End Weapon Management ---
+
 
     // --- Spell Card Hover/Click Logic ---
     document.querySelectorAll('.spell-name').forEach(item => {
@@ -1246,12 +2068,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    async function fetchAndDisplayLevelData(levelNumber) {
-        console.log(`Fetching data for level ${levelNumber}`);
+    async function fetchAndDisplayLevelData(levelNumberToFetch) { // Renamed param to avoid conflict
+        console.log(`Fetching data for level ${levelNumberToFetch}`);
         if (loadingIndicator) loadingIndicator.style.display = 'block';
 
         try {
-            const response = await fetch(`/character/${characterId}/get_level_data/${levelNumber}`);
+            const response = await fetch(`/character/${characterId}/get_level_data/${levelNumberToFetch}`);
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ message: 'Failed to parse error response from server.' }));
                 throw new Error(`HTTP error ${response.status}: ${errorData.message || response.statusText}`);
@@ -1263,20 +2085,35 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const profBonus = Math.floor((levelDetails.level_number - 1) / 4) + 2;
 
-            updateAbilityScoresDisplay(levelDetails.stats); // stats is an object like {strength: 10, ...}
-            updateCombatStatsDisplay(levelDetails, profBonus); // levelDetails contains hp, max_hp, armor_class, speed
-            updateSavingThrowsDisplay(levelDetails.proficiencies, levelDetails.stats, profBonus); // proficiencies.saving_throws, stats
-            updateSkillsDisplay(levelDetails.proficiencies, levelDetails.stats, profBonus); // proficiencies.skills, stats
-            updateProficienciesDisplay(levelDetails.proficiencies); // proficiencies has armor, weapons, tools, languages
+            updateAbilityScoresDisplay(levelDetails.stats);
+            updateCombatStatsDisplay(levelDetails, profBonus);
+            updateSavingThrowsDisplay(levelDetails.proficiencies, levelDetails.stats, profBonus);
+            updateSkillsDisplay(levelDetails.proficiencies, levelDetails.stats, profBonus);
+            updateProficienciesDisplay(levelDetails.proficiencies);
             updateSpellsDisplay(levelDetails.spells_known_details || [], levelDetails.spell_slots_snapshot || {}, levelDetails.level_number);
-            updateSpellSlotsDisplay(levelDetails.spell_slots_snapshot || {}, levelDetails.level_number); // Pass level_number for context
-            updateFeaturesDisplay(levelDetails.features_gained); // Text or JSON string
+            updateSpellSlotsDisplay(levelDetails.spell_slots_snapshot || {}, levelDetails.level_number);
+            updateFeaturesDisplay(levelDetails.features_gained);
+
+            // Update global characterOwnedWeapons if fetching current actual level data
+            // This is important because the Python route `adventure` initially loads this for the *current* level.
+            // If `get_level_data` is used, it doesn't directly provide weapon lists.
+            // So, we rely on the initial load or a separate mechanism for weapons.
+            // For now, `characterOwnedWeapons` is populated from Jinja initially and updated by weapon actions.
+            // `renderOwnedWeaponsList` and `renderEquippedWeaponsForAttack` should be called after weapon actions.
+
+            if (levelDetails.level_number === currentActualLevel) {
+                 characterProficienciesData = levelDetails.proficiencies || {};
+                 // Re-render weapon lists based on the global characterOwnedWeapons
+                 // (which should be accurate from initial load or prior weapon operations)
+                 renderOwnedWeaponsList();
+                 renderEquippedWeaponsForAttack(characterOwnedWeapons.filter(w => w.is_equipped_main_hand || w.is_equipped_off_hand));
+            }
             
             updateNavigationButtonStates();
 
         } catch (error) {
             console.error('Error fetching level data:', error);
-            appendMessage(`System: Error loading level ${levelNumber} data: ${error.message}`, 'system');
+            appendMessage(`System: Error loading level ${levelNumberToFetch} data: ${error.message}`, 'system');
         } finally {
             if (loadingIndicator) loadingIndicator.style.display = 'none';
         }
@@ -1709,6 +2546,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initial setup
     updateNavigationButtonStates();
+    renderOwnedWeaponsList(); // Initial render of owned weapons
+    renderEquippedWeaponsForAttack(characterOwnedWeapons.filter(w => w.is_equipped_main_hand || w.is_equipped_off_hand)); // Initial render of equipped attack buttons
+
 
     // Fetch and display data for the character's current actual level on initial load
     // This will also populate the notes text area via Jinja templating on initial load.
@@ -1724,30 +2564,22 @@ document.addEventListener('DOMContentLoaded', function() {
             const newHp = parseInt(this.value);
             const maxHp = parseInt(maxHpDisplay.textContent); // Max HP for the currently viewed level
 
-            // Basic check: if value hasn't changed meaningfully, don't save.
-            // This check is simple; more robust would compare against last successfully saved value.
-            // For now, if it's the same as what was there when blur happened, and it's a valid number,
-            // it might still proceed. This can be refined if it causes too many saves for no reason.
-            // A better check might be: if (newHp === parseInt(originalHpValueForComparison)) return;
-            // where originalHpValueForComparison is the value from the last successful save.
-            // For now, will proceed with validation.
-
             if (isNaN(newHp)) {
                 hpSaveStatus.textContent = 'Not a number.';
-                // this.value = originalHpValue; // Revert to original value
                 hpSaveStatus.style.color = 'red';
+                 setTimeout(() => { hpSaveStatus.textContent = ''; this.value = originalHpValue; }, 3000);
                 return;
             }
             if (newHp < 0) {
                 hpSaveStatus.textContent = 'HP cannot be negative.';
                 hpSaveStatus.style.color = 'red';
-                // this.value = originalHpValue; // Revert
+                setTimeout(() => { hpSaveStatus.textContent = ''; this.value = originalHpValue; }, 3000);
                 return;
             }
             if (newHp > maxHp) {
                 hpSaveStatus.textContent = `Cannot exceed Max HP (${maxHp}).`;
                 hpSaveStatus.style.color = 'red';
-                // this.value = maxHp; // Revert to max HP or original value
+                setTimeout(() => { hpSaveStatus.textContent = ''; this.value = originalHpValue; }, 3000);
                 return;
             }
 
@@ -1771,21 +2603,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (response.ok && data.status === 'success') {
                     hpSaveStatus.textContent = data.message || 'HP Saved!';
                     hpSaveStatus.style.color = 'green';
-                    currentHpInput.value = data.new_hp; // Update input with confirmed value from server
+                    currentHpInput.value = data.new_hp;
                     if (maxHpDisplay) maxHpDisplay.textContent = data.max_hp;
-
-                    // Successfully saved, so the current input value is the new "original" for next time
                     this.dataset.originalValue = currentHpInput.value;
 
                 } else {
                     hpSaveStatus.textContent = data.message || 'Error saving HP.';
                     hpSaveStatus.style.color = 'red';
-                    // currentHpInput.value = originalHpValue; // Revert on error
+                    this.value = originalHpValue; // Revert on error
                 }
             } catch (error) {
                 console.error('Error updating HP:', error);
                 hpSaveStatus.textContent = 'Network error.';
                 hpSaveStatus.style.color = 'red';
+                this.value = originalHpValue; // Revert on error
             } finally {
                 setTimeout(() => { hpSaveStatus.textContent = ''; }, 3000);
             }
