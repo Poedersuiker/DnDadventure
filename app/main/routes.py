@@ -12,6 +12,7 @@ from app.utils import roll_dice, parse_coinage, ALL_SKILLS_LIST, XP_THRESHOLDS, 
 from app.gemini import geminiai, GEMINI_DM_SYSTEM_RULES
 from datetime import datetime
 from app.main import bp
+from app.data.background_data import BACKGROUND_DATA
 
 ABILITY_NAMES_FULL_SESSION_KEYS = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']
 ABILITY_NAMES_FULL = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma']
@@ -210,12 +211,26 @@ def creation_stats():
 def creation_background():
     if not session.get('new_character_data', {}).get('ability_scores'):
         flash('Please set ability scores first.', 'error'); return redirect(url_for('main.creation_stats'))
-    # ... (background selection logic)
+
     if request.method == 'POST':
-        # Example: session['new_character_data']['background_name'] = request.form.get('background_name')
+        selected_bg_key = request.form.get('background_name')
+        if selected_bg_key and selected_bg_key in BACKGROUND_DATA:
+            session['new_character_data']['background_key'] = selected_bg_key # Store the key
+            session['new_character_data']['background_name'] = BACKGROUND_DATA[selected_bg_key]['name']
+            session['new_character_data']['background_skill_proficiencies'] = BACKGROUND_DATA[selected_bg_key]['skill_proficiencies']
+            session['new_character_data']['background_tool_proficiencies'] = BACKGROUND_DATA[selected_bg_key]['tool_proficiencies']
+            session['new_character_data']['background_languages'] = BACKGROUND_DATA[selected_bg_key]['languages']
+            session['new_character_data']['background_equipment'] = BACKGROUND_DATA[selected_bg_key]['equipment']
+            flash(f"{BACKGROUND_DATA[selected_bg_key]['name']} background selected.", "success")
+        else:
+            flash("Please select a valid background.", "error")
+            # Re-render the page with an error if no valid background was selected
+            return render_template('create_character_background.html', backgrounds=BACKGROUND_DATA, race_name=session['new_character_data'].get('race_name'), class_name=session['new_character_data'].get('class_name'))
+
         session.modified = True
         return redirect(url_for('main.creation_skills'))
-    return render_template('create_character_background.html', backgrounds={}, race_name=session['new_character_data'].get('race_name'), class_name=session['new_character_data'].get('class_name'))
+    # GET request part
+    return render_template('create_character_background.html', backgrounds=BACKGROUND_DATA, race_name=session['new_character_data'].get('race_name'), class_name=session['new_character_data'].get('class_name'))
 
 @bp.route('/creation/skills', methods=['GET', 'POST'])
 @login_required
