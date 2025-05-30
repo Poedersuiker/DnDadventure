@@ -278,32 +278,287 @@ def creation_skills():
 @bp.route('/creation/hp', methods=['GET'])
 @login_required
 def creation_hp():
-    if session.get('new_character_data', {}).get('class_skill_proficiencies') is None: # Example check
-        flash('Please complete skills first.', 'error'); return redirect(url_for('main.creation_skills'))
-    # ... (HP calculation logic)
-    # Example: session['new_character_data']['max_hp'] = 10
+    if session.get('new_character_data', {}).get('class_skill_proficiencies') is None:
+        flash('Please complete skills selection first.', 'error')
+        return redirect(url_for('main.creation_skills'))
+
+    char_data = session.get('new_character_data', {})
+    selected_race_id = char_data.get('race_id')
+    selected_class_id = char_data.get('class_id')
+
+    if not selected_race_id or not selected_class_id:
+        flash('Race or class ID missing from session. Please restart from race selection.', 'error')
+        return redirect(url_for('main.creation_race'))
+
+    selected_race = Race.query.get(selected_race_id)
+    selected_class = Class.query.get(selected_class_id)
+
+    if not selected_race:
+        flash(f'Selected race (ID: {selected_race_id}) not found. Please select your race again.', 'error')
+        return redirect(url_for('main.creation_race'))
+    if not selected_class:
+        flash(f'Selected class (ID: {selected_class_id}) not found. Please select your class again.', 'error')
+        return redirect(url_for('main.creation_class'))
+
+    ability_scores = char_data.get('ability_scores', {})
+    if not isinstance(ability_scores, dict): # Ensure it's a dictionary
+        flash('Ability scores are not in the expected format. Please set them again.', 'error')
+        ability_scores = {} # Default to empty dict to avoid errors below
+        # Potentially redirect to stats page if this is critical and scores are mandatory
+        # return redirect(url_for('main.creation_stats'))
+
+
+    con_score = ability_scores.get('CON', 10)
+    con_modifier = (con_score - 10) // 2
+
+    hit_die_string = selected_class.hit_die # e.g., "d8"
+    try:
+        hit_die_max_value = int(hit_die_string[1:]) # Parses "d8" to 8
+    except (ValueError, TypeError, IndexError):
+        flash(f'Invalid hit die format for class {selected_class.name}: {hit_die_string}. Defaulting HP calculation.', 'warning')
+        hit_die_max_value = 8 # Default to d8 if parsing fails
+
+    max_hp = hit_die_max_value + con_modifier
+
+    dex_score = ability_scores.get('DEX', 10)
+    dex_modifier = (dex_score - 10) // 2
+    armor_class_base = 10 + dex_modifier
+
+    speed = selected_race.speed
+
+    # Update session
+    session['new_character_data']['max_hp'] = max_hp
+    session['new_character_data']['armor_class_base'] = armor_class_base
+    session['new_character_data']['speed'] = speed
     session.modified = True
-    return render_template('create_character_hp.html', max_hp=session['new_character_data'].get('max_hp',0), ac_base=session['new_character_data'].get('armor_class_base',0), speed=session['new_character_data'].get('speed',0), race_name=session['new_character_data'].get('race_name'), class_name=session['new_character_data'].get('class_name'), background_name=session['new_character_data'].get('background_name'), ability_scores_summary=session['new_character_data'].get('ability_scores',{}))
+
+    # The template will now fetch these from the session directly or via char_data
+    return render_template('create_character_hp.html',
+                           max_hp=session['new_character_data'].get('max_hp', 0), # Fetch updated
+                           ac_base=session['new_character_data'].get('armor_class_base', 0), # Fetch updated
+                           speed=session['new_character_data'].get('speed', 0), # Fetch updated
+                           race_name=char_data.get('race_name'),
+                           class_name=char_data.get('class_name'),
+                           background_name=char_data.get('background_name'),
+                           ability_scores_summary=ability_scores) # Pass the locally retrieved ability_scores
 
 @bp.route('/creation/equipment', methods=['GET', 'POST'])
 @login_required
 def creation_equipment():
-    if not session.get('new_character_data', {}).get('max_hp'):
-        flash('Please set HP first.', 'error'); return redirect(url_for('main.creation_hp'))
-    selected_class = Class.query.get(session['new_character_data']['class_id'])
-    # ... (equipment selection logic)
+    # Check if max_hp is set, indicating previous step completion
+    if session.get('new_character_data', {}).get('max_hp') is None:
+        flash('Please complete HP calculation first.', 'error')
+        return redirect(url_for('main.creation_hp'))
+
+    char_data = session.get('new_character_data', {})
+    selected_class_id = char_data.get('class_id')
+
+    if selected_class_id is None:
+        flash('Class not selected. Please select a class first.', 'error')
+        return redirect(url_for('main.creation_class'))
+
+    selected_class = Class.query.get(selected_class_id)
+    if not selected_class:
+        flash(f'Selected class (ID: {selected_class_id}) not found. Please select your class again.', 'error')
+        return redirect(url_for('main.creation_class'))
+
+    # --- Helper function (or duplicated logic) for parsing equipment ---
+    # This logic is duplicated from the GET part for safety in this step.
+    # Ideally, this would be refactored into a helper.
+    def _parse_class_equipment(class_obj):
+        local_fixed_items = []
+        local_choice_groups = []
+        if class_obj and class_obj.starting_equipment:
+            try:
+                equipment_data = json.loads(class_obj.starting_equipment)
+                if not isinstance(equipment_data, list):
+                    current_app.logger.error(f"Parsed starting_equipment for class {class_obj.id} is not a list: {equipment_data}")
+                    # flash("Error parsing class equipment data (not a list).", "error") # Avoid flashing in helper
+                    return [], [] # Return empty if structure is wrong
+
+                for i, entry in enumerate(equipment_data):
+                    if not isinstance(entry, dict):
+                        current_app.logger.warning(f"Skipping non-dict entry in starting_equipment for class {class_obj.id}: {entry}")
+                        continue
+
+                    # Check for fixed items (now under 'equipment' key)
+                    if 'equipment' in entry and isinstance(entry['equipment'], dict) and 'name' in entry['equipment']:
+                        item_name = entry['equipment'].get('name')
+                        quantity = entry.get('quantity', 1) # Quantity is at the same level as 'equipment' dict
+                        if item_name: # Ensure item_name was found
+                            local_fixed_items.append({'name': item_name, 'quantity': quantity})
+                        else:
+                            current_app.logger.warning(f"Skipping entry with 'equipment' key but no 'name': {entry}")
+                    # Check for choice groups (remains the same)
+                    elif 'choice' in entry and isinstance(entry['choice'], dict):
+                        choice_data = entry['choice']
+                        current_group_options = []
+                        group_id = f"choice_{len(local_choice_groups)}"
+
+                        options_data = choice_data.get('options', [])
+                        if not isinstance(options_data, list):
+                            current_app.logger.warning(f"Options data for choice in class {class_obj.id} is not a list: {options_data}")
+                            options_data = []
+
+                        for opt_idx, opt in enumerate(options_data):
+                            # Assuming options still use 'item' key internally for their structure as per original prompt
+                            # If options also use 'equipment', this part needs adjustment too.
+                            # For now, assuming options are like: {"item": {"name": "Mace"}, "quantity": 1}
+                            item_data_in_option = opt.get('item') # Default for structure from API (SRD)
+                            if not item_data_in_option and 'equipment' in opt : # if structure is like fixed items
+                                item_data_in_option = opt.get('equipment')
+
+                            if not isinstance(opt, dict) or not item_data_in_option or not isinstance(item_data_in_option, dict) or 'name' not in item_data_in_option:
+                                current_app.logger.warning(f"Skipping invalid option in choice for class {class_obj.id}: {opt}")
+                                continue
+
+                            item_name = item_data_in_option.get('name')
+                            item_quantity = opt.get('quantity', 1) # Quantity for option is at opt level
+
+                            if item_name:
+                                option_html_id = f"option_{len(local_choice_groups)}_{opt_idx}"
+                                current_group_options.append({
+                                    'id': option_html_id,
+                                    'name': item_name,
+                                    'quantity': item_quantity,
+                                    'label': f"{item_name} (x{item_quantity})"
+                                })
+                            else:
+                                current_app.logger.warning(f"Skipping option with no name in choice for class {class_obj.id}: {opt}")
+
+                        if current_group_options:
+                            local_choice_groups.append({
+                                'id': group_id,
+                                'desc': choice_data.get('desc', f'Choose {choice_data.get("count", 1)}'),
+                                'choose': choice_data.get('count', 1),
+                                'options': current_group_options
+                            })
+                        else:
+                            current_app.logger.warning(f"Choice group {group_id} for class {class_obj.id} had no valid options after parsing.")
+                    else:
+                        current_app.logger.warning(f"Unknown entry type in starting_equipment for class {class_obj.id}: {entry}")
+            except json.JSONDecodeError:
+                # flash(f'Error decoding starting equipment for class {class_obj.name}. Contact admin.', 'error') # Avoid flashing
+                current_app.logger.error(f"JSONDecodeError for class {class_obj.id} starting_equipment: {class_obj.starting_equipment}")
+                return [], [] # Return empty on error
+            except Exception as e:
+                # flash(f'An unexpected error occurred while parsing class equipment for {class_obj.name}.', 'error') # Avoid flashing
+                current_app.logger.error(f"Unexpected error parsing starting_equipment for class {class_obj.id}: {e}, data: {class_obj.starting_equipment}")
+                return [], [] # Return empty on error
+        return local_fixed_items, local_choice_groups
+    # --- End of helper/duplicated logic ---
+
     if request.method == 'POST':
-        # Example: session['new_character_data']['final_equipment'] = []
+        # 1. Retrieve Necessary Data (already retrieved selected_class and char_data from above)
+        background_equipment_list = char_data.get('background_equipment', [])
+        if not isinstance(background_equipment_list, list): # Ensure it's a list for consistent processing
+            background_equipment_list = [str(background_equipment_list)] if background_equipment_list else []
+
+
+        # 2. Reconstruct/Fetch Equipment Structure
+        # Using the duplicated logic/helper defined above for this POST request scope
+        post_fixed_items, post_choice_groups = _parse_class_equipment(selected_class)
+
+        # If parsing failed during POST (e.g. bad DB data discovered now), redirect with error
+        if selected_class.starting_equipment and not (post_fixed_items or post_choice_groups):
+             # Check if starting_equipment was non-empty but parsing yielded nothing
+            flash(f'Critical error parsing class equipment for {selected_class.name} during submission. Please contact admin.', 'error')
+            return redirect(url_for('main.creation_class')) # Or a more appropriate error page/step
+
+        # 3. Process Submitted Choices
+        chosen_items_from_class = []
+        missing_choice = False
+        for group in post_choice_groups:
+            group_form_id = group['id'] # e.g., "choice_0"
+            selected_option_html_id = request.form.get(group_form_id) # e.g., "option_0_1"
+
+            if selected_option_html_id:
+                found_option = None
+                for opt in group['options']:
+                    if opt['id'] == selected_option_html_id:
+                        found_option = opt
+                        break
+                if found_option:
+                    chosen_items_from_class.append({'name': found_option['name'], 'quantity': found_option['quantity']})
+                else:
+                    current_app.logger.warning(f"Submitted option ID '{selected_option_html_id}' for group '{group_form_id}' not found in reconstructed options.")
+                    # This case implies a mismatch between form and server logic, potentially an error.
+                    # Depending on strictness, could flash an error here.
+            elif group.get('choose', 1) > 0 : # If a choice was required but not made
+                missing_choice = True
+                flash(f"Please make a selection for: {group['desc']}", 'error')
+
+        if missing_choice:
+            # Re-render the template with the choices and error messages
+            # Need to re-generate background_equipment_string for the template
+            bg_equip_str_for_template = ", ".join(background_equipment_list) if isinstance(background_equipment_list, list) else str(background_equipment_list or "")
+            return render_template('create_character_equipment.html',
+                                   fixed_items=post_fixed_items, # Use the ones parsed in POST
+                                   choice_groups=post_choice_groups, # Use the ones parsed in POST
+                                   background_equipment_string=bg_equip_str_for_template,
+                                   race_name=char_data.get('race_name'),
+                                   class_name=selected_class.name,
+                                   background_name=char_data.get('background_name'))
+
+        # 4. Consolidate All Equipment
+        final_equipment_list = []
+        # Add background equipment (list of strings, assume quantity 1 for each)
+        for item_name_str in background_equipment_list:
+            if isinstance(item_name_str, str): # Ensure it's a string
+                 final_equipment_list.append({'name': item_name_str, 'quantity': 1})
+            else: # Log if background item isn't a string (should be from BACKGROUND_DATA)
+                current_app.logger.warning(f"Non-string item found in background_equipment_list: {item_name_str}")
+
+
+        # Add fixed class items
+        for item_dict in post_fixed_items: # Already in {'name': str, 'quantity': int}
+            final_equipment_list.append(item_dict)
+
+        # Add chosen class items
+        for item_dict in chosen_items_from_class: # Already in {'name': str, 'quantity': int}
+            final_equipment_list.append(item_dict)
+
+        # 5. Store in Session
+        session['new_character_data']['final_equipment'] = final_equipment_list
         session.modified = True
-        if selected_class and selected_class.spellcasting_ability: return redirect(url_for('main.creation_spells'))
+        flash('Equipment selected successfully.', 'success')
+
+        # 6. Redirect
+        if selected_class.spellcasting_ability:
+            return redirect(url_for('main.creation_spells'))
         return redirect(url_for('main.creation_review'))
-    # ...
-    return render_template('create_character_equipment.html', fixed_items=[], choice_groups=[], background_equipment_string="", race_name=session['new_character_data'].get('race_name'), class_name=selected_class.name, background_name=session['new_character_data'].get('background_name'))
+
+    # GET request logic (this part is from the previous subtask, ensure it's coherent with POST changes)
+    # For clarity, the GET part's parsing logic is now mirrored by _parse_class_equipment
+    get_fixed_items, get_choice_groups = _parse_class_equipment(selected_class)
+
+    # Handle JSON errors from GET parsing specifically for GET response
+    if selected_class.starting_equipment and not (get_fixed_items or get_choice_groups):
+        # This implies _parse_class_equipment returned empty lists due to an error logged within it
+        # Flash a generic error for the GET request display
+        flash(f'Error processing equipment for class {selected_class.name}. Some options may not display correctly.', 'error')
+
+
+    background_equipment_list_get = char_data.get('background_equipment', [])
+    background_equipment_string_get = ""
+    if isinstance(background_equipment_list_get, list):
+        background_equipment_string_get = ", ".join(background_equipment_list_get)
+    elif isinstance(background_equipment_list_get, str):
+        background_equipment_string_get = background_equipment_list_get
+    # else: (already logged by GET logic if type is unexpected)
+
+    return render_template('create_character_equipment.html',
+                           fixed_items=get_fixed_items,
+                           choice_groups=get_choice_groups,
+                           background_equipment_string=background_equipment_string_get,
+                           race_name=char_data.get('race_name'),
+                           class_name=selected_class.name,
+                           background_name=char_data.get('background_name'))
 
 @bp.route('/creation/spells', methods=['GET', 'POST'])
 @login_required
 def creation_spells():
-    if not session.get('new_character_data', {}).get('final_equipment'):
+    if session.get('new_character_data', {}).get('final_equipment') is None: # Check if None, empty list is OK
         flash('Please select equipment first.', 'error'); return redirect(url_for('main.creation_equipment'))
     # ... (spell selection logic)
     if request.method == 'POST':
@@ -331,6 +586,7 @@ def creation_review():
     display_data['class_name'] = char_class_obj.name
     display_data['cantrips'] = Spell.query.filter(Spell.id.in_(char_data.get('chosen_cantrip_ids', []))).all()
     display_data['level_1_spells'] = Spell.query.filter(Spell.id.in_(char_data.get('chosen_level_1_spell_ids', []))).all()
+    display_data['final_equipment'] = char_data.get('final_equipment', []) # Add final_equipment to display_data
 
     all_skill_proficiencies = set(char_data.get('background_skill_proficiencies', [])) | set(char_data.get('class_skill_proficiencies', []))
     display_data['all_skill_proficiencies'] = list(all_skill_proficiencies)
@@ -347,6 +603,7 @@ def creation_review():
         new_char = Character(
             name=character_name, description=char_description, user_id=current_user.id,
             race_id=char_data['race_id'], class_id=char_data['class_id'], alignment=alignment,
+            speed=char_data.get('speed', 30),  # Added speed here
             background_name=char_data.get('background_name'),
             background_proficiencies=json.dumps(char_data.get('background_skill_proficiencies', []) + char_data.get('background_tool_proficiencies', []) + char_data.get('background_languages', [])),
             adventure_log=json.dumps([]), dm_allowed_level=1, current_xp=0, current_hit_dice=1, player_notes=""
