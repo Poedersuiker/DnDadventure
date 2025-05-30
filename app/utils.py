@@ -1,8 +1,36 @@
+import json
 import random
-import re # For _parse_gold
+import re # For _parse_gold and new character sheet
 from flask import current_app
 import google.generativeai as genai
 import logging # For logging errors/warnings
+
+# Constants for character sheet generation and other utils
+ALL_SKILLS_LIST = [
+    ("Acrobatics", "DEX"), ("Animal Handling", "WIS"), ("Arcana", "INT"),
+    ("Athletics", "STR"), ("Deception", "CHA"), ("History", "INT"),
+    ("Insight", "WIS"), ("Intimidation", "CHA"), ("Investigation", "INT"),
+    ("Medicine", "WIS"), ("Nature", "INT"), ("Perception", "WIS"),
+    ("Performance", "CHA"), ("Persuasion", "CHA"), ("Religion", "INT"),
+    ("Sleight of Hand", "DEX"), ("Stealth", "DEX"), ("Survival", "WIS")
+]
+
+# Mapping for ability score names (used in character sheet generation)
+ABILITY_NAMES_FULL = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma']
+ABILITY_SHORT_TO_FULL = {
+    'STR': 'Strength', 'DEX': 'Dexterity', 'CON': 'Constitution',
+    'INT': 'Intelligence', 'WIS': 'Wisdom', 'CHA': 'Charisma'
+}
+# And the reverse, if needed, though character_level stores full names lowercase
+ABILITY_FULL_TO_SHORT = {v: k for k,v in ABILITY_SHORT_TO_FULL.items()}
+
+
+XP_THRESHOLDS = {
+    1: 300, 2: 900, 3: 2700, 4: 6500, 5: 14000, 6: 23000, 7: 34000,
+    8: 48000, 9: 64000, 10: 85000, 11: 100000, 12: 120000, 13: 140000,
+    14: 165000, 15: 195000, 16: 225000, 17: 265000, 18: 305000, 19: 355000
+}
+
 
 def roll_dice(num_dice: int, num_sides: int, drop_lowest: int = 0) -> tuple[int, list[int]]:
     '''
@@ -79,3 +107,141 @@ def parse_coinage(text_content: str) -> dict:
         coins['Copper'] = int(copper_match.group(1))
         
     return coins
+
+def generate_character_sheet_text(character, character_level, char_class_obj, spell_objects_known=None):
+    """
+    Generates a string representation of a character sheet.
+    - character: The Character model instance.
+    - character_level: The specific CharacterLevel model instance for the desired level.
+    - char_class_obj: The Class model instance for the character.
+    - spell_objects_known: Optional list of Spell model instances known by the character at this level.
+                           If None, spell names won't be listed, only counts.
+    """
+    sheet_lines = []
+    separator = "-" * 30
+
+    # Basic Information
+    sheet_lines.append(f"Name: {character.name}")
+    sheet_lines.append(f"Race: {character.race.name if character.race else 'N/A'}")
+    sheet_lines.append(f"Class: {char_class_obj.name if char_class_obj else 'N/A'}")
+    sheet_lines.append(f"Level: {character_level.level_number}")
+    sheet_lines.append(f"Background: {character.background_name or 'N/A'}")
+    sheet_lines.append(f"Alignment: {character.alignment or 'N/A'}")
+    sheet_lines.append(separator)
+
+    # Ability Scores & Modifiers
+    sheet_lines.append("Ability Scores:")
+    abilities = {
+        'STR': character_level.strength, 'DEX': character_level.dexterity,
+        'CON': character_level.constitution, 'INT': character_level.intelligence,
+        'WIS': character_level.wisdom, 'CHA': character_level.charisma
+    }
+    ability_modifiers = {name: (score - 10) // 2 for name, score in abilities.items()}
+    for ability_short_upper in ABILITY_SHORT_TO_FULL.keys(): # Iterate in defined order STR, DEX...
+        score = abilities.get(ability_short_upper, 10)
+        modifier = ability_modifiers.get(ability_short_upper, 0)
+        sheet_lines.append(f"  {ABILITY_SHORT_TO_FULL[ability_short_upper]}: {score} ({'+' if modifier >= 0 else ''}{modifier})")
+    sheet_lines.append(separator)
+
+    # Combat Stats
+    sheet_lines.append("Combat Stats:")
+    sheet_lines.append(f"  HP: {character_level.hp}/{character_level.max_hp}")
+    sheet_lines.append(f"  AC: {character_level.armor_class or 'N/A'}")
+    sheet_lines.append(f"  Speed: {character.race.speed if character.race else 'N/A'} ft.")
+    prof_bonus = (character_level.level_number - 1) // 4 + 2
+    sheet_lines.append(f"  Proficiency Bonus: +{prof_bonus}")
+    sheet_lines.append(f"  Hit Dice: {character.current_hit_dice}/{character_level.level_number} ({char_class_obj.hit_die if char_class_obj else 'N/A'})")
+    sheet_lines.append(separator)
+
+    # Proficiencies
+    sheet_lines.append("Proficiencies:")
+    try:
+        prof_data = json.loads(character_level.proficiencies or '{}')
+    except json.JSONDecodeError:
+        prof_data = {}
+
+    # Saving Throws
+    sheet_lines.append("  Saving Throws:")
+    prof_saving_throws = prof_data.get('saving_throws', []) # Expected: list of "STR", "DEX"
+    for ability_short_upper in ABILITY_SHORT_TO_FULL.keys():
+        modifier = ability_modifiers[ability_short_upper]
+        is_proficient = ability_short_upper in prof_saving_throws
+        final_save_modifier = modifier + (prof_bonus if is_proficient else 0)
+        prefix = "* " if is_proficient else "  "
+        sheet_lines.append(f"    {prefix}{ABILITY_SHORT_TO_FULL[ability_short_upper]}: {'+' if final_save_modifier >= 0 else ''}{final_save_modifier}")
+
+    # Skills
+    sheet_lines.append("  Skills:")
+    prof_skills = prof_data.get('skills', [])
+    for skill_name, skill_ability_abbr_upper in ALL_SKILLS_LIST: # skill_ability_abbr is "DEX", "STR" etc.
+        base_ability_modifier = ability_modifiers[skill_ability_abbr_upper]
+        is_proficient = skill_name in prof_skills
+        final_skill_modifier = base_ability_modifier + (prof_bonus if is_proficient else 0)
+        prefix = "* " if is_proficient else "  "
+        sheet_lines.append(f"    {prefix}{skill_name} ({skill_ability_abbr_upper}): {'+' if final_skill_modifier >= 0 else ''}{final_skill_modifier}")
+
+    for prof_type_key in ['armor', 'weapons', 'tools', 'languages']:
+        items = prof_data.get(prof_type_key, [])
+        sheet_lines.append(f"  {prof_type_key.capitalize()}: {', '.join(items) if items else 'None'}")
+    sheet_lines.append(separator)
+
+    # Spells
+    if char_class_obj and char_class_obj.spellcasting_ability:
+        sheet_lines.append("Spells:")
+        known_spell_ids_json = character_level.spells_known_ids or '[]'
+        known_spell_ids_list = []
+        try:
+            known_spell_ids_list = json.loads(known_spell_ids_json)
+        except json.JSONDecodeError:
+            logging.warning(f"Could not parse spells_known_ids for char_level {character_level.id}: {known_spell_ids_json}")
+
+        if spell_objects_known: # If full spell objects are provided
+            cantrips = sorted([sp.name for sp in spell_objects_known if sp.level == 0])
+            other_spells = sorted([sp.name for sp in spell_objects_known if sp.level > 0])
+            sheet_lines.append(f"  Known Cantrips ({len(cantrips)}): {', '.join(cantrips) or 'None'}")
+            sheet_lines.append(f"  Known Spells ({len(other_spells)}): {', '.join(other_spells) or 'None'}")
+        else: # Fallback to just count if full objects aren't available
+             # This part is tricky without querying Spell model here.
+             # For simplicity, we'll just state the number of IDs.
+            sheet_lines.append(f"  Known Spell IDs Count: {len(known_spell_ids_list)}")
+
+
+        slots_summary_parts = []
+        if character_level.spell_slots_snapshot:
+            try:
+                # Expected format: {"1": 2, "2": 3} (spell_level_str: count)
+                slots_snapshot_dict = json.loads(character_level.spell_slots_snapshot)
+                for spell_lvl_str, num_slots in sorted(slots_snapshot_dict.items(), key=lambda x: int(x[0])):
+                    slots_summary_parts.append(f"L{spell_lvl_str}: {num_slots}")
+            except json.JSONDecodeError:
+                slots_summary_parts.append("Error parsing slots data")
+        sheet_lines.append(f"  Spell Slots Available: {', '.join(slots_summary_parts) if slots_summary_parts else 'None (or Non-caster)'}")
+        sheet_lines.append(separator)
+
+    # Experience
+    sheet_lines.append("Experience:")
+    sheet_lines.append(f"  Current XP: {character.current_xp}")
+    xp_for_next = XP_THRESHOLDS.get(character_level.level_number, "Max level")
+    if xp_for_next != "Max level":
+        sheet_lines.append(f"  XP for Level {character_level.level_number + 1}: {xp_for_next}")
+    else:
+        sheet_lines.append(f"  XP for Next Level: Max level reached")
+    sheet_lines.append(separator)
+
+    # Equipment (from Character.items)
+    sheet_lines.append("Equipment:")
+    if character.items: # Assuming character.items is a list of Item objects
+        for item in character.items:
+            desc_part = f" - {item.description}" if item.description and item.description.strip() else ""
+            sheet_lines.append(f"  - {item.name} (x{item.quantity}){desc_part}")
+    else:
+        sheet_lines.append("  None")
+
+    sheet_lines.append("Coinage:")
+    if character.coinage: # Assuming character.coinage is a list of Coinage objects
+        coins_str_parts = [f"{coin.quantity} {coin.name}" for coin in character.coinage if coin.quantity > 0]
+        sheet_lines.append(f"  {', '.join(coins_str_parts) if coins_str_parts else 'None'}")
+    else:
+        sheet_lines.append("  None")
+
+    return "\n".join(sheet_lines)

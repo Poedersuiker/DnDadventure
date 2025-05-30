@@ -9,7 +9,7 @@ from flask_login import login_required, current_user
 from app import db
 # CharacterSpellSlot removed, CharacterLevel added
 from app.models import User, Character, Race, Class, Spell, Setting, Item, Coinage, CharacterLevel 
-from app.utils import roll_dice, parse_coinage # Changed import to parse_coinage
+from app.utils import roll_dice, parse_coinage, ALL_SKILLS_LIST, XP_THRESHOLDS, generate_character_sheet_text # Added generate_character_sheet_text
 from app.gemini import geminiai, GEMINI_DM_SYSTEM_RULES
 from datetime import datetime
 from app.main import bp
@@ -498,6 +498,8 @@ def creation_review():
     all_tool_proficiencies = set(char_data.get('background_tool_proficiencies', []))
     all_tool_proficiencies.update(char_data.get('tool_proficiencies_class_fixed', []))
     all_language_proficiencies = set(char_data.get('background_languages', []))
+    # player_notes is handled by default in model
+
     if request.method == 'POST':
         character_name = request.form.get('character_name')
         alignment = request.form.get('alignment')
@@ -526,7 +528,8 @@ def creation_review():
             adventure_log=json.dumps([]), 
             dm_allowed_level=1,
             current_xp=0,
-            current_hit_dice=1 # Initialize L1 character with 1 hit die
+            current_hit_dice=1, # Initialize L1 character with 1 hit die
+            player_notes="" # Initialize player_notes as empty string
         )
         db.session.add(new_char)
         db.session.flush() 
@@ -632,18 +635,7 @@ def creation_review():
         return redirect(url_for('main.index'))
     return render_template('create_character_review.html', data=char_data, race=race, char_class=char_class_obj, cantrips=cantrips, level_1_spells=level_1_spells, all_skill_proficiencies=list(all_skill_proficiencies), all_tool_proficiencies=list(all_tool_proficiencies), all_language_proficiencies=list(all_language_proficiencies), submitted_name=char_data.get('character_name_draft',''), submitted_alignment=char_data.get('alignment_draft',''), submitted_description=char_data.get('description_draft',''))
 
-ALL_SKILLS_LIST = [
-    ("Acrobatics", "DEX"), ("Animal Handling", "WIS"), ("Arcana", "INT"),
-    ("Athletics", "STR"), ("Deception", "CHA"), ("History", "INT"),
-    ("Insight", "WIS"), ("Intimidation", "CHA"), ("Investigation", "INT"),
-    ("Medicine", "WIS"), ("Nature", "INT"), ("Perception", "WIS"),
-    ("Performance", "CHA"), ("Persuasion", "CHA"), ("Religion", "INT"),
-    ("Sleight of Hand", "DEX"), ("Stealth", "DEX"), ("Survival", "WIS")
-]
-# ABILITY_NAMES_FULL is defined a bit lower, but used by get_character_level_data.
-# For consistency and to avoid potential NameError if functions are ever reordered, define it here.
-# ABILITY_NAMES_FULL = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma'] # Defined globally now
-
+# ALL_SKILLS_LIST and XP_THRESHOLDS moved to app.utils
 
 @bp.route('/<int:character_id>/adventure', methods=['GET', 'POST'])
 @login_required
@@ -726,8 +718,8 @@ def adventure(character_id):
             full_equipment_list_for_prompt = items_list_for_prompt + coinage_list_for_prompt
             temp_equipment_str = "\n".join([f"- {item_str}" for item_str in full_equipment_list_for_prompt]) if full_equipment_list_for_prompt else "None"
             
-            xp_thresholds = {1: 300, 2: 900, 3: 2700, 4: 6500, 5: 14000, 6: 23000, 7: 34000, 8: 48000, 9: 64000, 10: 85000, 11: 100000, 12: 120000, 13: 140000, 14: 165000, 15: 195000, 16: 225000, 17: 265000, 18: 305000, 19: 355000}
-            xp_for_next = xp_thresholds.get(current_actual_level, "N/A for current level")
+            # XP_THRESHOLDS is now imported from app.utils
+            xp_for_next = XP_THRESHOLDS.get(current_actual_level, "N/A for current level")
 
             character_sheet_prompt = (
                 f"PLAYER CHARACTER SHEET:\n"
@@ -1456,7 +1448,7 @@ def short_rest(character_id):
 
     if dice_to_spend <= 0:
         return jsonify(status="error", message="Number of dice to spend must be positive."), 400
-    
+
     if dice_to_spend > character.current_hit_dice:
         return jsonify(status="error", message="Not enough Hit Dice available."), 400
 
@@ -2259,15 +2251,35 @@ def level_up_apply(character_id):
     db.session.add(new_level_data)
     # character object is already in the session, so changes will be committed.
     try:
-        db.session.commit()
+        db.session.commit() # First commit for level up data
+
+        # Generate character sheet text and append to adventure log
+        char_class = Class.query.get(character.class_id) # Fetch class object
+        known_spell_ids_list = json.loads(new_level_data.spells_known_ids or '[]')
+        known_spell_objects = Spell.query.filter(Spell.id.in_(known_spell_ids_list)).all() if known_spell_ids_list else []
+
+        sheet_text = generate_character_sheet_text(character, new_level_data, char_class, known_spell_objects)
+        dm_update_message = f"SYSTEM: {character.name} has reached Level {new_level_data.level_number}. Their character sheet has been updated as follows:\n\n{sheet_text}"
+
+        try:
+            log_entries = json.loads(character.adventure_log or '[]')
+            if not isinstance(log_entries, list):
+                log_entries = []
+        except json.JSONDecodeError:
+            log_entries = []
+
+        log_entries.append({"sender": "system", "text": dm_update_message})
+        character.adventure_log = json.dumps(log_entries)
+        db.session.commit() # Second commit for adventure log update
+
         session.pop('level_up_data', None) 
         # Enhanced flash message and server log
         flash(f"Successfully leveled up to Level {new_level_data.level_number}! Your character sheet is updated and ready for your DM.", "success")
-        current_app.logger.info(f"Character '{character.name}' (ID: {character.id}) successfully leveled up to Level {new_level_data.level_number}. DM notified (conceptually).")
+        current_app.logger.info(f"Character '{character.name}' (ID: {character.id}) successfully leveled up to Level {new_level_data.level_number}. DM notified (conceptually via adventure log).")
         return redirect(url_for('main.adventure', character_id=character_id))
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error applying level up for char {character_id} to L{new_level_data.level_number}: {str(e)}")
+        db.session.rollback() # Rollback any pending changes from both potential commits if error
+        current_app.logger.error(f"Error applying level up or updating adventure log for char {character_id} to L{new_level_data.level_number}: {str(e)}")
         flash("Error applying level up. Please try again.", "error")
         return redirect(url_for('main.level_up_start', character_id=character_id))
 
