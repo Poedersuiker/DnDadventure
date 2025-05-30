@@ -278,12 +278,69 @@ def creation_skills():
 @bp.route('/creation/hp', methods=['GET'])
 @login_required
 def creation_hp():
-    if session.get('new_character_data', {}).get('class_skill_proficiencies') is None: # Example check
-        flash('Please complete skills first.', 'error'); return redirect(url_for('main.creation_skills'))
-    # ... (HP calculation logic)
-    # Example: session['new_character_data']['max_hp'] = 10
+    if session.get('new_character_data', {}).get('class_skill_proficiencies') is None:
+        flash('Please complete skills selection first.', 'error')
+        return redirect(url_for('main.creation_skills'))
+
+    char_data = session.get('new_character_data', {})
+    selected_race_id = char_data.get('race_id')
+    selected_class_id = char_data.get('class_id')
+
+    if not selected_race_id or not selected_class_id:
+        flash('Race or class ID missing from session. Please restart from race selection.', 'error')
+        return redirect(url_for('main.creation_race'))
+
+    selected_race = Race.query.get(selected_race_id)
+    selected_class = Class.query.get(selected_class_id)
+
+    if not selected_race:
+        flash(f'Selected race (ID: {selected_race_id}) not found. Please select your race again.', 'error')
+        return redirect(url_for('main.creation_race'))
+    if not selected_class:
+        flash(f'Selected class (ID: {selected_class_id}) not found. Please select your class again.', 'error')
+        return redirect(url_for('main.creation_class'))
+
+    ability_scores = char_data.get('ability_scores', {})
+    if not isinstance(ability_scores, dict): # Ensure it's a dictionary
+        flash('Ability scores are not in the expected format. Please set them again.', 'error')
+        ability_scores = {} # Default to empty dict to avoid errors below
+        # Potentially redirect to stats page if this is critical and scores are mandatory
+        # return redirect(url_for('main.creation_stats'))
+
+
+    con_score = ability_scores.get('CON', 10)
+    con_modifier = (con_score - 10) // 2
+
+    hit_die_string = selected_class.hit_die # e.g., "d8"
+    try:
+        hit_die_max_value = int(hit_die_string[1:]) # Parses "d8" to 8
+    except (ValueError, TypeError, IndexError):
+        flash(f'Invalid hit die format for class {selected_class.name}: {hit_die_string}. Defaulting HP calculation.', 'warning')
+        hit_die_max_value = 8 # Default to d8 if parsing fails
+
+    max_hp = hit_die_max_value + con_modifier
+
+    dex_score = ability_scores.get('DEX', 10)
+    dex_modifier = (dex_score - 10) // 2
+    armor_class_base = 10 + dex_modifier
+
+    speed = selected_race.speed
+
+    # Update session
+    session['new_character_data']['max_hp'] = max_hp
+    session['new_character_data']['armor_class_base'] = armor_class_base
+    session['new_character_data']['speed'] = speed
     session.modified = True
-    return render_template('create_character_hp.html', max_hp=session['new_character_data'].get('max_hp',0), ac_base=session['new_character_data'].get('armor_class_base',0), speed=session['new_character_data'].get('speed',0), race_name=session['new_character_data'].get('race_name'), class_name=session['new_character_data'].get('class_name'), background_name=session['new_character_data'].get('background_name'), ability_scores_summary=session['new_character_data'].get('ability_scores',{}))
+
+    # The template will now fetch these from the session directly or via char_data
+    return render_template('create_character_hp.html',
+                           max_hp=session['new_character_data'].get('max_hp', 0), # Fetch updated
+                           ac_base=session['new_character_data'].get('armor_class_base', 0), # Fetch updated
+                           speed=session['new_character_data'].get('speed', 0), # Fetch updated
+                           race_name=char_data.get('race_name'),
+                           class_name=char_data.get('class_name'),
+                           background_name=char_data.get('background_name'),
+                           ability_scores_summary=ability_scores) # Pass the locally retrieved ability_scores
 
 @bp.route('/creation/equipment', methods=['GET', 'POST'])
 @login_required
@@ -347,6 +404,7 @@ def creation_review():
         new_char = Character(
             name=character_name, description=char_description, user_id=current_user.id,
             race_id=char_data['race_id'], class_id=char_data['class_id'], alignment=alignment,
+            speed=char_data.get('speed', 30),  # Added speed here
             background_name=char_data.get('background_name'),
             background_proficiencies=json.dumps(char_data.get('background_skill_proficiencies', []) + char_data.get('background_tool_proficiencies', []) + char_data.get('background_languages', [])),
             adventure_log=json.dumps([]), dm_allowed_level=1, current_xp=0, current_hit_dice=1, player_notes=""

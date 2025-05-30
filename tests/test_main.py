@@ -695,6 +695,79 @@ class TestMainRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json()['message'], 'Item name cannot be empty.')
 
+    @patch('app.main.routes.Race.query')
+    @patch('app.main.routes.Class.query')
+    def test_creation_hp_calculations(self, mock_class_query, mock_race_query):
+        # Configure mock for Race.query.get
+        mock_race_instance = MagicMock(spec=Race)
+        mock_race_instance.name = 'Tiefling'
+        mock_race_instance.speed = 30
+        # Add any other fields that might be accessed directly or indirectly by the route
+        mock_race_instance.ability_score_increases = '[]'
+        mock_race_instance.languages = '[]'
+        mock_race_instance.traits = '[]'
+        mock_race_instance.size_description = ''
+        mock_race_instance.age_description = ''
+        mock_race_instance.alignment_description = ''
+        mock_race_query.get.return_value = mock_race_instance
+
+        # Configure mock for Class.query.get
+        mock_class_instance = MagicMock(spec=Class)
+        mock_class_instance.name = 'Warlock'
+        mock_class_instance.hit_die = 'd8'
+        # Add any other fields that might be accessed directly or indirectly
+        mock_class_instance.proficiency_saving_throws = '["CHA", "WIS"]'
+        mock_class_instance.skill_proficiencies_option_count = 2
+        mock_class_instance.skill_proficiencies_options = '["Arcana", "Deception"]'
+        mock_class_instance.starting_equipment = '[]'
+        mock_class_instance.proficiencies_armor = '[]'
+        mock_class_instance.proficiencies_weapons = '["Simple Weapons"]'
+        mock_class_instance.proficiencies_tools = '[]'
+        mock_class_instance.spellcasting_ability = "CHA"
+        mock_class_query.get.return_value = mock_class_instance
+
+        test_char_data_before_hp = {
+            'race_id': 1,  # Mocked, so ID value doesn't strictly matter here
+            'race_name': 'Tiefling', # For display consistency if template uses it before recalculation
+            'class_id': 1, # Mocked
+            'class_name': 'Warlock', # For display
+            'ability_scores': {'STR': 7, 'DEX': 8, 'CON': 14, 'INT': 13, 'WIS': 14, 'CHA': 16},
+            'background_name': 'Sage', # Assume previous steps completed
+            'class_skill_proficiencies': ['Arcana', 'History'] # Prerequisite for creation_hp route
+            # Other data from previous steps might be here, but these are key for hp route
+        }
+
+        with self.client as client:
+            # Set up the session
+            with client.session_transaction() as sess:
+                sess['new_character_data'] = test_char_data_before_hp
+                sess['user_id'] = self.user.id # Assuming self.user is set up in setUp
+                sess['_fresh'] = True # For @login_required if it checks freshness
+
+            # Make a GET request to url_for('main.creation_hp')
+            # Ensure user is "logged in" for @login_required
+            response = client.get(url_for('main.creation_hp'))
+
+            self.assertEqual(response.status_code, 200) # Check page loads
+
+            # Retrieve the updated session data
+            with client.session_transaction() as sess:
+                updated_char_data = sess.get('new_character_data')
+
+            self.assertIsNotNone(updated_char_data)
+            # Assertions based on the issue description:
+            # Tiefling Warlock, CON 14, DEX 8
+            # Warlock hit die d8 (max 8). CON mod (14-10)//2 = 2. HP = 8 + 2 = 10.
+            # DEX mod (8-10)//2 = -1. AC = 10 + (-1) = 9.
+            # Tiefling speed = 30.
+            self.assertEqual(updated_char_data.get('max_hp'), 10)
+            self.assertEqual(updated_char_data.get('armor_class_base'), 9)
+            self.assertEqual(updated_char_data.get('speed'), 30)
+
+            # Verify that the mocks were called with the IDs from session
+            mock_race_query.get.assert_called_once_with(test_char_data_before_hp['race_id'])
+            mock_class_query.get.assert_called_once_with(test_char_data_before_hp['class_id'])
+
 
 if __name__ == '__main__':
     unittest.main()
