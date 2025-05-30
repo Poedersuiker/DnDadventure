@@ -125,8 +125,11 @@ def creation_stats():
 
     if request.method == 'POST':
         if request.form.get('action') == 'roll_stats':
-            rolled_stats = [roll_dice(num_dice=4, num_sides=6, drop_lowest=1) for _ in range(6)]
-            session['rolled_stats'] = rolled_stats
+            rolled_stats_data = []
+            for _ in range(6):
+                total, rolls = roll_dice(num_dice=4, num_sides=6, drop_lowest=1)
+                rolled_stats_data.append({'total': total, 'rolls': rolls})
+            session['rolled_stats'] = rolled_stats_data
             session.modified = True
             # Re-render the page to show the rolled stats
             return render_template('create_character_stats.html',
