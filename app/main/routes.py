@@ -237,18 +237,48 @@ def creation_background():
 def creation_skills():
     if not session.get('new_character_data', {}).get('background_name'):
         flash('Please select a background first.', 'error'); return redirect(url_for('main.creation_background'))
-    # ... (skill selection logic)
+
+    selected_class = Class.query.get(session['new_character_data']['class_id']) # Moved here for access in POST and GET
+
     if request.method == 'POST':
-        # Example: session['new_character_data']['class_skill_proficiencies'] = request.form.getlist('chosen_skill')
+        num_to_choose = selected_class.skill_proficiencies_option_count
+        chosen_skills = request.form.getlist('chosen_skill')
+
+        if num_to_choose == 0:
+            session['new_character_data']['class_skill_proficiencies'] = []
+        else:
+            # Basic validation: Check if the correct number of skills were chosen
+            if len(chosen_skills) != num_to_choose:
+                flash(f'Please select exactly {num_to_choose} skills.', 'error')
+                # Re-render the page with existing selections and error
+                return render_template('create_character_skills.html',
+                                       skill_options=json.loads(selected_class.skill_proficiencies_options or '[]'),
+                                       num_to_choose=num_to_choose,
+                                       saving_throws=json.loads(selected_class.proficiency_saving_throws or '[]'),
+                                       race_name=session['new_character_data'].get('race_name'),
+                                       class_name=selected_class.name,
+                                       background_name=session['new_character_data'].get('background_name'),
+                                       chosen_skills_on_error=chosen_skills) # Pass back selected skills
+
+            session['new_character_data']['class_skill_proficiencies'] = chosen_skills
+
         session.modified = True
+        flash('Skills selection saved!', 'success')
         return redirect(url_for('main.creation_hp'))
-    selected_class = Class.query.get(session['new_character_data']['class_id'])
-    return render_template('create_character_skills.html', skill_options=json.loads(selected_class.skill_proficiencies_options or '[]'), num_to_choose=selected_class.skill_proficiencies_option_count, saving_throws=json.loads(selected_class.proficiency_saving_throws or '[]'), race_name=session['new_character_data'].get('race_name'), class_name=selected_class.name, background_name=session['new_character_data'].get('background_name'))
+
+    # GET request part
+    return render_template('create_character_skills.html',
+                           skill_options=json.loads(selected_class.skill_proficiencies_options or '[]'),
+                           num_to_choose=selected_class.skill_proficiencies_option_count,
+                           saving_throws=json.loads(selected_class.proficiency_saving_throws or '[]'),
+                           race_name=session['new_character_data'].get('race_name'),
+                           class_name=selected_class.name,
+                           background_name=session['new_character_data'].get('background_name'))
 
 @bp.route('/creation/hp', methods=['GET'])
 @login_required
 def creation_hp():
-    if not session.get('new_character_data', {}).get('class_skill_proficiencies'): # Example check
+    if session.get('new_character_data', {}).get('class_skill_proficiencies') is None: # Example check
         flash('Please complete skills first.', 'error'); return redirect(url_for('main.creation_skills'))
     # ... (HP calculation logic)
     # Example: session['new_character_data']['max_hp'] = 10
