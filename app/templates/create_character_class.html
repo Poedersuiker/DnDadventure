@@ -21,13 +21,12 @@
     {% if classes %}
     <form method="POST" action="{{ url_for('main.creation_class') }}">
         <div class="list-group">
-            {% for class_item in classes %} {# Renamed to avoid conflict with class keyword #}
+            {% for class_item in classes %} {# classes is now a list of dicts from API #}
             <label class="list-group-item">
-                <input type="radio" name="class_id" value="{{ class_item.id }}" required> 
+                <input type="radio" name="class_index" value="{{ class_item.index }}" required>
                 <strong>{{ class_item.name }}</strong>
-                <p class="mb-1"><small>Hit Die: {{ class_item.hit_die }}</small></p>
-                {# Further details can be added here as needed, e.g., proficiencies, spellcasting ability #}
-                {# <p class="mb-1"><small>Proficiencies: {{ class_item.proficiencies_armor }}</small></p> #}
+                {# Hit Die is not available in the basic /api/classes listing. Removed. #}
+                {# Further details like proficiencies would require fetching from class_item.url #}
             </label>
             {% endfor %}
         </div>

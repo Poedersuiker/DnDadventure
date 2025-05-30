@@ -278,6 +278,158 @@ class TestMainRoutes(unittest.TestCase):
     # The original test_initial_gemini_prompt is now repurposed to check that send_chat_message uses system_instruction.
     # This seems like a reasonable distribution of concerns.
 
+    # --- Tests for /creation/class ---
+
+    @patch('app.main.routes.get_all_classes')
+    def test_creation_class_get_success(self, mock_get_all_classes):
+        """Test GET /creation/class with successful API call."""
+        mock_get_all_classes.return_value = [{'index': 'bard', 'name': 'Bard', 'url': '/api/classes/bard'}]
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = self.user.id
+            sess['_fresh'] = True
+            sess['new_character_data'] = {'race_name': 'TestHuman', 'race_index': 'human'}
+
+        response = self.client.get(url_for('main.creation_class'))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Choose Your Class', response.data)
+        self.assertIn(b'Bard', response.data)
+        mock_get_all_classes.assert_called_once()
+
+    @patch('app.main.routes.get_all_classes')
+    def test_creation_class_get_api_error(self, mock_get_all_classes):
+        """Test GET /creation/class when API call fails."""
+        mock_get_all_classes.side_effect = requests.exceptions.RequestException("API Error")
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = self.user.id
+            sess['_fresh'] = True
+            sess['new_character_data'] = {'race_name': 'TestHuman', 'race_index': 'human'}
+
+        response = self.client.get(url_for('main.creation_class'))
+        self.assertEqual(response.status_code, 200) # Page should still render
+        self.assertIn(b'Error fetching classes from the D&D API.', response.data)
+        self.assertNotIn(b'Bard', response.data) # No classes should be listed
+        mock_get_all_classes.assert_called_once()
+
+    def test_creation_class_get_no_race_selected(self):
+        """Test GET /creation/class when race is not selected in session."""
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = self.user.id
+            sess['_fresh'] = True
+            sess['new_character_data'] = {} # No race_name or race_index
+
+        response = self.client.get(url_for('main.creation_class'), follow_redirects=False)
+        self.assertEqual(response.status_code, 302) # Redirect
+        self.assertEqual(response.location, url_for('main.creation_race'))
+
+        # Check flash message after redirect
+        response_redirected = self.client.get(url_for('main.creation_class'))
+        self.assertIn(b'Please select a race first.', response_redirected.data)
+
+    @patch('app.main.routes.Class.query') # Mock the database query
+    @patch('app.main.routes.get_all_classes') # Mock the API call
+    def test_creation_class_post_success_api_only(self, mock_get_all_classes_api, mock_class_query):
+        """Test POST /creation/class successfully, API data, no local DB fallback."""
+        sample_classes_data = [{'index': 'wizard', 'name': 'Wizard', 'url': '...'}]
+        mock_get_all_classes_api.return_value = sample_classes_data
+        mock_class_query.filter_by.return_value.first.return_value = None # No local DB entry
+
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = self.user.id
+            sess['_fresh'] = True
+            sess['new_character_data'] = {'race_name': 'TestHuman', 'race_index': 'human'}
+
+        response = self.client.post(url_for('main.creation_class'), data={'class_index': 'wizard'}, follow_redirects=False)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.location, url_for('main.creation_stats'))
+
+        with self.client.session_transaction() as sess:
+            self.assertEqual(sess['new_character_data']['class_index'], 'wizard')
+            self.assertEqual(sess['new_character_data']['class_name'], 'Wizard')
+            self.assertIsNone(sess['new_character_data']['class_id'])
+
+        # Check flashed messages (success and warning)
+        response_redirected = self.client.get(url_for('main.creation_stats')) # Make a GET to where it was redirected
+        self.assertIn(b'Wizard selected!', response_redirected.data)
+        self.assertIn(b"Warning: Could not find a local database entry for class 'Wizard'", response_redirected.data)
+
+
+    @patch('app.main.routes.Class.query')
+    @patch('app.main.routes.get_all_classes')
+    def test_creation_class_post_success_api_with_local_db_fallback(self, mock_get_all_classes_api, mock_class_query):
+        """Test POST /creation/class, API data, with local DB fallback."""
+        sample_classes_data = [{'index': 'fighter', 'name': 'Fighter', 'url': '...'}]
+        mock_get_all_classes_api.return_value = sample_classes_data
+
+        mock_local_class = MagicMock(spec=Class)
+        mock_local_class.id = 5
+        mock_local_class.name = 'Fighter' # Ensure name matches for consistency
+        mock_class_query.filter_by.return_value.first.return_value = mock_local_class
+
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = self.user.id
+            sess['_fresh'] = True
+            sess['new_character_data'] = {'race_name': 'TestHuman', 'race_index': 'human'}
+
+        response = self.client.post(url_for('main.creation_class'), data={'class_index': 'fighter'}, follow_redirects=False)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.location, url_for('main.creation_stats'))
+
+        with self.client.session_transaction() as sess:
+            self.assertEqual(sess['new_character_data']['class_index'], 'fighter')
+            self.assertEqual(sess['new_character_data']['class_name'], 'Fighter')
+            self.assertEqual(sess['new_character_data']['class_id'], 5)
+
+        response_redirected = self.client.get(url_for('main.creation_stats'))
+        self.assertIn(b'Fighter selected!', response_redirected.data)
+        self.assertNotIn(b"Warning: Could not find a local database entry", response_redirected.data)
+
+
+    @patch('app.main.routes.get_all_classes')
+    def test_creation_class_post_no_selection(self, mock_get_all_classes):
+        """Test POST /creation/class with no class_index submitted."""
+        mock_get_all_classes.return_value = [{'index': 'bard', 'name': 'Bard', 'url': '...'}]
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = self.user.id
+            sess['_fresh'] = True
+            sess['new_character_data'] = {'race_name': 'TestHuman', 'race_index': 'human'}
+
+        response = self.client.post(url_for('main.creation_class'), data={}, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Please select a class.', response.data)
+
+    @patch('app.main.routes.get_all_classes')
+    def test_creation_class_post_invalid_index(self, mock_get_all_classes):
+        """Test POST /creation/class with an invalid class_index."""
+        mock_get_all_classes.return_value = [{'index': 'bard', 'name': 'Bard', 'url': '...'}]
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = self.user.id
+            sess['_fresh'] = True
+            sess['new_character_data'] = {'race_name': 'TestHuman', 'race_index': 'human'}
+
+        response = self.client.post(url_for('main.creation_class'), data={'class_index': 'nonexistent'}, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Selected class not found or API error.', response.data)
+
+    @patch('app.main.routes.get_all_classes')
+    def test_creation_class_post_api_error_on_post(self, mock_get_all_classes):
+        """Test POST /creation/class when the internal API call fails."""
+        # First call for re-rendering if error might succeed, second one (inside POST) fails
+        mock_get_all_classes.side_effect = [
+            [{'index': 'bard', 'name': 'Bard'}], # For potential re-render if initial check fails
+            requests.exceptions.RequestException("API Error on POST")
+        ]
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = self.user.id
+            sess['_fresh'] = True
+            sess['new_character_data'] = {'race_name': 'TestHuman', 'race_index': 'human'}
+
+        response = self.client.post(url_for('main.creation_class'), data={'class_index': 'bard'}, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Error fetching class details from the D&amp;D API.', response.data)
+
+
     # (Keep test_send_chat_message_refactored as is, it tests the ongoing chat functionality)
     @patch('app.gemini.Setting.query') 
     @patch('app.gemini.genai')         

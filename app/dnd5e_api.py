@@ -79,3 +79,58 @@ def get_all_races() -> list:
     """
     data = _make_request("/races")
     return data.get('results', [])
+
+
+def get_all_classes() -> list:
+    """
+    Fetches the list of all classes from the D&D 5e API.
+
+    Returns:
+        A list of class data obtained from the API.
+        Each class object in the list is a dictionary with 'index', 'name', and 'url'.
+        Returns an empty list if the 'results' key is not found in the API response.
+
+    Raises:
+        requests.exceptions.RequestException: If an error occurs while making the request.
+        json.JSONDecodeError: If an error occurs while decoding the JSON response.
+    """
+    data = _make_request("/classes")
+    return data.get('results', [])
+
+
+def get_class_details(class_index: str) -> dict:
+    """
+    Fetches detailed information for a specific class from the D&D 5e API.
+
+    Args:
+        class_index: The index of the class (e.g., 'wizard', 'fighter').
+
+    Returns:
+        A dictionary containing the detailed JSON data for the specified class.
+
+    Raises:
+        requests.exceptions.RequestException: If an error occurs while making the request.
+        json.JSONDecodeError: If an error occurs while decoding the JSON response.
+    """
+    endpoint = f"/classes/{class_index}"
+    return _make_request(endpoint)
+
+
+def get_class_level_details(class_index: str, level: int) -> dict:
+    """
+    Fetches detailed information for a specific class at a specific level from the D&D 5e API.
+
+    Args:
+        class_index: The index of the class (e.g., 'wizard', 'fighter').
+        level: The level for which to fetch details (e.g., 1, 2).
+
+    Returns:
+        A dictionary containing the detailed JSON data for the specified class at the given level.
+        This typically includes features gained at that level and spellcasting progression (if any).
+
+    Raises:
+        requests.exceptions.RequestException: If an error occurs while making the request.
+        json.JSONDecodeError: If an error occurs while decoding the JSON response.
+    """
+    endpoint = f"/classes/{class_index}/levels/{level}"
+    return _make_request(endpoint)
