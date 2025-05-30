@@ -81,11 +81,13 @@ class CharacterLevel(db.Model):
 
 # Association table for Character and Weapon (Many-to-Many)
 character_weapon_association = db.Table('character_weapon_association',
-    db.Column('character_id', db.Integer, db.ForeignKey('character.id'), primary_key=True),
-    db.Column('weapon_id', db.Integer, db.ForeignKey('weapon.id'), primary_key=True),
+    db.Column('id', db.Integer, primary_key=True, autoincrement=True), # Added primary key for easier referencing if needed
+    db.Column('character_id', db.Integer, db.ForeignKey('character.id'), nullable=False),
+    db.Column('weapon_id', db.Integer, db.ForeignKey('weapon.id'), nullable=False),
     db.Column('quantity', db.Integer, default=1),
     db.Column('is_equipped_main_hand', db.Boolean, default=False),
-    db.Column('is_equipped_off_hand', db.Boolean, default=False)
+    db.Column('is_equipped_off_hand', db.Boolean, default=False),
+    db.UniqueConstraint('character_id', 'weapon_id', name='uq_character_weapon') # Ensure a character doesn't have multiple stacks of the exact same weapon type; they should increment quantity.
 )
 
 class Weapon(db.Model):
@@ -105,8 +107,30 @@ class Weapon(db.Model):
     throw_range_long = db.Column(db.Integer, nullable=True) # Parsed long throw range.
     is_martial = db.Column(db.Boolean, default=False)
 
+    # Relationship for Character-Weapon association
+    # characters = db.relationship('Character', secondary=character_weapon_association, backref=db.backref('weapons', lazy='dynamic'))
+    # The above is one way; another is to have it on Character model if preferred.
+    # Let's define it on Character model for more direct access like character.weapons.
+
     def __repr__(self):
         return f'<Weapon {self.name}>'
+
+# Add the relationship to Character model (if not already there in this form)
+Character.weapons = db.relationship(
+    'Weapon',
+    secondary=character_weapon_association,
+    back_populates='characters_associated', # New backref name for Weapon side
+    lazy='dynamic' # Or 'select', 'joined' as needed
+)
+
+# Add a backref to Weapon model for the association
+Weapon.characters_associated = db.relationship(
+    'Character',
+    secondary=character_weapon_association,
+    back_populates='weapons', # Matches the relationship name in Character
+    lazy='dynamic'
+)
+
 
 class Spell(db.Model):
     __tablename__ = 'spell'

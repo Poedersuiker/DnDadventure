@@ -2812,5 +2812,3 @@ def update_notes(character_id):
         db.session.rollback()
         current_app.logger.error(f"Error saving player notes for char {character_id}: {str(e)}")
         return jsonify(status="error", message="Database error while saving notes."), 500
-
-[end of app/main/routes.py]

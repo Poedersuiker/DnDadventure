@@ -5,6 +5,7 @@ from flask_login import LoginManager
 from flask_migrate import Migrate # Added Migrate import
 from werkzeug.middleware.proxy_fix import ProxyFix # Import ProxyFix
 from flask_babel import Babel
+from sqlalchemy.exc import OperationalError # Import OperationalError
 
 # Modified to make instance folder easily accessible for config loading
 app = Flask(__name__, instance_relative_config=True) 
@@ -106,7 +107,13 @@ def load_and_initialize_settings(current_app): # Restored signature
 # Conditionally call the function after db is initialized and app config is loaded.
 # This prevents it from running during test imports if app.config['TESTING'] is True.
 if not app.config.get('TESTING', False):
-    load_and_initialize_settings(app)
+    try:
+        load_and_initialize_settings(app)
+    except OperationalError as e:
+        app.logger.warning(f"Could not load settings from DB (table might not exist yet, run 'flask db upgrade'): {e}")
+    except Exception as e: # Catch any other unexpected errors during settings load
+        app.logger.error(f"Unexpected error during load_and_initialize_settings: {e}")
+
 
 # Custom Jinja Filter for JSON
 def from_json_filter(value):
