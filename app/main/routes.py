@@ -381,10 +381,15 @@ def creation_equipment():
                         current_app.logger.warning(f"Skipping non-dict entry in starting_equipment for class {class_obj.id}: {entry}")
                         continue
 
-                    if 'item' in entry and isinstance(entry['item'], dict) and 'name' in entry['item']:
-                        item_name = entry['item']['name']
-                        quantity = entry.get('quantity', 1)
-                        local_fixed_items.append({'name': item_name, 'quantity': quantity})
+                    # Check for fixed items (now under 'equipment' key)
+                    if 'equipment' in entry and isinstance(entry['equipment'], dict) and 'name' in entry['equipment']:
+                        item_name = entry['equipment'].get('name')
+                        quantity = entry.get('quantity', 1) # Quantity is at the same level as 'equipment' dict
+                        if item_name: # Ensure item_name was found
+                            local_fixed_items.append({'name': item_name, 'quantity': quantity})
+                        else:
+                            current_app.logger.warning(f"Skipping entry with 'equipment' key but no 'name': {entry}")
+                    # Check for choice groups (remains the same)
                     elif 'choice' in entry and isinstance(entry['choice'], dict):
                         choice_data = entry['choice']
                         current_group_options = []
@@ -396,22 +401,34 @@ def creation_equipment():
                             options_data = []
 
                         for opt_idx, opt in enumerate(options_data):
-                            if not isinstance(opt, dict) or 'item' not in opt or not isinstance(opt['item'], dict) or 'name' not in opt['item']:
+                            # Assuming options still use 'item' key internally for their structure as per original prompt
+                            # If options also use 'equipment', this part needs adjustment too.
+                            # For now, assuming options are like: {"item": {"name": "Mace"}, "quantity": 1}
+                            item_data_in_option = opt.get('item') # Default for structure from API (SRD)
+                            if not item_data_in_option and 'equipment' in opt : # if structure is like fixed items
+                                item_data_in_option = opt.get('equipment')
+
+                            if not isinstance(opt, dict) or not item_data_in_option or not isinstance(item_data_in_option, dict) or 'name' not in item_data_in_option:
                                 current_app.logger.warning(f"Skipping invalid option in choice for class {class_obj.id}: {opt}")
                                 continue
-                            item_name = opt['item']['name']
-                            item_quantity = opt.get('quantity', 1)
-                            option_html_id = f"option_{len(local_choice_groups)}_{opt_idx}" # This is the value for radio button
-                            current_group_options.append({
-                                'id': option_html_id,
-                                'name': item_name,
-                                'quantity': item_quantity,
-                                'label': f"{item_name} (x{item_quantity})"
-                            })
+
+                            item_name = item_data_in_option.get('name')
+                            item_quantity = opt.get('quantity', 1) # Quantity for option is at opt level
+
+                            if item_name:
+                                option_html_id = f"option_{len(local_choice_groups)}_{opt_idx}"
+                                current_group_options.append({
+                                    'id': option_html_id,
+                                    'name': item_name,
+                                    'quantity': item_quantity,
+                                    'label': f"{item_name} (x{item_quantity})"
+                                })
+                            else:
+                                current_app.logger.warning(f"Skipping option with no name in choice for class {class_obj.id}: {opt}")
 
                         if current_group_options:
                             local_choice_groups.append({
-                                'id': group_id, # This is the name for radio button group
+                                'id': group_id,
                                 'desc': choice_data.get('desc', f'Choose {choice_data.get("count", 1)}'),
                                 'choose': choice_data.get('count', 1),
                                 'options': current_group_options
