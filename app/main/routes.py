@@ -637,26 +637,102 @@ def creation_review():
         )
         db.session.add(new_char_level_1)
 
-        # ... (equipment and coinage parsing/adding logic) ...
+        # Process final_equipment
+        final_equipment = char_data.get('final_equipment', [])
+        if final_equipment:
+            for item_entry in final_equipment:
+                item_name = item_entry.get('name')
+                item_quantity = item_entry.get('quantity', 1)
 
-        # Assign default Dagger
-        dagger = Weapon.query.filter_by(name="Dagger").first()
-        if dagger:
-            new_weapon_association = CharacterWeaponAssociation(
-                character_id=new_char.id,
-                weapon_id=dagger.id,
-                quantity=1,
-                is_equipped_main_hand=False,
-                is_equipped_off_hand=False
-            )
-            db.session.add(new_weapon_association)
-            current_app.logger.info(f"Assigned Dagger to new character {new_char.name}")
+                if not item_name:
+                    current_app.logger.warning(f"Skipping item with no name in final_equipment: {item_entry}")
+                    continue
+
+                # Try to parse as coinage first
+                parsed_coins = parse_coinage(item_name) # from app.utils
+
+                is_coinage = False
+                for coin_type, amount in parsed_coins.items():
+                    if amount > 0: # parse_coinage sets amount > 0 if that coin type is found
+                        is_coinage = True
+                        # Coinage table expects 'Gold', 'Silver', 'Copper' as name
+                        # The `parse_coinage` function returns keys like 'Gold', 'Silver', 'Copper'
+                        # The value from `parse_coinage` is the actual amount (e.g., 10 for "10 gp")
+
+                        existing_coinage = Coinage.query.filter_by(character_id=new_char.id, name=coin_type).first()
+                        if existing_coinage:
+                            existing_coinage.quantity += amount # Add the parsed amount
+                        else:
+                            new_coinage_entry = Coinage(
+                                character_id=new_char.id,
+                                name=coin_type, # 'Gold', 'Silver', or 'Copper'
+                                quantity=amount  # The actual amount of coins
+                            )
+                            db.session.add(new_coinage_entry)
+                        current_app.logger.info(f"Processed {amount} {coin_type} for character {new_char.id}")
+
+                if is_coinage:
+                    continue # Move to next item in final_equipment
+
+                # If not coinage, check if it's a known Weapon
+                weapon = Weapon.query.filter(db.func.lower(Weapon.name) == db.func.lower(item_name)).first()
+                if weapon:
+                    # Check if an association already exists (e.g. if same weapon chosen multiple times)
+                    existing_association = CharacterWeaponAssociation.query.filter_by(
+                        character_id=new_char.id,
+                        weapon_id=weapon.id
+                    ).first()
+                    if existing_association:
+                        existing_association.quantity += item_quantity
+                        current_app.logger.info(f"Updated quantity for weapon {weapon.name} for char {new_char.id}")
+                    else:
+                        new_weapon_association = CharacterWeaponAssociation(
+                            character_id=new_char.id,
+                            weapon_id=weapon.id,
+                            quantity=item_quantity,
+                            # Set default equip status as needed, false for now
+                            is_equipped_main_hand=False,
+                            is_equipped_off_hand=False
+                        )
+                        db.session.add(new_weapon_association)
+                        current_app.logger.info(f"Added weapon {weapon.name} to char {new_char.id}")
+                else:
+                    # If not a known weapon, treat as a generic item
+                    # Check if item already exists to update quantity
+                    existing_item = Item.query.filter_by(character_id=new_char.id, name=item_name).first()
+                    if existing_item:
+                        existing_item.quantity += item_quantity
+                        current_app.logger.info(f"Updated quantity for item {item_name} for char {new_char.id}")
+                    else:
+                        new_item = Item(
+                            character_id=new_char.id,
+                            name=item_name,
+                            quantity=item_quantity,
+                            description=f"{item_name} from starting equipment." # Optional: add a default description
+                        )
+                        db.session.add(new_item)
+                        current_app.logger.info(f"Added item {item_name} to char {new_char.id}")
         else:
-            current_app.logger.warning("Could not find 'Dagger' in Weapon table to assign to new character.")
+            current_app.logger.info(f"No final_equipment found in session for character {new_char.name if new_char else 'Unknown'}")
 
-        db.session.commit() 
-        session.pop('new_character_data', None) 
-        flash('Character created successfully!', 'success')
+        # Remove or comment out the old default Dagger logic
+        # dagger = Weapon.query.filter_by(name="Dagger").first()
+        # if dagger:
+        #     new_weapon_association = CharacterWeaponAssociation(
+        #         character_id=new_char.id,
+        #         weapon_id=dagger.id,
+        #         quantity=1,
+        #         is_equipped_main_hand=False,
+        #         is_equipped_off_hand=False
+        #     )
+        #     db.session.add(new_weapon_association)
+        #     current_app.logger.info(f"Assigned Dagger to new character {new_char.name}")
+        # else:
+        #     current_app.logger.warning("Could not find 'Dagger' in Weapon table to assign to new character.")
+
+        db.session.commit()
+        session.pop('new_character_data', None)
+        flash('Character created successfully with selected equipment!', 'success') # Updated flash message
         return redirect(url_for('main.index'))
 
     return render_template('create_character_review.html', data=display_data, race=race, char_class=char_class_obj, submitted_name=char_data.get('character_name_draft',''), submitted_alignment=char_data.get('alignment_draft',''), submitted_description=char_data.get('description_draft',''))
