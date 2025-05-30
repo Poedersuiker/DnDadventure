@@ -1,6 +1,7 @@
 import requests
 import json
 import time # Added for potential sleep
+from flask import current_app # Added current_app
 from app import app, db
 from app.models import Class
 
@@ -17,23 +18,41 @@ def get_proficiencies(prof_data_list, category_keywords):
             extracted_profs.append(p.get('name'))
     return list(set(extracted_profs))
 
-def populate_classes_data():
+def populate_classes_data(task_id=None): # Added task_id
     """
     Fetches class data from the D&D 5e API and populates the database.
+    Optionally reports progress if task_id is provided.
     """
     print("Starting to populate classes...")
 
     with app.app_context():
+        if task_id:
+            if 'population_tasks' not in current_app.extensions:
+                current_app.extensions['population_tasks'] = {}
+            current_app.extensions['population_tasks'][task_id] = {
+                'progress': 0,
+                'status': 'Starting class population...'
+            }
+
         try:
             response = requests.get(BASE_API_URL + "/api/classes")
             response.raise_for_status()
             classes_summary = response.json().get('results', [])
-            print(f"Found {len(classes_summary)} classes in the API.")
+            total_classes = len(classes_summary)
+            print(f"Found {total_classes} classes in the API.")
+            if task_id:
+                current_app.extensions['population_tasks'][task_id]['status'] = f"Found {total_classes} classes. Starting processing..."
         except requests.exceptions.RequestException as e:
-            print(f"Error fetching class list: {e}")
+            error_msg = f"Error fetching class list: {e}"
+            print(error_msg)
+            if task_id:
+                current_app.extensions['population_tasks'][task_id] = {'progress': 0, 'status': error_msg, 'error': True}
             return
-        except json.JSONDecodeError:
-            print("Error decoding JSON from class list response.")
+        except json.JSONDecodeError as e:
+            error_msg = f"Error decoding JSON from class list response: {e}"
+            print(error_msg)
+            if task_id:
+                current_app.extensions['population_tasks'][task_id] = {'progress': 0, 'status': error_msg, 'error': True}
             return
 
         for i, class_summary in enumerate(classes_summary):
@@ -43,23 +62,40 @@ def populate_classes_data():
                 continue
 
             class_name_for_print = class_summary.get('name', class_index)
-            print(f"Processing class {i+1}/{len(classes_summary)}: {class_name_for_print}")
+            print(f"Processing class {i+1}/{total_classes}: {class_name_for_print}")
+
+            if task_id:
+                percentage = int(((i + 1) / total_classes) * 100)
+                current_app.extensions['population_tasks'][task_id].update({
+                    'progress': percentage,
+                    'status': f"Processing class {i+1}/{total_classes}: {class_name_for_print}"
+                })
 
             existing_class = Class.query.filter_by(name=class_name_for_print).first()
             if existing_class:
-                print(f"Class '{class_name_for_print}' already exists in the database. Checking for level_specific_data...")
-                if existing_class.level_specific_data and existing_class.level_specific_data != '{}': # Check if already populated
-                    print(f"level_specific_data already populated for '{class_name_for_print}'. Skipping population of this field.")
-                else: # Field exists but is empty or default, try to populate it
-                    print(f"Attempting to populate level_specific_data for existing class '{class_name_for_print}'.")
-                    # Logic to fetch and populate level_specific_data for existing_class
+                status_update_msg = f"Class '{class_name_for_print}' already exists. Checking for level_specific_data..."
+                print(status_update_msg)
+                if task_id:
+                    current_app.extensions['population_tasks'][task_id]['status'] = status_update_msg
+
+                if existing_class.level_specific_data and existing_class.level_specific_data != '{}':
+                    status_update_msg = f"level_specific_data already populated for '{class_name_for_print}'. Skipping."
+                    print(status_update_msg)
+                    if task_id:
+                         current_app.extensions['population_tasks'][task_id]['status'] = status_update_msg
+                else:
+                    status_update_msg = f"Attempting to populate level_specific_data for existing class '{class_name_for_print}'."
+                    print(status_update_msg)
+                    if task_id:
+                        current_app.extensions['population_tasks'][task_id]['status'] = status_update_msg
+
                     all_levels_data_for_this_class = {}
                     class_levels_url = f"{BASE_API_URL}/api/classes/{class_index}/levels"
                     try:
                         levels_response = requests.get(class_levels_url)
                         levels_response.raise_for_status()
-                        levels_api_data = levels_response.json()
-                        for level_entry in levels_api_data:
+                        levels_api_data_existing = levels_response.json() # Renamed to avoid clash
+                        for level_entry in levels_api_data_existing:
                             level_num_int = level_entry.get('level')
                             if not level_num_int: continue
                             current_level_features = [feature.get('name', 'Unknown Feature') for feature in level_entry.get('features', [])]
@@ -69,15 +105,26 @@ def populate_classes_data():
                                 "asi_count": asi_this_level
                             }
                         existing_class.level_specific_data = json.dumps(all_levels_data_for_this_class if all_levels_data_for_this_class else {})
-                        print(f"Populated level_specific_data for '{class_name_for_print}'.")
+                        status_update_msg = f"Populated level_specific_data for '{class_name_for_print}'."
+                        print(status_update_msg)
+                        if task_id:
+                            current_app.extensions['population_tasks'][task_id]['status'] = status_update_msg
                     except requests.exceptions.RequestException as e_level:
-                        print(f"Error fetching level data for {class_index}: {e_level}")
-                    except json.JSONDecodeError:
-                        print(f"Error decoding JSON for {class_index} levels.")
+                        error_msg = f"Error fetching level data for {class_index}: {e_level}"
+                        print(error_msg)
+                        if task_id:
+                            current_app.extensions['population_tasks'][task_id]['status'] = error_msg
+                    except json.JSONDecodeError as e_json:
+                        error_msg = f"Error decoding JSON for {class_index} levels: {e_json}"
+                        print(error_msg)
+                        if task_id:
+                            current_app.extensions['population_tasks'][task_id]['status'] = error_msg
                     except Exception as e_gen:
-                        print(f"An unexpected error occurred while processing levels for {class_index}: {e_gen}")
-                # Continue to next class after attempting to update or confirming existing data
-                continue
+                        error_msg = f"An unexpected error occurred while processing levels for {class_index}: {e_gen}"
+                        print(error_msg)
+                        if task_id:
+                            current_app.extensions['population_tasks'][task_id]['status'] = error_msg
+                continue # Move to next class
 
 
             try:
@@ -86,16 +133,24 @@ def populate_classes_data():
                 detail_response.raise_for_status()
                 class_data = detail_response.json()
             except requests.exceptions.RequestException as e:
-                print(f"Error fetching details for {class_index}: {e}")
+                error_msg = f"Error fetching details for {class_index} ({class_name_for_print}): {e}"
+                print(error_msg)
+                if task_id:
+                    current_app.extensions['population_tasks'][task_id]['status'] = error_msg
                 continue
-            except json.JSONDecodeError:
-                print(f"Error decoding JSON for {class_index}.")
+            except json.JSONDecodeError as e:
+                error_msg = f"Error decoding JSON for {class_index} ({class_name_for_print}): {e}"
+                print(error_msg)
+                if task_id:
+                    current_app.extensions['population_tasks'][task_id]['status'] = error_msg
                 continue
             
             # Fetch and process level-specific data (features, ASIs)
-            all_levels_data_for_this_class = {}
+            # This variable will store data for the NEW class being added
+            all_levels_data_for_new_class = {} # Renamed to avoid confusion
             class_levels_url = f"{BASE_API_URL}/api/classes/{class_index}/levels"
             print(f"Fetching detailed level data for {class_name_for_print} from {class_levels_url}")
+            levels_api_data = None # Initialize before try block
             try:
                 levels_response = requests.get(class_levels_url)
                 levels_response.raise_for_status()
@@ -114,19 +169,27 @@ def populate_classes_data():
 
                     asi_this_level = sum(1 for feature_name in current_level_features if "Ability Score Improvement" in feature_name)
                     
-                    all_levels_data_for_this_class[str(level_num_int)] = {
+                    all_levels_data_for_new_class[str(level_num_int)] = { # Use renamed variable
                         "features": current_level_features,
                         "asi_count": asi_this_level
                     }
                 print(f"Successfully processed detailed level data for {class_name_for_print}.")
                 # Optional: time.sleep(0.1) # Be respectful to the API
             except requests.exceptions.RequestException as e_level:
-                print(f"Error fetching detailed level data for {class_name_for_print}: {e_level}")
-            except json.JSONDecodeError:
-                print(f"Error decoding JSON for {class_name_for_print} detailed levels.")
+                error_msg = f"Error fetching detailed level data for {class_name_for_print}: {e_level}"
+                print(error_msg)
+                if task_id:
+                    current_app.extensions['population_tasks'][task_id]['status'] = error_msg
+            except json.JSONDecodeError as e_json:
+                error_msg = f"Error decoding JSON for {class_name_for_print} detailed levels: {e_json}"
+                print(error_msg)
+                if task_id:
+                    current_app.extensions['population_tasks'][task_id]['status'] = error_msg
             except Exception as e_gen: # Catch any other unexpected error during level processing
-                print(f"An unexpected error occurred while processing detailed levels for {class_name_for_print}: {e_gen}")
-
+                error_msg = f"An unexpected error occurred while processing detailed levels for {class_name_for_print}: {e_gen}"
+                print(error_msg)
+                if task_id:
+                    current_app.extensions['population_tasks'][task_id]['status'] = error_msg
 
             spellcasting_data = class_data.get('spellcasting', {})
             if not spellcasting_data and class_data.get('spellcasting_api'): # D&D API inconsistency
@@ -138,10 +201,15 @@ def populate_classes_data():
                     spellcasting_data['spellcasting_ability'] = spellcasting_data_specific.get('spellcasting_ability')
                     # Note: spell slots are per level, not globally on spellcasting object in dnd5eapi
                 except requests.exceptions.RequestException as e:
-                    print(f"Error fetching specific spellcasting details for {class_index}: {e}")
-                except json.JSONDecodeError:
-                    print(f"Error decoding specific spellcasting JSON for {class_index}.")
-
+                    error_msg = f"Error fetching specific spellcasting details for {class_index}: {e}"
+                    print(error_msg)
+                    if task_id:
+                        current_app.extensions['population_tasks'][task_id]['status'] = error_msg
+                except json.JSONDecodeError as e_json:
+                    error_msg = f"Error decoding specific spellcasting JSON for {class_index}: {e_json}"
+                    print(error_msg)
+                    if task_id:
+                        current_app.extensions['population_tasks'][task_id]['status'] = error_msg
 
             # Process spell slots (already present in the original script, but ensure it uses levels_api_data)
             spell_slots_by_level_map = {}
@@ -210,24 +278,47 @@ def populate_classes_data():
                     cantrips_known_by_level=json.dumps(cantrips_known_map if cantrips_known_map else {}),
                     spells_known_by_level=json.dumps(spells_known_map if spells_known_map else {}),
                     can_prepare_spells=can_prepare,
-                    level_specific_data=json.dumps(all_levels_data_for_this_class if all_levels_data_for_this_class else {})
+                    level_specific_data=json.dumps(all_levels_data_for_new_class if all_levels_data_for_new_class else {}) # Use renamed variable
                 )
                 db.session.add(new_class)
                 print(f"Added '{new_class.name}' to session.")
             except KeyError as e:
-                print(f"Missing critical key for class {class_index}: {e}. Skipping this class.")
+                error_msg = f"Missing critical key for class {class_index} ({class_name_for_print}): {e}. Skipping this class."
+                print(error_msg)
+                if task_id:
+                    current_app.extensions['population_tasks'][task_id]['status'] = error_msg
                 continue
             except Exception as e: # General exception during Class object creation
-                print(f"An unexpected error occurred creating Class object for {class_index}: {e}")
+                error_msg = f"An unexpected error occurred creating Class object for {class_index} ({class_name_for_print}): {e}"
+                print(error_msg)
+                if task_id:
+                    current_app.extensions['population_tasks'][task_id]['status'] = error_msg
                 continue
         
         # Moved commit outside the loop to commit all new classes at once
         try:
+            if task_id:
+                current_app.extensions['population_tasks'][task_id].update({
+                    'progress': 100, # All processing presumed done
+                    'status': 'Committing new classes to database...'
+                })
             db.session.commit()
             print("All new classes processed and session committed to database.")
+            if task_id:
+                current_app.extensions['population_tasks'][task_id].update({
+                    'progress': 100,
+                    'status': 'Class population complete.'
+                })
         except Exception as e:
             db.session.rollback()
-            print(f"Error committing classes to database: {e}")
+            error_msg = f"Error committing classes to database: {e}"
+            print(error_msg)
+            if task_id:
+                current_app.extensions['population_tasks'][task_id].update({
+                    # Keep progress as is or set to a specific error progress
+                    'status': error_msg,
+                    'error': True
+                })
 
 if __name__ == '__main__':
     populate_classes_data()

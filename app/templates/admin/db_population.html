@@ -4,53 +4,230 @@
 
 {% block admin_db_population %}
   <h2>Database Population</h2>
-  <p>Trigger scripts to populate the database with data from dnd5eapi.co. Check the server console for detailed progress.</p>
+  <p>Trigger scripts to populate the database. Progress will be shown below each section.</p>
   
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for category, message in messages %}
-        <div class="alert alert-{{ category }}">{{ message }}</div>
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
       {% endfor %}
     {% endif %}
   {% endwith %}
 
   <div class="row">
-    <div class="col-md-4 mb-3">
+    <!-- Races -->
+    <div class="col-md-6 mb-4">
       <div class="admin-action-item p-3 border rounded">
         <h4>Populate Races</h4>
         <p>Adds D&D races to the database.</p>
-        <form method="POST" action="{{ url_for('admin.run_populate_races') }}" style="display: inline;">
-          <button type="submit" class="btn btn-primary w-100" onclick="return confirm('Are you sure you want to populate races?');">Populate Races</button>
+        <form id="populate-races-form" method="POST" action="{{ url_for('admin.run_populate_races') }}">
+          <button id="populate-races-btn" type="submit" class="btn btn-primary w-100">Populate Races</button>
         </form>
+        <div class="progress mt-2" style="height: 25px; display: none;" id="progress-bar-races-container">
+          <div id="progress-bar-races" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+            <span id="progress-bar-races-status" class="text-white">0%</span>
+          </div>
+        </div>
+        <div id="status-message-races" class="mt-1"></div>
       </div>
     </div>
-    <div class="col-md-4 mb-3">
+
+    <!-- Classes -->
+    <div class="col-md-6 mb-4">
       <div class="admin-action-item p-3 border rounded">
         <h4>Populate Classes</h4>
         <p>Adds D&D classes to the database.</p>
-        <form method="POST" action="{{ url_for('admin.run_populate_classes') }}" style="display: inline;">
-          <button type="submit" class="btn btn-primary w-100" onclick="return confirm('Are you sure you want to populate classes?');">Populate Classes</button>
+        <form id="populate-classes-form" method="POST" action="{{ url_for('admin.run_populate_classes') }}">
+          <button id="populate-classes-btn" type="submit" class="btn btn-primary w-100">Populate Classes</button>
         </form>
+        <div class="progress mt-2" style="height: 25px; display: none;" id="progress-bar-classes-container">
+          <div id="progress-bar-classes" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+            <span id="progress-bar-classes-status" class="text-white">0%</span>
+          </div>
+        </div>
+        <div id="status-message-classes" class="mt-1"></div>
       </div>
     </div>
-    <div class="col-md-4 mb-3">
+
+    <!-- Spells -->
+    <div class="col-md-6 mb-4">
       <div class="admin-action-item p-3 border rounded">
         <h4>Populate Spells</h4>
         <p>Adds D&D spells to the database.</p>
-        <form method="POST" action="{{ url_for('admin.run_populate_spells') }}" style="display: inline;">
-          <button type="submit" class="btn btn-primary w-100" onclick="return confirm('Are you sure you want to populate spells? This can take a moment.');">Populate Spells</button>
+        <form id="populate-spells-form" method="POST" action="{{ url_for('admin.run_populate_spells') }}">
+          <button id="populate-spells-btn" type="submit" class="btn btn-primary w-100">Populate Spells</button>
         </form>
+        <div class="progress mt-2" style="height: 25px; display: none;" id="progress-bar-spells-container">
+          <div id="progress-bar-spells" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+            <span id="progress-bar-spells-status" class="text-white">0%</span>
+          </div>
+        </div>
+        <div id="status-message-spells" class="mt-1"></div>
       </div>
     </div>
-    <div class="col-md-4 mb-3">
+
+    <!-- Weapons -->
+    <div class="col-md-6 mb-4">
       <div class="admin-action-item p-3 border rounded">
         <h4>Populate Weapons</h4>
-        <p>Adds a predefined list of D&D weapons to the database. Checks for existing weapons by name to avoid duplicates.</p>
-        <form method="POST" action="{{ url_for('admin.run_populate_weapons') }}" style="display: inline;">
-            <input type="submit" value="Populate Weapons" class="btn btn-primary w-100" onclick="return confirm('Are you sure you want to run the weapon population script? This will add weapons to the database. Existing weapons with the same name will be skipped.');">
+        <p>Adds a predefined list of D&D weapons to the database.</p>
+        <form id="populate-weapons-form" method="POST" action="{{ url_for('admin.run_populate_weapons') }}">
+          <button id="populate-weapons-btn" type="submit" class="btn btn-primary w-100">Populate Weapons</button>
         </form>
+        <div class="progress mt-2" style="height: 25px; display: none;" id="progress-bar-weapons-container">
+          <div id="progress-bar-weapons" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+            <span id="progress-bar-weapons-status" class="text-white">0%</span>
+          </div>
+        </div>
+        <div id="status-message-weapons" class="mt-1"></div>
       </div>
     </div>
   </div>
-  <p><small>Note: These operations can take some time. The page will reload when the process is initiated. Monitor server logs for detailed output and completion status.</small></p>
+
+<script>
+$(document).ready(function() {
+    let taskIntervals = {};
+    let taskStates = {}; // Stores { taskId: '...', running: true/false, error: true/false }
+
+    function startPopulation(scriptType, formId, buttonId, progressBarId, statusMessageId, progressBarContainerId) {
+        if (taskStates[scriptType] && taskStates[scriptType].running) {
+            // Optionally provide more specific feedback or just ignore
+            // For example: $('#' + statusMessageId).text('A ' + scriptType + ' population task is already running.');
+            console.warn('Task for ' + scriptType + ' is already running.');
+            return;
+        }
+
+        const form = $('#' + formId);
+        const actionUrl = form.attr('action');
+        const button = $('#' + buttonId);
+        const progressBar = $('#' + progressBarId);
+        const progressBarStatus = progressBar.find('span'); // Ensure this targets the span inside the bar
+        const statusMessage = $('#' + statusMessageId);
+        const progressBarContainer = $('#' + progressBarContainerId);
+
+        button.prop('disabled', true);
+        progressBarContainer.show();
+        progressBar.css('width', '0%').attr('aria-valuenow', 0).removeClass('bg-danger bg-success').addClass('bg-primary');
+        progressBarStatus.text('0%'); // Update span text
+        statusMessage.text('Initializing...');
+
+        if (taskIntervals[scriptType]) {
+            clearInterval(taskIntervals[scriptType]);
+            delete taskIntervals[scriptType];
+        }
+        // Reset state for this script type
+        taskStates[scriptType] = { taskId: null, running: true, error: false };
+
+
+        $.ajax({
+            url: actionUrl,
+            type: 'POST',
+            success: function(response) {
+                if (response.task_id) {
+                    taskStates[scriptType].taskId = response.task_id;
+                    statusMessage.text('Population started. Task ID: ' + response.task_id);
+                    progressBar.removeClass('bg-danger bg-success').addClass('bg-primary');
+                    taskIntervals[scriptType] = setInterval(function() {
+                        checkProgress(scriptType, response.task_id, progressBarId, statusMessageId, buttonId);
+                    }, 2000);
+                } else {
+                    statusMessage.text(response.message || 'Population started but no task ID received.');
+                    button.prop('disabled', false);
+                    progressBarContainer.hide();
+                    taskStates[scriptType].running = false;
+                }
+            },
+            error: function(xhr, status, error) {
+                const errorMsg = xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Error starting population script.';
+                statusMessage.text(errorMsg);
+                button.prop('disabled', false);
+                progressBarContainer.hide();
+                taskStates[scriptType].running = false;
+                taskStates[scriptType].error = true;
+            }
+        });
+    }
+
+    function checkProgress(scriptType, taskId, progressBarId, statusMessageId, buttonId) {
+        $.ajax({
+            url: '/admin/db-populate/progress/' + taskId,
+            type: 'GET',
+            success: function(response) {
+                const progressBar = $('#' + progressBarId);
+                const progressBarStatus = progressBar.find('span'); // Target span
+                const statusMessage = $('#' + statusMessageId);
+                const button = $('#' + buttonId);
+
+                progressBar.css('width', response.progress + '%').attr('aria-valuenow', response.progress);
+                progressBarStatus.text(response.progress + '%'); // Update span text
+                statusMessage.text(response.status);
+
+                if (response.error) {
+                    progressBar.removeClass('bg-primary bg-success').addClass('bg-danger');
+                } else if (response.progress >= 100) {
+                    progressBar.removeClass('bg-primary bg-danger').addClass('bg-success');
+                } else {
+                    progressBar.removeClass('bg-danger bg-success').addClass('bg-primary');
+                }
+
+                if (response.progress >= 100 || response.error) {
+                    clearInterval(taskIntervals[scriptType]);
+                    delete taskIntervals[scriptType];
+                    button.prop('disabled', false);
+                    taskStates[scriptType].running = false;
+                    if(response.error) taskStates[scriptType].error = true;
+                }
+            },
+            error: function(xhr, status, error) {
+                const statusMessage = $('#' + statusMessageId);
+                const button = $('#' + buttonId);
+                const progressBar = $('#' + progressBarId);
+                const progressBarStatus = progressBar.find('span'); // Target span
+
+
+                statusMessage.text('Error fetching progress or task ID not found.');
+                progressBar.removeClass('bg-primary bg-success').addClass('bg-danger');
+                progressBar.css('width', '100%'); // Show full error bar
+                progressBarStatus.text('Error'); // Update span text
+
+                clearInterval(taskIntervals[scriptType]);
+                delete taskIntervals[scriptType];
+                button.prop('disabled', false);
+
+                if(taskStates[scriptType]) {
+                  taskStates[scriptType].running = false;
+                  taskStates[scriptType].error = true;
+                } else {
+                  // This case might happen if checkProgress is called for a task not in taskStates
+                  // or if startPopulation failed to set it up properly.
+                  taskStates[scriptType] = { taskId: taskId, running: false, error: true };
+                }
+            }
+        });
+    }
+
+    $('#populate-races-form').on('submit', function(event) {
+        event.preventDefault();
+        startPopulation('races', 'populate-races-form', 'populate-races-btn', 'progress-bar-races', 'status-message-races', 'progress-bar-races-container');
+    });
+
+    $('#populate-classes-form').on('submit', function(event) {
+        event.preventDefault();
+        startPopulation('classes', 'populate-classes-form', 'populate-classes-btn', 'progress-bar-classes', 'status-message-classes', 'progress-bar-classes-container');
+    });
+
+    $('#populate-spells-form').on('submit', function(event) {
+        event.preventDefault();
+        startPopulation('spells', 'populate-spells-form', 'populate-spells-btn', 'progress-bar-spells', 'status-message-spells', 'progress-bar-spells-container');
+    });
+
+    $('#populate-weapons-form').on('submit', function(event) {
+        event.preventDefault();
+        startPopulation('weapons', 'populate-weapons-form', 'populate-weapons-btn', 'progress-bar-weapons', 'status-message-weapons', 'progress-bar-weapons-container');
+    });
+});
+</script>
 {% endblock %}
