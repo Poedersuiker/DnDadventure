@@ -110,7 +110,7 @@ if not app.config.get('TESTING', False):
     try:
         load_and_initialize_settings(app)
     except OperationalError as e:
-        app.logger.warning(f"Could not load settings from DB (table might not exist yet, run 'flask db upgrade'): {e}")
+        app.logger.warning(f"Initial check: Could not load settings from 'setting' table (it might not exist yet or migrations are pending: {e}). The application will use default settings from config.py for now. Ensure 'flask db upgrade' has been run.")
     except Exception as e: # Catch any other unexpected errors during settings load
         app.logger.error(f"Unexpected error during load_and_initialize_settings: {e}")
 
