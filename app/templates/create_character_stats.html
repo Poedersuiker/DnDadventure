@@ -36,8 +36,16 @@
             <div class="alert alert-info">
                 <p><strong>Your Rolled Scores (assign these below):</strong></p>
                 <ul class="list-inline">
-                    {% for score in rolled_stats %}
-                    <li class="list-inline-item"><h4><span class="badge badge-secondary">{{ score }}</span></h4></li>
+                    {% for score_data in rolled_stats %}
+                    {# Sort rolls to easily identify the lowest (dropped) one #}
+                    {% set rolls_sorted = score_data.rolls | sort %}
+                    {% set dropped_roll = rolls_sorted[0] %}
+                    {# Use slicing to get the rest of the list (kept rolls) #}
+                    {% set kept_rolls = rolls_sorted[1:] %}
+                    <li class="list-inline-item text-center mr-3 mb-2"> {# Added text-center, margin-right and margin-bottom for better spacing #}
+                        <h4><span class="badge badge-secondary">{{ score_data.total }}</span></h4>
+                        <small>Details: {{ score_data.rolls | join(', ') }}<br>Kept: {{ kept_rolls | join(', ') }} (Dropped: {{ dropped_roll }})</small>
+                    </li>
                     {% endfor %}
                 </ul>
             </div>

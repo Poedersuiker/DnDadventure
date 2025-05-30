@@ -123,13 +123,81 @@ def creation_stats():
     standard_array = [15, 14, 13, 12, 10, 8]
     racial_bonuses_dict = {bonus['name']: bonus['bonus'] for bonus in racial_bonuses_list}
 
-    if request.method == 'POST' and request.form.get('action') != 'roll_stats':
-        # ... (stat processing logic - assuming it's correct and leads to setting session data)
-        # For brevity, direct jump to success if logic were here
-        session['new_character_data']['ability_scores'] = {} # Placeholder for actual scores
-        session.modified = True
-        return redirect(url_for('main.creation_background'))
+    if request.method == 'POST':
+        if request.form.get('action') == 'roll_stats':
+            rolled_stats_data = []
+            for _ in range(6):
+                total, rolls = roll_dice(num_dice=4, num_sides=6, drop_lowest=1)
+                rolled_stats_data.append({'total': total, 'rolls': rolls})
+            session['rolled_stats'] = rolled_stats_data
+            session.modified = True
+            # Re-render the page to show the rolled stats
+            return render_template('create_character_stats.html',
+                                   race_name=selected_race.name,
+                                   class_name=selected_class.name,
+                                   racial_bonuses_dict=racial_bonuses_dict,
+                                   primary_ability=primary_ability,
+                                   standard_array=standard_array,
+                                   rolled_stats=session.get('rolled_stats'), # Use updated session data
+                                   submitted_scores=None) # Clear submitted scores as we just rolled
+        else: # This is the logic for submitting chosen stats
+            # Basic validation: Check if all scores are provided and are digits
+            score_fields = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma']
+            missing_scores = [field for field in score_fields if not request.form.get(field)]
+            non_numeric_scores = [field for field in score_fields if request.form.get(field) and not request.form.get(field).isdigit()]
 
+            if missing_scores or non_numeric_scores:
+                error_messages = []
+                if missing_scores:
+                    error_messages.append(f"Missing scores for: {', '.join(missing_scores)}.")
+                if non_numeric_scores:
+                    error_messages.append(f"Non-numeric scores for: {', '.join(non_numeric_scores)}.")
+                flash(" ".join(error_messages), 'error')
+                return render_template('create_character_stats.html',
+                                       race_name=selected_race.name,
+                                       class_name=selected_class.name,
+                                       racial_bonuses_dict=racial_bonuses_dict,
+                                       primary_ability=primary_ability,
+                                       standard_array=standard_array,
+                                       rolled_stats=session.get('rolled_stats'),
+                                       submitted_scores=request.form) # Re-populate form with submitted values
+
+            ability_scores = {
+                'STR': int(request.form.get('strength', 0)), # Default to 0 if somehow missing despite check
+                'DEX': int(request.form.get('dexterity', 0)),
+                'CON': int(request.form.get('constitution', 0)),
+                'INT': int(request.form.get('intelligence', 0)),
+                'WIS': int(request.form.get('wisdom', 0)),
+                'CHA': int(request.form.get('charisma', 0))
+            }
+
+            # Advanced Validation: Check if scores are within the 3-18 range
+            invalid_range_scores = {k: v for k, v in ability_scores.items() if not (3 <= v <= 18)}
+            if invalid_range_scores:
+                error_msg_parts = [f"{ABBR_to_FULL[abbr]}: {val}" for abbr, val in invalid_range_scores.items()]
+                flash(f"Scores out of range (3-18): {'; '.join(error_msg_parts)}. Please correct them.", 'error')
+                # Need ABBR_to_FULL mapping or adjust message
+                # For now, a generic message until mapping is confirmed available or created
+                # flash(f"One or more scores are out of the valid range (3-18). Received: {invalid_range_scores}", 'error')
+                return render_template('create_character_stats.html',
+                                       race_name=selected_race.name,
+                                       class_name=selected_class.name,
+                                       racial_bonuses_dict=racial_bonuses_dict,
+                                       primary_ability=primary_ability,
+                                       standard_array=standard_array,
+                                       rolled_stats=session.get('rolled_stats'),
+                                       submitted_scores=request.form)
+
+
+            session['new_character_data']['ability_scores'] = ability_scores
+            session.modified = True
+            # Clear rolled_stats from session once scores are successfully submitted
+            if 'rolled_stats' in session:
+                session.pop('rolled_stats')
+            flash('Ability scores saved successfully!', 'success')
+            return redirect(url_for('main.creation_background'))
+
+    # GET request or initial load
     return render_template('create_character_stats.html',
                            race_name=selected_race.name, class_name=selected_class.name,
                            racial_bonuses_dict=racial_bonuses_dict, primary_ability=primary_ability,
