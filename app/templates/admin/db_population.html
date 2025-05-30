@@ -16,22 +16,40 @@
 
   <div class="row">
     <div class="col-md-4 mb-3">
-      <form method="POST" action="{{ url_for('admin.run_populate_races') }}">
-        {# {{ csrf_token_hidden() if csrf_token_hidden else '' }} #}  {# Omitted as per previous tasks, assuming no Flask-WTF CSRF yet #}
-        <button type="submit" class="btn btn-primary w-100">Populate Races</button>
-      </form>
+      <div class="admin-action-item p-3 border rounded">
+        <h4>Populate Races</h4>
+        <p>Adds D&D races to the database.</p>
+        <form method="POST" action="{{ url_for('admin.run_populate_races') }}" style="display: inline;">
+          <button type="submit" class="btn btn-primary w-100" onclick="return confirm('Are you sure you want to populate races?');">Populate Races</button>
+        </form>
+      </div>
     </div>
     <div class="col-md-4 mb-3">
-      <form method="POST" action="{{ url_for('admin.run_populate_classes') }}">
-        {# {{ csrf_token_hidden() if csrf_token_hidden else '' }} #}
-        <button type="submit" class="btn btn-primary w-100">Populate Classes</button>
-      </form>
+      <div class="admin-action-item p-3 border rounded">
+        <h4>Populate Classes</h4>
+        <p>Adds D&D classes to the database.</p>
+        <form method="POST" action="{{ url_for('admin.run_populate_classes') }}" style="display: inline;">
+          <button type="submit" class="btn btn-primary w-100" onclick="return confirm('Are you sure you want to populate classes?');">Populate Classes</button>
+        </form>
+      </div>
     </div>
     <div class="col-md-4 mb-3">
-      <form method="POST" action="{{ url_for('admin.run_populate_spells') }}">
-        {# {{ csrf_token_hidden() if csrf_token_hidden else '' }} #}
-        <button type="submit" class="btn btn-primary w-100">Populate Spells</button>
-      </form>
+      <div class="admin-action-item p-3 border rounded">
+        <h4>Populate Spells</h4>
+        <p>Adds D&D spells to the database.</p>
+        <form method="POST" action="{{ url_for('admin.run_populate_spells') }}" style="display: inline;">
+          <button type="submit" class="btn btn-primary w-100" onclick="return confirm('Are you sure you want to populate spells? This can take a moment.');">Populate Spells</button>
+        </form>
+      </div>
+    </div>
+    <div class="col-md-4 mb-3">
+      <div class="admin-action-item p-3 border rounded">
+        <h4>Populate Weapons</h4>
+        <p>Adds a predefined list of D&D weapons to the database. Checks for existing weapons by name to avoid duplicates.</p>
+        <form method="POST" action="{{ url_for('admin.run_populate_weapons') }}" style="display: inline;">
+            <input type="submit" value="Populate Weapons" class="btn btn-primary w-100" onclick="return confirm('Are you sure you want to run the weapon population script? This will add weapons to the database. Existing weapons with the same name will be skipped.');">
+        </form>
+      </div>
     </div>
   </div>
   <p><small>Note: These operations can take some time. The page will reload when the process is initiated. Monitor server logs for detailed output and completion status.</small></p>

@@ -9,6 +9,7 @@ from app import db # Add db import
 from app.scripts.populate_races import populate_races_data
 from app.scripts.populate_classes import populate_classes_data
 from app.scripts.populate_spells import populate_spells_data
+from app.scripts.populate_weapons import populate_weapons_data
 
 @admin_bp.route('/')
 @login_required
@@ -115,6 +116,22 @@ def run_populate_spells():
     except Exception as e:
         current_app.logger.error(f"Error during spell population: {str(e)}")
         flash(f"Error during spell population: {str(e)}", "danger")
+    return redirect(url_for('admin.db_population_status'))
+
+@admin_bp.route('/db-populate/weapons', methods=['POST'])
+@login_required
+def run_populate_weapons():
+    if not current_user.is_authenticated or current_user.email != current_app.config.get('ADMIN_EMAIL'):
+        abort(403) # Ensure only admin can access
+    try:
+        # Call the weapon population function
+        # The populate_weapons_data function in the script already handles db.session.commit() and rollback.
+        # It also prints to console, so flashing a message here is good for UI feedback.
+        populate_weapons_data() # This function prints to console, consider capturing its output or just relying on its internal prints + flash.
+        flash("Weapon population script triggered. Check server console for detailed status (added/skipped).", "success")
+    except Exception as e:
+        current_app.logger.error(f"Error triggering weapon population: {str(e)}")
+        flash(f"An error occurred while triggering weapon population: {str(e)}", "danger")
     return redirect(url_for('admin.db_population_status'))
 
 @admin_bp.route('/server-logs')
