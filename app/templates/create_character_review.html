@@ -93,14 +93,20 @@
 
         <div class="row mt-4">
             <div class="col-md-12">
-                <h3>Equipment</h3>
-                <ul>
-                    {% for item_string in data.get('final_equipment', []) %}
-                        <li>{{ item_string }}</li>
-                    {% else %}
-                        <li>No equipment listed.</li>
-                    {% endfor %}
-                </ul>
+                <h3>Starting Equipment</h3> {# Changed title for clarity #}
+                <div class="card">
+                    <div class="card-body">
+                        {% if data.final_equipment %}
+                            <ul>
+                                {% for item in data.final_equipment %}
+                                    <li>{{ item.name }} (x{{ item.quantity }})</li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p>No starting equipment selected or applicable.</p>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
         </div>
 

@@ -345,22 +345,203 @@ def creation_hp():
 @bp.route('/creation/equipment', methods=['GET', 'POST'])
 @login_required
 def creation_equipment():
-    if not session.get('new_character_data', {}).get('max_hp'):
-        flash('Please set HP first.', 'error'); return redirect(url_for('main.creation_hp'))
-    selected_class = Class.query.get(session['new_character_data']['class_id'])
-    # ... (equipment selection logic)
+    # Check if max_hp is set, indicating previous step completion
+    if session.get('new_character_data', {}).get('max_hp') is None:
+        flash('Please complete HP calculation first.', 'error')
+        return redirect(url_for('main.creation_hp'))
+
+    char_data = session.get('new_character_data', {})
+    selected_class_id = char_data.get('class_id')
+
+    if selected_class_id is None:
+        flash('Class not selected. Please select a class first.', 'error')
+        return redirect(url_for('main.creation_class'))
+
+    selected_class = Class.query.get(selected_class_id)
+    if not selected_class:
+        flash(f'Selected class (ID: {selected_class_id}) not found. Please select your class again.', 'error')
+        return redirect(url_for('main.creation_class'))
+
+    # --- Helper function (or duplicated logic) for parsing equipment ---
+    # This logic is duplicated from the GET part for safety in this step.
+    # Ideally, this would be refactored into a helper.
+    def _parse_class_equipment(class_obj):
+        local_fixed_items = []
+        local_choice_groups = []
+        if class_obj and class_obj.starting_equipment:
+            try:
+                equipment_data = json.loads(class_obj.starting_equipment)
+                if not isinstance(equipment_data, list):
+                    current_app.logger.error(f"Parsed starting_equipment for class {class_obj.id} is not a list: {equipment_data}")
+                    # flash("Error parsing class equipment data (not a list).", "error") # Avoid flashing in helper
+                    return [], [] # Return empty if structure is wrong
+
+                for i, entry in enumerate(equipment_data):
+                    if not isinstance(entry, dict):
+                        current_app.logger.warning(f"Skipping non-dict entry in starting_equipment for class {class_obj.id}: {entry}")
+                        continue
+
+                    if 'item' in entry and isinstance(entry['item'], dict) and 'name' in entry['item']:
+                        item_name = entry['item']['name']
+                        quantity = entry.get('quantity', 1)
+                        local_fixed_items.append({'name': item_name, 'quantity': quantity})
+                    elif 'choice' in entry and isinstance(entry['choice'], dict):
+                        choice_data = entry['choice']
+                        current_group_options = []
+                        group_id = f"choice_{len(local_choice_groups)}"
+
+                        options_data = choice_data.get('options', [])
+                        if not isinstance(options_data, list):
+                            current_app.logger.warning(f"Options data for choice in class {class_obj.id} is not a list: {options_data}")
+                            options_data = []
+
+                        for opt_idx, opt in enumerate(options_data):
+                            if not isinstance(opt, dict) or 'item' not in opt or not isinstance(opt['item'], dict) or 'name' not in opt['item']:
+                                current_app.logger.warning(f"Skipping invalid option in choice for class {class_obj.id}: {opt}")
+                                continue
+                            item_name = opt['item']['name']
+                            item_quantity = opt.get('quantity', 1)
+                            option_html_id = f"option_{len(local_choice_groups)}_{opt_idx}" # This is the value for radio button
+                            current_group_options.append({
+                                'id': option_html_id,
+                                'name': item_name,
+                                'quantity': item_quantity,
+                                'label': f"{item_name} (x{item_quantity})"
+                            })
+
+                        if current_group_options:
+                            local_choice_groups.append({
+                                'id': group_id, # This is the name for radio button group
+                                'desc': choice_data.get('desc', f'Choose {choice_data.get("count", 1)}'),
+                                'choose': choice_data.get('count', 1),
+                                'options': current_group_options
+                            })
+                        else:
+                            current_app.logger.warning(f"Choice group {group_id} for class {class_obj.id} had no valid options after parsing.")
+                    else:
+                        current_app.logger.warning(f"Unknown entry type in starting_equipment for class {class_obj.id}: {entry}")
+            except json.JSONDecodeError:
+                # flash(f'Error decoding starting equipment for class {class_obj.name}. Contact admin.', 'error') # Avoid flashing
+                current_app.logger.error(f"JSONDecodeError for class {class_obj.id} starting_equipment: {class_obj.starting_equipment}")
+                return [], [] # Return empty on error
+            except Exception as e:
+                # flash(f'An unexpected error occurred while parsing class equipment for {class_obj.name}.', 'error') # Avoid flashing
+                current_app.logger.error(f"Unexpected error parsing starting_equipment for class {class_obj.id}: {e}, data: {class_obj.starting_equipment}")
+                return [], [] # Return empty on error
+        return local_fixed_items, local_choice_groups
+    # --- End of helper/duplicated logic ---
+
     if request.method == 'POST':
-        # Example: session['new_character_data']['final_equipment'] = []
+        # 1. Retrieve Necessary Data (already retrieved selected_class and char_data from above)
+        background_equipment_list = char_data.get('background_equipment', [])
+        if not isinstance(background_equipment_list, list): # Ensure it's a list for consistent processing
+            background_equipment_list = [str(background_equipment_list)] if background_equipment_list else []
+
+
+        # 2. Reconstruct/Fetch Equipment Structure
+        # Using the duplicated logic/helper defined above for this POST request scope
+        post_fixed_items, post_choice_groups = _parse_class_equipment(selected_class)
+
+        # If parsing failed during POST (e.g. bad DB data discovered now), redirect with error
+        if selected_class.starting_equipment and not (post_fixed_items or post_choice_groups):
+             # Check if starting_equipment was non-empty but parsing yielded nothing
+            flash(f'Critical error parsing class equipment for {selected_class.name} during submission. Please contact admin.', 'error')
+            return redirect(url_for('main.creation_class')) # Or a more appropriate error page/step
+
+        # 3. Process Submitted Choices
+        chosen_items_from_class = []
+        missing_choice = False
+        for group in post_choice_groups:
+            group_form_id = group['id'] # e.g., "choice_0"
+            selected_option_html_id = request.form.get(group_form_id) # e.g., "option_0_1"
+
+            if selected_option_html_id:
+                found_option = None
+                for opt in group['options']:
+                    if opt['id'] == selected_option_html_id:
+                        found_option = opt
+                        break
+                if found_option:
+                    chosen_items_from_class.append({'name': found_option['name'], 'quantity': found_option['quantity']})
+                else:
+                    current_app.logger.warning(f"Submitted option ID '{selected_option_html_id}' for group '{group_form_id}' not found in reconstructed options.")
+                    # This case implies a mismatch between form and server logic, potentially an error.
+                    # Depending on strictness, could flash an error here.
+            elif group.get('choose', 1) > 0 : # If a choice was required but not made
+                missing_choice = True
+                flash(f"Please make a selection for: {group['desc']}", 'error')
+
+        if missing_choice:
+            # Re-render the template with the choices and error messages
+            # Need to re-generate background_equipment_string for the template
+            bg_equip_str_for_template = ", ".join(background_equipment_list) if isinstance(background_equipment_list, list) else str(background_equipment_list or "")
+            return render_template('create_character_equipment.html',
+                                   fixed_items=post_fixed_items, # Use the ones parsed in POST
+                                   choice_groups=post_choice_groups, # Use the ones parsed in POST
+                                   background_equipment_string=bg_equip_str_for_template,
+                                   race_name=char_data.get('race_name'),
+                                   class_name=selected_class.name,
+                                   background_name=char_data.get('background_name'))
+
+        # 4. Consolidate All Equipment
+        final_equipment_list = []
+        # Add background equipment (list of strings, assume quantity 1 for each)
+        for item_name_str in background_equipment_list:
+            if isinstance(item_name_str, str): # Ensure it's a string
+                 final_equipment_list.append({'name': item_name_str, 'quantity': 1})
+            else: # Log if background item isn't a string (should be from BACKGROUND_DATA)
+                current_app.logger.warning(f"Non-string item found in background_equipment_list: {item_name_str}")
+
+
+        # Add fixed class items
+        for item_dict in post_fixed_items: # Already in {'name': str, 'quantity': int}
+            final_equipment_list.append(item_dict)
+
+        # Add chosen class items
+        for item_dict in chosen_items_from_class: # Already in {'name': str, 'quantity': int}
+            final_equipment_list.append(item_dict)
+
+        # 5. Store in Session
+        session['new_character_data']['final_equipment'] = final_equipment_list
         session.modified = True
-        if selected_class and selected_class.spellcasting_ability: return redirect(url_for('main.creation_spells'))
+        flash('Equipment selected successfully.', 'success')
+
+        # 6. Redirect
+        if selected_class.spellcasting_ability:
+            return redirect(url_for('main.creation_spells'))
         return redirect(url_for('main.creation_review'))
-    # ...
-    return render_template('create_character_equipment.html', fixed_items=[], choice_groups=[], background_equipment_string="", race_name=session['new_character_data'].get('race_name'), class_name=selected_class.name, background_name=session['new_character_data'].get('background_name'))
+
+    # GET request logic (this part is from the previous subtask, ensure it's coherent with POST changes)
+    # For clarity, the GET part's parsing logic is now mirrored by _parse_class_equipment
+    get_fixed_items, get_choice_groups = _parse_class_equipment(selected_class)
+
+    # Handle JSON errors from GET parsing specifically for GET response
+    if selected_class.starting_equipment and not (get_fixed_items or get_choice_groups):
+        # This implies _parse_class_equipment returned empty lists due to an error logged within it
+        # Flash a generic error for the GET request display
+        flash(f'Error processing equipment for class {selected_class.name}. Some options may not display correctly.', 'error')
+
+
+    background_equipment_list_get = char_data.get('background_equipment', [])
+    background_equipment_string_get = ""
+    if isinstance(background_equipment_list_get, list):
+        background_equipment_string_get = ", ".join(background_equipment_list_get)
+    elif isinstance(background_equipment_list_get, str):
+        background_equipment_string_get = background_equipment_list_get
+    # else: (already logged by GET logic if type is unexpected)
+
+    return render_template('create_character_equipment.html',
+                           fixed_items=get_fixed_items,
+                           choice_groups=get_choice_groups,
+                           background_equipment_string=background_equipment_string_get,
+                           race_name=char_data.get('race_name'),
+                           class_name=selected_class.name,
+                           background_name=char_data.get('background_name'))
 
 @bp.route('/creation/spells', methods=['GET', 'POST'])
 @login_required
 def creation_spells():
-    if not session.get('new_character_data', {}).get('final_equipment'):
+    if session.get('new_character_data', {}).get('final_equipment') is None: # Check if None, empty list is OK
         flash('Please select equipment first.', 'error'); return redirect(url_for('main.creation_equipment'))
     # ... (spell selection logic)
     if request.method == 'POST':
@@ -388,6 +569,7 @@ def creation_review():
     display_data['class_name'] = char_class_obj.name
     display_data['cantrips'] = Spell.query.filter(Spell.id.in_(char_data.get('chosen_cantrip_ids', []))).all()
     display_data['level_1_spells'] = Spell.query.filter(Spell.id.in_(char_data.get('chosen_level_1_spell_ids', []))).all()
+    display_data['final_equipment'] = char_data.get('final_equipment', []) # Add final_equipment to display_data
 
     all_skill_proficiencies = set(char_data.get('background_skill_proficiencies', [])) | set(char_data.get('class_skill_proficiencies', []))
     display_data['all_skill_proficiencies'] = list(all_skill_proficiencies)
