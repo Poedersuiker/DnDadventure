@@ -3,12 +3,14 @@ import os
 # import google.generativeai as genai # Removed
 import google.generativeai as genai # Re-add import
 import re # Added for gold parsing
+import requests # Added for requests.exceptions.RequestException
 from flask import render_template, redirect, url_for, flash, request, session, get_flashed_messages, jsonify, current_app
 from flask_babel import _
 from flask_login import login_required, current_user
 from app import db
 # CharacterSpellSlot removed, CharacterLevel added
-from app.models import User, Character, Race, Class, Spell, Setting, Item, Coinage, CharacterLevel 
+from app.models import User, Character, Race, Class, Spell, Setting, Item, Coinage, CharacterLevel
+from app.dnd5e_api import get_all_races # Added
 from app.utils import roll_dice, parse_coinage, ALL_SKILLS_LIST, XP_THRESHOLDS, generate_character_sheet_text # Added generate_character_sheet_text
 from app.gemini import geminiai, GEMINI_DM_SYSTEM_RULES
 from datetime import datetime
@@ -100,38 +102,95 @@ def clear_character_progress(character_id):
 @login_required
 def creation_race():
     if request.method == 'GET':
-        # Initialize or reset character data in session
         session['new_character_data'] = {}
-        races = Race.query.all()
-        if not races:
-            flash('No races found in the database. Please run the population script.', 'error')
-            return render_template('create_character_race.html', races=[])
-        return render_template('create_character_race.html', races=races)
-    race_id = request.form.get('race_id')
-    selected_race = None
-    if race_id:
+        races_data = []
         try:
-            selected_race = Race.query.get(int(race_id))
-        except ValueError:
-            flash('Invalid Race ID format.', 'error')
-            races = Race.query.all()
-            return render_template('create_character_race.html', races=races)
-    if selected_race:
-        session['new_character_data']['race_id'] = selected_race.id
-        session['new_character_data']['race_name'] = selected_race.name
-        session.modified = True 
-        flash(f'{selected_race.name} selected!', 'success')
-        return redirect(url_for('main.creation_class')) 
+            races_data = get_all_races()
+        except requests.exceptions.RequestException as e:
+            current_app.logger.error(f"API Error fetching races: {e}")
+            flash('Error fetching races from the D&D API. Please try again later or contact an administrator.', 'error')
+        except Exception as e: # Catch any other unexpected errors
+            current_app.logger.error(f"Unexpected error fetching races: {e}")
+            flash('An unexpected error occurred while fetching races. Please try again later or contact an administrator.', 'error')
+
+        if not races_data: # Handles both API error and empty results
+             # Flash message already set if API error, avoid double flashing
+            if not get_flashed_messages(category_filter=['error']): # Only flash if no error message exists yet
+                flash('No races could be fetched at this time. Please try again later.', 'info') # Use info if it's just empty
+            return render_template('create_character_race.html', races=[]) # Pass empty list
+
+        return render_template('create_character_race.html', races=races_data)
+
+    # POST request logic
+    selected_race_index = request.form.get('race_index')
+    if not selected_race_index:
+        flash('Please select a race.', 'error')
+        # Need to fetch races again for re-rendering
+        races_data_for_retry = []
+        try:
+            races_data_for_retry = get_all_races()
+        except requests.exceptions.RequestException:
+            flash('Error fetching races from the D&D API. Please try again later.', 'error')
+        return render_template('create_character_race.html', races=races_data_for_retry)
+
+    all_races_from_api = []
+    try:
+        all_races_from_api = get_all_races()
+    except requests.exceptions.RequestException as e:
+        current_app.logger.error(f"API Error fetching races during POST: {e}")
+        flash('Error fetching race details from the D&D API. Please try again.', 'error')
+        return render_template('create_character_race.html', races=[]) # Render with empty if API fails here
+    except Exception as e:
+        current_app.logger.error(f"Unexpected error fetching races during POST: {e}")
+        flash('An unexpected error occurred while fetching race details. Please try again.', 'error')
+        return render_template('create_character_race.html', races=[])
+
+
+    selected_race_name = None
+    if all_races_from_api:
+        for race_api_item in all_races_from_api:
+            if race_api_item.get('index') == selected_race_index:
+                selected_race_name = race_api_item.get('name')
+                break
+
+    if selected_race_name:
+        # Storing index and name from API. ID is no longer used from local DB.
+        session['new_character_data']['race_index'] = selected_race_index
+        session['new_character_data']['race_name'] = selected_race_name
+        # race_id is no longer relevant as we are using API index.
+        # However, other parts of creation flow (stats, hp) might still expect race_id to query Race model for bonuses/speed.
+        # This will require further refactoring in subsequent steps if Race model is completely removed.
+        # For now, let's see if we can find a local Race entry by name if needed, or adjust those steps.
+        # Let's assume for now that 'race_id' in session is still needed for other parts of the flow that query the local DB.
+        # This is a temporary measure and should be addressed by fetching all necessary race details (like speed, bonuses) from API too.
+        temp_local_race_for_id = Race.query.filter_by(name=selected_race_name).first()
+        if temp_local_race_for_id:
+            session['new_character_data']['race_id'] = temp_local_race_for_id.id
+        else:
+            # If no local race matches by name, this could be an issue for later steps.
+            # For now, flash a warning and proceed, but this indicates data inconsistency or need for more API data.
+            flash(f"Warning: Could not find a local database entry for '{selected_race_name}'. Some features might not work correctly.", 'warning')
+            session['new_character_data']['race_id'] = None # Or some placeholder / handle error more strictly
+
+        session.modified = True
+        flash(f'{selected_race_name} selected!', 'success')
+        return redirect(url_for('main.creation_class'))
     else:
-        flash('Please select a valid race.', 'error')
-        races = Race.query.all()
-        return render_template('create_character_race.html', races=races)
+        flash('Selected race not found or API error. Please try again.', 'error')
+        # Re-render with races fetched again
+        races_data_for_error_case = []
+        try:
+            races_data_for_error_case = get_all_races()
+        except requests.exceptions.RequestException:
+            flash('Error fetching races from the D&D API for selection.', 'error')
+        return render_template('create_character_race.html', races=races_data_for_error_case)
 
 @bp.route('/creation/class', methods=['GET', 'POST'])
 @login_required
 def creation_class():
     char_data = session.get('new_character_data', {})
-    if not char_data.get('race_id'):
+    # Changed to check for race_name or race_index as race_id might be None if local DB entry not found
+    if not char_data.get('race_name') and not char_data.get('race_index'):
         flash('Please select a race first.', 'error')
         return redirect(url_for('main.creation_race'))
     if request.method == 'GET':
@@ -164,19 +223,32 @@ def creation_class():
 @login_required
 def creation_stats():
     char_data = session.get('new_character_data', {})
-    if not char_data.get('race_id'):
+    # Check for race_name or race_index from API, also class_id
+    if not (char_data.get('race_name') or char_data.get('race_index')) :
         flash('Please select a race first.', 'error')
         return redirect(url_for('main.creation_race'))
     if not char_data.get('class_id'):
         flash('Please select a class first.', 'error')
         return redirect(url_for('main.creation_class'))
-    selected_race = Race.query.get(char_data['race_id'])
+
+    selected_race = None # Will hold local Race object if found
+    if char_data.get('race_id'): # race_id is set if a local match was found in creation_race
+        selected_race = Race.query.get(char_data['race_id'])
+    # If selected_race is None here, it means no local DB entry matched the API race name.
+    # Racial bonuses and other DB-dependent race features will be missing. This is a known limitation.
+
     selected_class = Class.query.get(char_data['class_id'])
-    if not selected_race or not selected_class:
-        flash('Selected race or class not found. Please restart character creation.', 'error')
-        session.pop('new_character_data', None) 
-        return redirect(url_for('main.creation_race'))
-    racial_bonuses_list = json.loads(selected_race.ability_score_increases or '[]')
+    if not selected_class: # Removed selected_race from this check as it can be None
+        flash('Selected class not found. Please restart character creation.', 'error')
+        session.pop('new_character_data', None)
+        return redirect(url_for('main.creation_class')) # Redirect to class selection, assuming race was ok
+
+    racial_bonuses_list = []
+    if selected_race: # Only try to load bonuses if a local race object was found
+        racial_bonuses_list = json.loads(selected_race.ability_score_increases or '[]')
+    else:
+        # Optional: Flash a warning if local race data (and thus bonuses) are missing
+        flash('Could not load racial bonuses as no matching local race data was found. Proceeding with base scores only for racial adjustments.', 'warning')
     primary_ability = selected_class.spellcasting_ability or "Refer to class features"
     standard_array = [15, 14, 13, 12, 10, 8]
     racial_bonuses_dict = {bonus['name']: bonus['bonus'] for bonus in racial_bonuses_list}
@@ -188,7 +260,7 @@ def creation_stats():
             session['rolled_stats'] = rolled_scores
             session.modified = True
             return render_template('create_character_stats.html',
-                                   race_name=selected_race.name,
+                                   race_name=char_data.get('race_name', 'Unknown Race'), # Use API-set name
                                    class_name=selected_class.name,
                                    racial_bonuses_dict=racial_bonuses_dict,
                                    primary_ability=primary_ability,
@@ -220,12 +292,12 @@ def creation_stats():
                 errors = True
         if errors:
             return render_template('create_character_stats.html',
-                                   race_name=selected_race.name, 
-                                   class_name=selected_class.name, 
-                                   racial_bonuses_dict=racial_bonuses_dict, 
-                                   primary_ability=primary_ability, 
-                                   standard_array=standard_array, 
-                                   rolled_stats=session.get('rolled_stats'), 
+                                   race_name=char_data.get('race_name', 'Unknown Race'), # Use API-set name
+                                   class_name=selected_class.name,
+                                   racial_bonuses_dict=racial_bonuses_dict,
+                                   primary_ability=primary_ability,
+                                   standard_array=standard_array,
+                                   rolled_stats=session.get('rolled_stats'),
                                    submitted_scores=form_scores_to_repopulate)
         final_scores = base_scores.copy()
         for bonus_item in racial_bonuses_list:
@@ -240,7 +312,7 @@ def creation_stats():
         flash('Ability scores saved!', 'success')
         return redirect(url_for('main.creation_background'))
     return render_template('create_character_stats.html',
-                           race_name=selected_race.name,
+                           race_name=char_data.get('race_name', 'Unknown Race'), # Use API-set name
                            class_name=selected_class.name,
                            racial_bonuses_dict=racial_bonuses_dict,
                            primary_ability=primary_ability,
@@ -317,18 +389,27 @@ def creation_hp():
     if not char_data.get('armor_proficiencies') and not char_data.get('class_skill_proficiencies'):
         flash('Please complete the skills and proficiencies step first.', 'error')
         return redirect(url_for('main.creation_skills'))
-    required_keys = ['race_id', 'class_id', 'ability_scores']
-    if not all(key in char_data for key in required_keys):
-        flash('Missing critical data (race, class, or scores). Please restart character creation.', 'error')
+
+    # Adjusted required_keys check: race_id might be None, race_name should exist.
+    required_keys = ['race_name', 'class_id', 'ability_scores']
+    if not all(key in char_data and char_data[key] is not None for key in required_keys):
+        flash('Missing critical data (race name, class, or scores). Please restart character creation.', 'error')
         session.pop('new_character_data', None)
         return redirect(url_for('main.creation_race'))
-    selected_race = Race.query.get(char_data['race_id'])
+
+    selected_race = None # Will hold local Race object if found
+    if char_data.get('race_id'): # race_id is set if a local match was found
+        selected_race = Race.query.get(char_data['race_id'])
+    # If selected_race is None, race-specific data like speed will use defaults or warn.
+
     selected_class = Class.query.get(char_data['class_id'])
     ability_scores = char_data.get('ability_scores', {})
-    if not selected_race or not selected_class:
-        flash('Selected race or class not found. Please restart character creation.', 'error')
+
+    if not selected_class: # Removed selected_race from this check
+        flash('Selected class not found. Please restart character creation.', 'error')
         session.pop('new_character_data', None)
-        return redirect(url_for('main.creation_race'))
+        return redirect(url_for('main.creation_class')) # Go to class selection
+
     if not ability_scores.get('CON') or not ability_scores.get('DEX'):
         flash('Constitution or Dexterity scores not found. Please complete the stats step.', 'error')
         return redirect(url_for('main.creation_stats'))
@@ -343,13 +424,22 @@ def creation_hp():
     dex_score = ability_scores.get('DEX', 10)
     dex_modifier = (dex_score - 10) // 2
     ac_base = 10 + dex_modifier
-    speed = selected_race.speed
+
+    speed = 30 # Default speed
+    if selected_race:
+        speed = selected_race.speed
+    else:
+        flash("Warning: Could not determine race speed from local data. Defaulting to 30. This should ideally be fetched from the API.", 'warning')
+        # Store the default speed in session if no local race object was found
+        char_data['speed_source'] = "default_due_to_missing_local_race_data"
+
+
     session['new_character_data']['max_hp'] = max_hp
     session['new_character_data']['current_hp'] = max_hp
     session['new_character_data']['armor_class_base'] = ac_base
     session['new_character_data']['speed'] = speed
     session.modified = True
-    return render_template('create_character_hp.html', race_name=selected_race.name, class_name=selected_class.name, background_name=char_data.get('background_name', 'N/A'), ability_scores_summary=ability_scores, max_hp=max_hp, ac_base=ac_base, speed=speed)
+    return render_template('create_character_hp.html', race_name=char_data.get('race_name','Unknown Race'), class_name=selected_class.name, background_name=char_data.get('background_name', 'N/A'), ability_scores_summary=ability_scores, max_hp=max_hp, ac_base=ac_base, speed=speed)
 
 def parse_starting_equipment(starting_equipment_data_json):
     fixed_items = []
@@ -484,13 +574,20 @@ def creation_review():
     char_data = session.get('new_character_data', {})
     if not char_data.get('ability_scores'):
         flash('Please complete the core character creation steps first, starting with ability scores.', 'error')
-        return redirect(url_for('main.creation_stats')) 
-    race = Race.query.get(char_data.get('race_id'))
-    char_class_obj = Class.query.get(char_data.get('class_id')) 
-    if not race or not char_class_obj:
-        flash('Race or Class data missing or invalid. Please restart character creation.', 'error')
+        return redirect(url_for('main.creation_stats'))
+
+    race_name_for_review = char_data.get('race_name', "Unknown Race")
+    race_for_review_obj = None # Will hold local Race DB object
+    if char_data.get('race_id'): # If race_id was found and stored from local DB
+        race_for_review_obj = Race.query.get(char_data.get('race_id'))
+    # race_for_review_obj might be None if no local race matched the API name.
+    # The template will need to handle this gracefully, primarily using race_name_for_review.
+
+    char_class_obj = Class.query.get(char_data.get('class_id'))
+    if not char_class_obj: # Removed race_for_review_obj from this check
+        flash('Class data missing or invalid. Please restart character creation.', 'error')
         session.pop('new_character_data', None)
-        return redirect(url_for('main.creation_race'))
+        return redirect(url_for('main.creation_class')) # Go to class selection
     cantrips = Spell.query.filter(Spell.id.in_(char_data.get('chosen_cantrip_ids', []))).all()
     level_1_spells = Spell.query.filter(Spell.id.in_(char_data.get('chosen_level_1_spell_ids', []))).all()
     all_skill_proficiencies = set(char_data.get('background_skill_proficiencies', []))
@@ -506,7 +603,8 @@ def creation_review():
         char_description = request.form.get('character_description')
         if not character_name:
             flash('Character name is required.', 'error')
-            return render_template('create_character_review.html', data=char_data, race=race, char_class=char_class_obj, cantrips=cantrips, level_1_spells=level_1_spells, all_skill_proficiencies=list(all_skill_proficiencies), all_tool_proficiencies=list(all_tool_proficiencies), all_language_proficiencies=list(all_language_proficiencies), submitted_name=character_name, submitted_alignment=alignment, submitted_description=char_description)
+            # Pass race_name_for_review and the potentially None race_for_review_obj
+            return render_template('create_character_review.html', data=char_data, race_name=race_name_for_review, race=race_for_review_obj, char_class=char_class_obj, cantrips=cantrips, level_1_spells=level_1_spells, all_skill_proficiencies=list(all_skill_proficiencies), all_tool_proficiencies=list(all_tool_proficiencies), all_language_proficiencies=list(all_language_proficiencies), submitted_name=character_name, submitted_alignment=alignment, submitted_description=char_description)
         current_skills_set = set(char_data.get('background_skill_proficiencies', []))
         current_skills_set.update(char_data.get('class_skill_proficiencies', []))
         current_tools_set = set(char_data.get('background_tool_proficiencies', []))
@@ -516,6 +614,8 @@ def creation_review():
             name=character_name,
             description=char_description,
             user_id=current_user.id,
+            # race_id from session could be None if local race wasn't found.
+            # DB schema must allow NULL for race_id on Character, or this will fail.
             race_id=char_data.get('race_id'),
             class_id=char_data.get('class_id'),
             alignment=alignment,
@@ -633,7 +733,8 @@ def creation_review():
         session.pop('new_character_data', None) 
         flash('Character created successfully!', 'success')
         return redirect(url_for('main.index'))
-    return render_template('create_character_review.html', data=char_data, race=race, char_class=char_class_obj, cantrips=cantrips, level_1_spells=level_1_spells, all_skill_proficiencies=list(all_skill_proficiencies), all_tool_proficiencies=list(all_tool_proficiencies), all_language_proficiencies=list(all_language_proficiencies), submitted_name=char_data.get('character_name_draft',''), submitted_alignment=char_data.get('alignment_draft',''), submitted_description=char_data.get('description_draft',''))
+    # Pass race_name_for_review and the potentially None race_for_review_obj
+    return render_template('create_character_review.html', data=char_data, race_name=race_name_for_review, race=race_for_review_obj, char_class=char_class_obj, cantrips=cantrips, level_1_spells=level_1_spells, all_skill_proficiencies=list(all_skill_proficiencies), all_tool_proficiencies=list(all_tool_proficiencies), all_language_proficiencies=list(all_language_proficiencies), submitted_name=char_data.get('character_name_draft',''), submitted_alignment=char_data.get('alignment_draft',''), submitted_description=char_data.get('description_draft',''))
 
 # ALL_SKILLS_LIST and XP_THRESHOLDS moved to app.utils
 

@@ -17,13 +17,12 @@
     {% if races %}
     <form method="POST" action="{{ url_for('main.creation_race') }}">
         <div class="list-group">
-            {% for race in races %}
+            {% for race in races %} {# Assuming 'races' is the variable passed from the route, containing API data #}
             <label class="list-group-item">
-                <input type="radio" name="race_id" value="{{ race.id }}" required> 
+                <input type="radio" name="race_index" value="{{ race.index }}" required>
                 <strong>{{ race.name }}</strong>
-                {# Basic info placeholder - will be expanded in a later step if needed #}
-                {# <p class="mb-1"><small>Speed: {{ race.speed }}</small></p> #}
-                {# <p class="mb-1"><small>Ability Scores: {{ race.ability_score_increases }}</small></p> #}
+                {# Information like speed or ability scores are not available from the /api/races list endpoint #}
+                {# and will not be displayed here. Details can be shown on a review page if fetched separately. #}
             </label>
             {% endfor %}
         </div>
