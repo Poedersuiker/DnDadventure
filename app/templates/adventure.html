@@ -21,7 +21,16 @@
 
     <div class="main-attributes">
         <div class="attribute-box"><div>Prof. Bonus</div><div id="prof-bonus-display">+{{ proficiency_bonus }}</div></div>
-        <div class="attribute-box"><div>HP</div><div><span id="hp-display">{{ character.hp }}</span>/<span id="max-hp-display">{{ character.max_hp }}</span></div></div>
+        <div class="attribute-box">
+            <div>HP</div>
+            <div style="display: flex; align-items: center;">
+                <input type="number" id="current-hp-input" style="width: 60px; text-align: right; margin-right: 2px;" aria-label="Current Hit Points">
+                <span style="margin-right: 5px;">/</span>
+                <span id="max-hp-display" style="margin-right: 5px;">{{ character.max_hp }}</span>
+                {# Removed save-hp-button #}
+            </div>
+            <span id="hp-save-status" class="save-status-message" style="font-size: 0.8em; display: block; text-align: center; height: 1em; margin-top: 2px;"></span>
+        </div>
         <div class="attribute-box"><div>AC</div><div id="ac-display">{{ character.armor_class }}</div></div>
         <div class="attribute-box"><div>Speed</div><div id="speed-display">{{ character.speed }}</div></div>
     </div>
@@ -287,8 +296,19 @@
     {% endfor %}
 </div> <!-- End Spells Section Container -->
 
+    <!-- Player Notes Section -->
+    <div id="player-notes-section" style="margin-top: 15px; padding: 10px; border-top: 1px solid #ccc;">
+        <h4 class="sheet-section-title">Player Notes</h4>
+        <div>
+            <label for="player-notes-input" class="visually-hidden">Player Notes Area:</label> {# Visually hidden if title is enough #}
+            <textarea id="player-notes-input" rows="6" style="width: 98%; margin-bottom: 5px;"
+                      aria-label="Player Notes Area">{{ character.player_notes|default('', true) }}</textarea>
+        </div>
+        <button id="save-notes-button" class="button-small">Save Notes</button>
+        <span id="notes-save-status" class="save-status-message" style="margin-left: 10px;"></span>
+    </div>
 
-    <button id="close-sheet-button">Close</button>
+    <button id="close-sheet-button" style="margin-top: 20px;">Close</button>
 
     <!-- Item Add/Edit Modal -->
     <div id="item-modal" class="modal" style="display: none;">
@@ -311,6 +331,26 @@
                 </div>
                 <button type="submit" id="save-item-btn" class="button">Save Item</button>
             </form>
+        </div>
+    </div>
+
+    <!-- Short Rest Modal -->
+    <div id="short-rest-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close-modal-btn" id="close-short-rest-modal-btn">&times;</span>
+            <h3>Short Rest - Spend Hit Dice</h3>
+            <p>
+                Available Hit Dice: <span id="available-hit-dice-display"></span>
+                (Hit Die: <span id="hit-die-type-display"></span>)
+            </p>
+            <div>
+                <label for="hit-dice-to-spend">Hit Dice to Spend:</label>
+                <input type="number" id="hit-dice-to-spend" name="hit_dice_to_spend" min="0" value="0" style="width: 60px;">
+            </div>
+            <button id="roll-hit-dice-button" class="button" style="margin-top: 10px;">Roll Hit Dice</button>
+            <div id="short-rest-results" style="margin-top: 10px;">
+                <!-- Results will be displayed here -->
+            </div>
         </div>
     </div>
 </div>
@@ -366,8 +406,11 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Main content display areas - Using IDs now
     const profBonusDisplay = document.getElementById('prof-bonus-display');
-    const hpDisplay = document.getElementById('hp-display');
+    // const hpDisplay = document.getElementById('hp-display'); // Replaced by current-hp-input
+    const currentHpInput = document.getElementById('current-hp-input');
     const maxHpDisplay = document.getElementById('max-hp-display');
+    // const saveHpButton = document.getElementById('save-hp-button'); // Button removed
+    const hpSaveStatus = document.getElementById('hp-save-status');
     const acDisplay = document.getElementById('ac-display');
     const speedDisplay = document.getElementById('speed-display'); 
     
@@ -482,9 +525,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
 
             if (data.levelUpGranted === true && typeof data.newDmAllowedLevel !== 'undefined') {
-                dmAllowedLevel = data.newDmAllowedLevel; // Update global variable
-                updateNavigationButtonStates(); // Refresh button visibility
-                console.log(`Level up detected! New DM Allowed Level: ${dmAllowedLevel}`);
+                dmAllowedLevel = data.newDmAllowedLevel; // Update JS variable
+                console.log('[sendMessage] Before calling updateNavigationButtonStates: dmAllowedLevel (updated)=', dmAllowedLevel, 'currentActualLevel=', currentActualLevel, 'currentlyViewedLevel=', currentlyViewedLevel);
+                updateNavigationButtonStates(); // Explicitly call to refresh button visibility
+                console.log(`Level up detected! New DM Allowed Level: ${dmAllowedLevel}. Button states updated.`);
             }
 
             if (data.reply) {
@@ -1005,35 +1049,92 @@ document.addEventListener('DOMContentLoaded', function() {
     const restStatusMessage = document.getElementById('rest-status-message');
     let restTimeout = null;
 
+    // --- Short Rest Modal Elements ---
+    const shortRestModal = document.getElementById('short-rest-modal');
+    const closeShortRestModalBtn = document.getElementById('close-short-rest-modal-btn');
+    const availableHitDiceDisplay = document.getElementById('available-hit-dice-display');
+    const hitDieTypeDisplay = document.getElementById('hit-die-type-display');
+    const hitDiceToSpendInput = document.getElementById('hit-dice-to-spend');
+    const rollHitDiceButton = document.getElementById('roll-hit-dice-button');
+    const shortRestResultsDiv = document.getElementById('short-rest-results');
+    // Pass character's initial hit dice and type from template to JS
+    let characterCurrentHitDice = {{ character.current_hit_dice|default(0) }};
+    const characterHitDieType = "{{ character.char_class.hit_die|default('d8') }}";
+
 
     if (shortRestButton) {
-        shortRestButton.addEventListener('click', async function() {
-            const charId = this.dataset.characterId;
-            restStatusMessage.textContent = 'Taking short rest...';
-            restStatusMessage.style.color = 'orange';
-            if (restTimeout) clearTimeout(restTimeout);
+        shortRestButton.addEventListener('click', function() {
+            // Populate and show the modal
+            availableHitDiceDisplay.textContent = characterCurrentHitDice;
+            hitDieTypeDisplay.textContent = characterHitDieType;
+            hitDiceToSpendInput.max = characterCurrentHitDice;
+            hitDiceToSpendInput.value = 0; // Reset to 0
+            shortRestResultsDiv.innerHTML = ''; // Clear previous results
+            shortRestModal.style.display = 'block';
+        });
+    }
+
+    if (closeShortRestModalBtn) {
+        closeShortRestModalBtn.addEventListener('click', function() {
+            shortRestModal.style.display = 'none';
+        });
+    }
+
+    // Close modal if clicked outside of it
+    window.addEventListener('click', function(event) {
+        if (event.target == shortRestModal) {
+            shortRestModal.style.display = 'none';
+        }
+    });
+
+    if (rollHitDiceButton) {
+        rollHitDiceButton.addEventListener('click', async function() {
+            const diceToSpend = parseInt(hitDiceToSpendInput.value);
+
+            if (isNaN(diceToSpend) || diceToSpend <= 0) {
+                shortRestResultsDiv.innerHTML = '<p style="color: red;">Please enter a valid number of Hit Dice to spend (more than 0).</p>';
+                return;
+            }
+            if (diceToSpend > characterCurrentHitDice) {
+                shortRestResultsDiv.innerHTML = `<p style="color: red;">Cannot spend more than available Hit Dice (${characterCurrentHitDice}).</p>`;
+                return;
+            }
+
+            shortRestResultsDiv.innerHTML = '<p>Rolling...</p>';
 
             try {
-                const response = await fetch(`/character/${charId}/rest/short`, {
+                const response = await fetch(`/character/${characterId}/rest/short`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ dice_to_spend: diceToSpend })
                 });
                 const data = await response.json();
+
                 if (response.ok && data.status === 'success') {
-                    appendMessage(data.message, 'system'); // Append to main chat
-                    restStatusMessage.textContent = 'Short rest taken.';
-                    restStatusMessage.style.color = 'green';
+                    shortRestResultsDiv.innerHTML = `<p style="color: green;">${data.message}</p>`;
+                    if(data.rolls_detail) { // Optional: display individual rolls
+                        shortRestResultsDiv.innerHTML += `<p><small>Rolls: ${data.rolls_detail}</small></p>`;
+                    }
+                    // Update HP on the sheet
+                    if (currentHpInput) currentHpInput.value = data.new_hp;
+                    // Update available hit dice
+                    characterCurrentHitDice = data.hit_dice_remaining;
+                    availableHitDiceDisplay.textContent = characterCurrentHitDice;
+                    hitDiceToSpendInput.max = characterCurrentHitDice;
+
+                    appendMessage(`${character.name} used ${diceToSpend} Hit Dice during a short rest and recovered ${data.hp_actually_gained} HP.`, 'system');
+
+                    // Optionally close modal after a delay or keep open to show results
+                    // setTimeout(() => { shortRestModal.style.display = 'none'; }, 2000);
                 } else {
-                    restStatusMessage.textContent = data.message || 'Short rest failed.';
-                    restStatusMessage.style.color = 'red';
-                    console.error("Short rest error:", data.message);
+                    shortRestResultsDiv.innerHTML = `<p style="color: red;">${data.message || 'Short rest failed.'}</p>`;
                 }
             } catch (error) {
-                restStatusMessage.textContent = 'Error during short rest.';
-                restStatusMessage.style.color = 'red';
-                console.error('Fetch error for short rest:', error);
-            } finally {
-                 restTimeout = setTimeout(() => { restStatusMessage.textContent = ''; }, 3000);
+                shortRestResultsDiv.innerHTML = '<p style="color: red;">Error during short rest processing.</p>';
+                console.error('Fetch error for short rest (hit dice):', error);
             }
         });
     }
@@ -1057,17 +1158,30 @@ document.addEventListener('DOMContentLoaded', function() {
                     restStatusMessage.textContent = 'Long rest taken. Slots refreshed.';
                     restStatusMessage.style.color = 'green';
 
+                    // Update HP display to max HP
+                    if (currentHpInput && data.new_hp !== undefined) {
+                        currentHpInput.value = data.new_hp;
+                    }
+                    if (maxHpDisplay && data.max_hp !== undefined) { // Should be same as new_hp after long rest
+                        maxHpDisplay.textContent = data.max_hp;
+                    }
+
+                    // Update Hit Dice display
+                    if (data.hit_dice_remaining !== undefined) {
+                        characterCurrentHitDice = data.hit_dice_remaining; // Update JS global
+                        if (availableHitDiceDisplay) { // If short rest modal elements are present
+                            availableHitDiceDisplay.textContent = characterCurrentHitDice;
+                        }
+                         // Also update the short rest input max if modal is open or will be opened later
+                        if (hitDiceToSpendInput) {
+                            hitDiceToSpendInput.max = characterCurrentHitDice;
+                        }
+                    }
+
                     // If viewing current level when long rest happens, update displayed slots
                     if (currentlyViewedLevel === currentActualLevel) {
-                        if (data.refreshed_slots && data.all_slots_data) {
-                            const snapshot = {};
-                            data.all_slots_data.forEach(slotInfo => {
-                                snapshot[slotInfo.spell_level.toString()] = {
-                                    slots_used: slotInfo.slots_used,
-                                    slots_total: slotInfo.slots_total
-                                };
-                            });
-                            updateSpellSlotsDisplay(snapshot); // Update the UI
+                        if (data.spell_slots_refreshed && data.new_spell_slots_snapshot) {
+                            updateSpellSlotsDisplay(data.new_spell_slots_snapshot, currentActualLevel); // Update the UI
                         }
                     }
                 } else {
@@ -1099,6 +1213,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateNavigationButtonStates() {
+        console.log('[updateNavigationButtonStates] Function called. Initial values: currentlyViewedLevel=', currentlyViewedLevel, 'currentActualLevel=', currentActualLevel, 'dmAllowedLevel=', dmAllowedLevel);
         if (!prevLevelButton || !nextLevelButton) return;
 
         if (achievedLevelsList.length > 1) {
@@ -1107,7 +1222,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             prevLevelButton.style.display = 'none';
             nextLevelButton.style.display = 'none';
-            return; 
+            // Still need to check the levelUpButton even if prev/next are hidden
         }
 
         const currentIndex = achievedLevelsList.indexOf(currentlyViewedLevel);
@@ -1116,10 +1231,17 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Hide level up button if not viewing current actual level
         if (levelUpButton) {
-            if (currentlyViewedLevel === currentActualLevel && currentActualLevel < dmAllowedLevel) {
+            console.log('[updateNavigationButtonStates] Checking levelUpButton visibility. Condition: (currentlyViewedLevel === currentActualLevel && currentActualLevel < dmAllowedLevel)');
+            console.log('[updateNavigationButtonStates] Values for check: currentlyViewedLevel ===', currentlyViewedLevel, 'currentActualLevel ===', currentActualLevel, 'dmAllowedLevel ===', dmAllowedLevel);
+            const shouldDisplayLevelUpButton = (currentlyViewedLevel === currentActualLevel && currentActualLevel < dmAllowedLevel);
+            console.log('[updateNavigationButtonStates] shouldDisplayLevelUpButton =', shouldDisplayLevelUpButton);
+
+            if (shouldDisplayLevelUpButton) {
                 levelUpButton.style.display = 'inline-block';
+                console.log('[updateNavigationButtonStates] LevelUpButton display set to inline-block');
             } else {
                 levelUpButton.style.display = 'none';
+                console.log('[updateNavigationButtonStates] LevelUpButton display set to none');
             }
         }
     }
@@ -1181,10 +1303,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateCombatStatsDisplay(levelDetails, profBonus) {
         if (profBonusDisplay) profBonusDisplay.textContent = `+${profBonus}`;
-        if (hpDisplay) hpDisplay.textContent = levelDetails.hp !== undefined ? levelDetails.hp : 0;
+        // if (hpDisplay) hpDisplay.textContent = levelDetails.hp !== undefined ? levelDetails.hp : 0;
+        if (currentHpInput) currentHpInput.value = levelDetails.hp !== undefined ? levelDetails.hp : 0;
         if (maxHpDisplay) maxHpDisplay.textContent = levelDetails.max_hp !== undefined ? levelDetails.max_hp : 0;
         if (acDisplay) acDisplay.textContent = levelDetails.armor_class !== null ? levelDetails.armor_class : 'N/A';
         if (speedDisplay) speedDisplay.textContent = levelDetails.speed !== null ? levelDetails.speed : 'N/A';
+
+        // Update input constraints based on fetched max_hp for the viewed level
+        if (currentHpInput && levelDetails.max_hp !== undefined) {
+            currentHpInput.max = levelDetails.max_hp;
+            currentHpInput.min = 0; // Typically HP doesn't go below 0 in display, though rules might vary for unconsciousness
+        }
     }
 
     function updateSavingThrowsDisplay(proficienciesData, statsObject, profBonus) {
@@ -1200,18 +1329,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 const fullAbilityName = nameSpan.textContent.trim();
                 const shortAbilityAbbr = Object.keys(ABILITY_SHORT_TO_FULL_JS).find(key => ABILITY_SHORT_TO_FULL_JS[key] === fullAbilityName);
                 
-                if (shortAbilityAbbr) {
-                    const abilityScore = statsObject[shortAbilityAbbr.toLowerCase()] !== undefined ? statsObject[shortAbilityAbbr.toLowerCase()] : 10;
-                    let finalModifier = Math.floor((abilityScore - 10) / 2);
-                    const isProficient = currentSaves.includes(shortAbilityAbbr.toUpperCase());
+                if (shortAbilityAbbr) { // shortAbilityAbbr is "STR", "DEX" etc.
+                    const abilityNameFull = ABILITY_SHORT_TO_FULL_JS[shortAbilityAbbr.toLowerCase()]; // Get "Strength" from "str"
+                    if (abilityNameFull) {
+                        const abilityNameFullLower = abilityNameFull.toLowerCase(); // "strength"
+                        const abilityScore = statsObject[abilityNameFullLower] !== undefined ? statsObject[abilityNameFullLower] : 10;
+                        let finalModifier = Math.floor((abilityScore - 10) / 2);
+                        const isProficient = currentSaves.includes(shortAbilityAbbr.toUpperCase()); // Check with "STR"
 
-                    if (isProficient) {
-                        finalModifier += profBonus;
-                        profIndicator.textContent = '●';
+                        if (isProficient) {
+                            finalModifier += profBonus;
+                            profIndicator.textContent = '●';
+                        } else {
+                            profIndicator.textContent = '○';
+                        }
+                        modifierSpan.textContent = `${finalModifier >= 0 ? '+' : ''}${finalModifier}`;
                     } else {
-                        profIndicator.textContent = '○';
+                        console.error(`Could not find full ability name for short form: ${shortAbilityAbbr}`);
+                        modifierSpan.textContent = '+0';
                     }
-                    modifierSpan.textContent = `${finalModifier >= 0 ? '+' : ''}${finalModifier}`;
                 }
             }
         });
@@ -1228,26 +1364,34 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (nameSpan && profIndicator && modifierSpan) {
                 const skillName = nameSpan.textContent.trim();
-                const baseAbilityShort = SKILL_TO_ABILITY_MAP_JS[skillName];
+                const baseAbilityShort = SKILL_TO_ABILITY_MAP_JS[skillName]; // e.g., "str", "dex"
 
                 if (baseAbilityShort) {
-                    const abilityScore = statsObject[baseAbilityShort.toLowerCase()] !== undefined ? statsObject[baseAbilityShort.toLowerCase()] : 10;
-                    let finalModifier = Math.floor((abilityScore - 10) / 2);
-                    const isProficient = currentSkillsProficiencies.includes(skillName);
+                    const abilityNameFull = ABILITY_SHORT_TO_FULL_JS[baseAbilityShort]; // Get "Strength" from "str"
+                    if (abilityNameFull) {
+                        const abilityNameFullLower = abilityNameFull.toLowerCase(); // "strength"
+                        const abilityScore = statsObject[abilityNameFullLower] !== undefined ? statsObject[abilityNameFullLower] : 10;
+                        let finalModifier = Math.floor((abilityScore - 10) / 2);
+                        const isProficient = currentSkillsProficiencies.includes(skillName);
 
-                    if (isProficient) {
-                        finalModifier += profBonus;
-                        profIndicator.textContent = '●';
+                        if (isProficient) {
+                            finalModifier += profBonus;
+                            profIndicator.textContent = '●';
+                        } else {
+                            profIndicator.textContent = '○';
+                        }
+                        modifierSpan.textContent = `${finalModifier >= 0 ? '+' : ''}${finalModifier}`;
                     } else {
-                        profIndicator.textContent = '○';
+                        console.error(`Could not find full ability name for skill's base ability: ${baseAbilityShort}`);
+                        modifierSpan.textContent = '+0';
                     }
-                    modifierSpan.textContent = `${finalModifier >= 0 ? '+' : ''}${finalModifier}`;
                 }
             }
         });
     }
     
     function updateProficienciesDisplay(proficienciesData) {
+
         if (!proficienciesData) return;
         const profMap = {
             'armor': armorProficienciesList, 'weapons': weaponProficienciesList,
@@ -1567,7 +1711,129 @@ document.addEventListener('DOMContentLoaded', function() {
     updateNavigationButtonStates();
 
     // Fetch and display data for the character's current actual level on initial load
+    // This will also populate the notes text area via Jinja templating on initial load.
     fetchAndDisplayLevelData(currentActualLevel); 
+
+    // --- HP Auto-Save on Blur Event Listener ---
+    if (currentHpInput && maxHpDisplay && hpSaveStatus) { // saveHpButton removed from condition
+        currentHpInput.addEventListener('blur', async function() {
+            // Store the original value in case of invalid input, to revert
+            const originalHpValue = this.dataset.originalValue || this.value;
+            this.dataset.originalValue = this.value; // Update original value for next time if save is successful
+
+            const newHp = parseInt(this.value);
+            const maxHp = parseInt(maxHpDisplay.textContent); // Max HP for the currently viewed level
+
+            // Basic check: if value hasn't changed meaningfully, don't save.
+            // This check is simple; more robust would compare against last successfully saved value.
+            // For now, if it's the same as what was there when blur happened, and it's a valid number,
+            // it might still proceed. This can be refined if it causes too many saves for no reason.
+            // A better check might be: if (newHp === parseInt(originalHpValueForComparison)) return;
+            // where originalHpValueForComparison is the value from the last successful save.
+            // For now, will proceed with validation.
+
+            if (isNaN(newHp)) {
+                hpSaveStatus.textContent = 'Not a number.';
+                // this.value = originalHpValue; // Revert to original value
+                hpSaveStatus.style.color = 'red';
+                return;
+            }
+            if (newHp < 0) {
+                hpSaveStatus.textContent = 'HP cannot be negative.';
+                hpSaveStatus.style.color = 'red';
+                // this.value = originalHpValue; // Revert
+                return;
+            }
+            if (newHp > maxHp) {
+                hpSaveStatus.textContent = `Cannot exceed Max HP (${maxHp}).`;
+                hpSaveStatus.style.color = 'red';
+                // this.value = maxHp; // Revert to max HP or original value
+                return;
+            }
+
+            hpSaveStatus.textContent = 'Saving...';
+            hpSaveStatus.style.color = 'orange';
+
+            try {
+                const response = await fetch(`/character/${characterId}/update_hp`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({
+                        new_hp: newHp,
+                        level_number_for_update: currentlyViewedLevel // Send the level number being viewed
+                    })
+                });
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    hpSaveStatus.textContent = data.message || 'HP Saved!';
+                    hpSaveStatus.style.color = 'green';
+                    currentHpInput.value = data.new_hp; // Update input with confirmed value from server
+                    if (maxHpDisplay) maxHpDisplay.textContent = data.max_hp;
+
+                    // Successfully saved, so the current input value is the new "original" for next time
+                    this.dataset.originalValue = currentHpInput.value;
+
+                } else {
+                    hpSaveStatus.textContent = data.message || 'Error saving HP.';
+                    hpSaveStatus.style.color = 'red';
+                    // currentHpInput.value = originalHpValue; // Revert on error
+                }
+            } catch (error) {
+                console.error('Error updating HP:', error);
+                hpSaveStatus.textContent = 'Network error.';
+                hpSaveStatus.style.color = 'red';
+            } finally {
+                setTimeout(() => { hpSaveStatus.textContent = ''; }, 3000);
+            }
+        });
+    }
+
+    // --- Player Notes Save Button Event Listener ---
+    const playerNotesInput = document.getElementById('player-notes-input');
+    const saveNotesButton = document.getElementById('save-notes-button');
+    const notesSaveStatus = document.getElementById('notes-save-status');
+    let notesSaveTimeout = null;
+
+    if (saveNotesButton && playerNotesInput && notesSaveStatus) {
+        saveNotesButton.addEventListener('click', async function() {
+            const notesContent = playerNotesInput.value;
+
+            if (notesSaveTimeout) clearTimeout(notesSaveTimeout);
+            notesSaveStatus.textContent = 'Saving notes...';
+            notesSaveStatus.style.color = 'orange';
+
+            try {
+                const response = await fetch(`/character/${characterId}/update_notes`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ player_notes: notesContent })
+                });
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    notesSaveStatus.textContent = data.message || 'Notes saved!';
+                    notesSaveStatus.style.color = 'green';
+                } else {
+                    notesSaveStatus.textContent = data.message || 'Error saving notes.';
+                    notesSaveStatus.style.color = 'red';
+                }
+            } catch (error) {
+                console.error('Error saving player notes:', error);
+                notesSaveStatus.textContent = 'Network error while saving notes.';
+                notesSaveStatus.style.color = 'red';
+            } finally {
+                notesSaveTimeout = setTimeout(() => { notesSaveStatus.textContent = ''; }, 3000);
+            }
+        });
+    }
+
 });
 </script>
 {% endblock %}

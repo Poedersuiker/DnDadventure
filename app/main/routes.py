@@ -9,7 +9,7 @@ from flask_login import login_required, current_user
 from app import db
 # CharacterSpellSlot removed, CharacterLevel added
 from app.models import User, Character, Race, Class, Spell, Setting, Item, Coinage, CharacterLevel 
-from app.utils import roll_dice, parse_coinage # Changed import to parse_coinage
+from app.utils import roll_dice, parse_coinage, ALL_SKILLS_LIST, XP_THRESHOLDS, generate_character_sheet_text # Added generate_character_sheet_text
 from app.gemini import geminiai, GEMINI_DM_SYSTEM_RULES
 from datetime import datetime
 from app.main import bp
@@ -498,6 +498,8 @@ def creation_review():
     all_tool_proficiencies = set(char_data.get('background_tool_proficiencies', []))
     all_tool_proficiencies.update(char_data.get('tool_proficiencies_class_fixed', []))
     all_language_proficiencies = set(char_data.get('background_languages', []))
+    # player_notes is handled by default in model
+
     if request.method == 'POST':
         character_name = request.form.get('character_name')
         alignment = request.form.get('alignment')
@@ -525,7 +527,9 @@ def creation_review():
             ),
             adventure_log=json.dumps([]), 
             dm_allowed_level=1,
-            current_xp=0
+            current_xp=0,
+            current_hit_dice=1, # Initialize L1 character with 1 hit die
+            player_notes="" # Initialize player_notes as empty string
         )
         db.session.add(new_char)
         db.session.flush() 
@@ -631,18 +635,7 @@ def creation_review():
         return redirect(url_for('main.index'))
     return render_template('create_character_review.html', data=char_data, race=race, char_class=char_class_obj, cantrips=cantrips, level_1_spells=level_1_spells, all_skill_proficiencies=list(all_skill_proficiencies), all_tool_proficiencies=list(all_tool_proficiencies), all_language_proficiencies=list(all_language_proficiencies), submitted_name=char_data.get('character_name_draft',''), submitted_alignment=char_data.get('alignment_draft',''), submitted_description=char_data.get('description_draft',''))
 
-ALL_SKILLS_LIST = [
-    ("Acrobatics", "DEX"), ("Animal Handling", "WIS"), ("Arcana", "INT"),
-    ("Athletics", "STR"), ("Deception", "CHA"), ("History", "INT"),
-    ("Insight", "WIS"), ("Intimidation", "CHA"), ("Investigation", "INT"),
-    ("Medicine", "WIS"), ("Nature", "INT"), ("Perception", "WIS"),
-    ("Performance", "CHA"), ("Persuasion", "CHA"), ("Religion", "INT"),
-    ("Sleight of Hand", "DEX"), ("Stealth", "DEX"), ("Survival", "WIS")
-]
-# ABILITY_NAMES_FULL is defined a bit lower, but used by get_character_level_data.
-# For consistency and to avoid potential NameError if functions are ever reordered, define it here.
-# ABILITY_NAMES_FULL = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma'] # Defined globally now
-
+# ALL_SKILLS_LIST and XP_THRESHOLDS moved to app.utils
 
 @bp.route('/<int:character_id>/adventure', methods=['GET', 'POST'])
 @login_required
@@ -725,8 +718,8 @@ def adventure(character_id):
             full_equipment_list_for_prompt = items_list_for_prompt + coinage_list_for_prompt
             temp_equipment_str = "\n".join([f"- {item_str}" for item_str in full_equipment_list_for_prompt]) if full_equipment_list_for_prompt else "None"
             
-            xp_thresholds = {1: 300, 2: 900, 3: 2700, 4: 6500, 5: 14000, 6: 23000, 7: 34000, 8: 48000, 9: 64000, 10: 85000, 11: 100000, 12: 120000, 13: 140000, 14: 165000, 15: 195000, 16: 225000, 17: 265000, 18: 305000, 19: 355000}
-            xp_for_next = xp_thresholds.get(current_actual_level, "N/A for current level")
+            # XP_THRESHOLDS is now imported from app.utils
+            xp_for_next = XP_THRESHOLDS.get(current_actual_level, "N/A for current level")
 
             character_sheet_prompt = (
                 f"PLAYER CHARACTER SHEET:\n"
@@ -1441,17 +1434,77 @@ def short_rest(character_id):
     if character.user_id != current_user.id:
         return jsonify(status="error", message="Unauthorized"), 403
 
-    # Placeholder for future short rest mechanics (e.g., hit dice, class features)
-    current_app.logger.info(f"Character {character.name} (ID: {character.id}) takes a short rest.")
-    
-    # Here, you could also add a system message to the character's adventure_log
-    # to inform the DM within the game context if desired.
-    # For now, the message is primarily for the client-side to display.
+    data = request.get_json()
+    if not data:
+        return jsonify(status="error", message="No data provided for short rest."), 400
 
-    return jsonify(
-        status="success",
-        message=f"{character.name} takes a short rest. DM has been notified." 
-    ), 200
+    try:
+        dice_to_spend = int(data.get('dice_to_spend'))
+    except (ValueError, TypeError, TypeError):
+        return jsonify(status="error", message="Invalid number of dice to spend."), 400
+
+    if not character.char_class or not character.char_class.hit_die:
+        return jsonify(status="error", message="Character class or hit die information missing."), 500
+
+    if dice_to_spend <= 0:
+        return jsonify(status="error", message="Number of dice to spend must be positive."), 400
+
+    if dice_to_spend > character.current_hit_dice:
+        return jsonify(status="error", message="Not enough Hit Dice available."), 400
+
+    # Get latest CharacterLevel record for CON modifier and current HP/Max HP
+    latest_level_data = CharacterLevel.query.filter_by(character_id=character.id).order_by(CharacterLevel.level_number.desc()).first()
+    if not latest_level_data:
+        return jsonify(status="error", message="Character has no level data."), 500
+
+    con_modifier = (latest_level_data.constitution - 10) // 2
+
+    try:
+        hit_die_sides = int(character.char_class.hit_die[1:]) # e.g., "d8" -> 8
+    except (TypeError, ValueError, IndexError):
+        current_app.logger.error(f"Invalid hit_die format: {character.char_class.hit_die} for char {character_id}.")
+        return jsonify(status="error", message="Invalid hit die format for character's class."), 500
+
+    total_hp_recovered_from_rolls = 0
+    rolls_detail_list = [] # Optional: to store individual roll results
+
+    for _ in range(dice_to_spend):
+        roll_result, _ = roll_dice(1, hit_die_sides) # roll_dice returns (sum, list_of_rolls)
+        hp_from_this_die = roll_result + con_modifier
+        # Standard D&D rule: if CON mod is negative, a die roll can still grant 0 HP min, not negative.
+        # Some tables rule min 1 HP per die spent if character is conscious. For simplicity, min 0.
+        hp_from_this_die = max(0, hp_from_this_die)
+        total_hp_recovered_from_rolls += hp_from_this_die
+        rolls_detail_list.append(f"{roll_result}+{con_modifier}={hp_from_this_die}")
+
+
+    original_hp = latest_level_data.hp
+    new_hp_calculated = min(latest_level_data.max_hp, latest_level_data.hp + total_hp_recovered_from_rolls)
+    hp_actually_gained = new_hp_calculated - original_hp
+
+    latest_level_data.hp = new_hp_calculated
+    character.current_hit_dice -= dice_to_spend
+
+    # If this is the character's current actual level, update main Character.hp too
+    if latest_level_data.level_number == character.levels.order_by(CharacterLevel.level_number.desc()).first().level_number:
+        character.hp = new_hp_calculated
+
+    try:
+        db.session.commit()
+        current_app.logger.info(f"Character {character.name} (ID: {character.id}) spent {dice_to_spend} Hit Dice ({character.char_class.hit_die}) and recovered {hp_actually_gained} HP. Rolls: {', '.join(rolls_detail_list)}. New HP: {latest_level_data.hp}. HD Remaining: {character.current_hit_dice}")
+        return jsonify(
+            status="success",
+            message=f"Recovered {hp_actually_gained} HP by spending {dice_to_spend} Hit Dice.",
+            new_hp=latest_level_data.hp,
+            max_hp=latest_level_data.max_hp,
+            hit_dice_remaining=character.current_hit_dice,
+            rolls_detail=", ".join(rolls_detail_list), # Send details to client
+            hp_actually_gained=hp_actually_gained # For client to display exact amount gained
+        ), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error during short rest DB commit for char {character_id}: {str(e)}")
+        return jsonify(status="error", message="Database error during short rest."), 500
 
 
 @bp.route('/character/<int:character_id>/rest/long', methods=['POST'])
@@ -1461,33 +1514,63 @@ def long_rest(character_id):
     if character.user_id != current_user.id:
         return jsonify(status="error", message="Unauthorized"), 403
 
-    # Reset all spell slots for the character (Temporarily Commented Out)
-    updated_slots_info = []
-    # spell_slots_for_character = CharacterSpellSlot.query.filter_by(character_id=character.id).all()
-    # for slot_info in spell_slots_for_character:
-    #     slot_info.slots_used = 0
-    #     updated_slots_info.append({
-    #         'spell_level': slot_info.spell_level,
-    #         'slots_used': slot_info.slots_used,
-    #         'slots_total': slot_info.slots_total
-    #     })
-    current_app.logger.warning(f"Long rest for char {character_id} - Spell slot refresh LOGIC TEMPORARILY DISABLED.")
-    # (Future: Implement other long rest mechanics like full HP recovery, hit dice regain, etc.)
-    # Example: character.hp = character.max_hp 
-    # (if you add this, ensure character.max_hp is correctly populated)
+    latest_character_level = CharacterLevel.query.filter_by(character_id=character.id).order_by(CharacterLevel.level_number.desc()).first()
+    if not latest_character_level:
+        return jsonify(status="error", message="Character level data not found."), 404
+
+    if not character.char_class:
+        return jsonify(status="error", message="Character class information not found."), 500
+
+    # HP Recovery
+    latest_character_level.hp = latest_character_level.max_hp
+    character.hp = latest_character_level.max_hp # Keep main Character object consistent
+
+    # Hit Dice Recovery
+    # Recover half of the character's total number of Hit Dice (minimum of 1 die)
+    # This is a common interpretation, though SRD says "regain spent HD". Simpler to set to max for now.
+    # For this implementation, we restore ALL hit dice, as per a full rest.
+    character.current_hit_dice = latest_character_level.level_number
+    if character.current_hit_dice < 1: # Should not happen if level_number is always >= 1
+        character.current_hit_dice = 1
+
+    # Spell Slot Recovery
+    new_spell_slots_snapshot_dict = {}
+    if character.char_class.spell_slots_by_level:
+        try:
+            all_class_slots_data = json.loads(character.char_class.spell_slots_by_level)
+            # Slots for the character's current class level
+            slots_for_character_level_list = all_class_slots_data.get(str(latest_character_level.level_number))
+
+            if slots_for_character_level_list:
+                for spell_level_index, num_slots in enumerate(slots_for_character_level_list):
+                    if num_slots > 0:
+                        # Spell levels are 1-indexed in snapshot keys
+                        new_spell_slots_snapshot_dict[str(spell_level_index + 1)] = num_slots
+
+            latest_character_level.spell_slots_snapshot = json.dumps(new_spell_slots_snapshot_dict)
+            current_app.logger.info(f"Spell slots for char {character_id} L{latest_character_level.level_number} reset to: {new_spell_slots_snapshot_dict}")
+
+        except json.JSONDecodeError:
+            current_app.logger.error(f"Could not parse spell_slots_by_level for class {character.char_class.name} during long rest for char {character_id}.")
+            # Not returning error, as HP/HD might still be fine. Log is important.
+        except Exception as e:
+            current_app.logger.error(f"Unexpected error processing spell slots during long rest for char {character_id}: {str(e)}")
 
     try:
         db.session.commit()
-        current_app.logger.info(f"Character {character.name} (ID: {character.id}) takes a long rest. Spell slots refreshed.")
+        current_app.logger.info(f"Character {character.name} (ID: {character.id}) completed a long rest. HP, Hit Dice, and Spell Slots restored.")
         return jsonify(
             status="success",
-            message=f"{character.name} takes a long rest. Spell slots have been refreshed. DM has been notified.",
-            refreshed_slots=True,
-            all_slots_data=updated_slots_info # Send back the state of all slots
+            message=f"{character.name} takes a long rest. HP, Hit Dice, and spell slots have been restored.",
+            new_hp=latest_character_level.hp,
+            max_hp=latest_character_level.max_hp,
+            hit_dice_remaining=character.current_hit_dice,
+            spell_slots_refreshed=True,
+            new_spell_slots_snapshot=new_spell_slots_snapshot_dict # Send the new state
         ), 200
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error during long rest for char {character_id}: {str(e)}")
+        current_app.logger.error(f"Error during long rest DB commit for char {character_id}: {str(e)}")
         return jsonify(status="error", message="Database error during long rest."), 500
 
 # --- New Route for Getting Character Level Data ---
@@ -1724,8 +1807,9 @@ def level_up_features_asi(character_id):
 
     new_level_number = level_up_data.get('new_level_number')
     # These are for GET request display, might be overwritten by POST
-    new_features_at_this_level = level_up_data.get('new_features_list', [])
+    new_features_at_this_level_names = level_up_data.get('new_features_list', []) # Renamed for clarity
     asi_count_at_this_level = level_up_data.get('asi_count_available', 0)
+    gained_proficiencies_from_features = level_up_data.get('gained_proficiencies', {'skills': [], 'tools': [], 'languages': [], 'armor': [], 'weapons': [], 'saving_throws': []})
 
 
     if request.method == 'GET': 
@@ -1734,19 +1818,51 @@ def level_up_features_asi(character_id):
                 level_specific_progression = json.loads(char_class.level_specific_data)
                 current_level_prog_data = level_specific_progression.get(str(new_level_number))
                 if current_level_prog_data:
-                    new_features_at_this_level = current_level_prog_data.get('features', [])
+                    new_features_at_this_level_names = current_level_prog_data.get('features', [])
                     asi_count_at_this_level = current_level_prog_data.get('asi_count', 0)
+
+                    # Parse features for proficiencies
+                    # This is a simplified approach. A robust solution needs structured feature data.
+                    gained_proficiencies_from_features = {'skills': [], 'tools': [], 'languages': [], 'armor': [], 'weapons': [], 'saving_throws': []}
+                    for feature_name in new_features_at_this_level_names:
+                        if feature_name.startswith("Skill Proficiency:"):
+                            prof_name = feature_name.replace("Skill Proficiency:", "").strip()
+                            if prof_name: gained_proficiencies_from_features['skills'].append(prof_name)
+                        elif feature_name.startswith("Tool Proficiency:"):
+                            prof_name = feature_name.replace("Tool Proficiency:", "").strip()
+                            if prof_name: gained_proficiencies_from_features['tools'].append(prof_name)
+                        elif feature_name.startswith("Language Proficiency:"):
+                            prof_name = feature_name.replace("Language Proficiency:", "").strip()
+                            if prof_name: gained_proficiencies_from_features['languages'].append(prof_name)
+                        elif feature_name.startswith("Armor Proficiency:"):
+                            prof_name = feature_name.replace("Armor Proficiency:", "").strip()
+                            if prof_name: gained_proficiencies_from_features['armor'].append(prof_name)
+                        elif feature_name.startswith("Weapon Proficiency:"):
+                            prof_name = feature_name.replace("Weapon Proficiency:", "").strip()
+                            if prof_name: gained_proficiencies_from_features['weapons'].append(prof_name)
+                        elif feature_name.startswith("Saving Throw Proficiency:"):
+                            prof_name = feature_name.replace("Saving Throw Proficiency:", "").strip()
+                            if prof_name: gained_proficiencies_from_features['saving_throws'].append(prof_name)
+
             except json.JSONDecodeError:
                 current_app.logger.error(f"Could not parse level_specific_data for class {char_class.name}")
                 flash("Error reading class progression data.", "error")
         
-        level_up_data['new_features_list'] = new_features_at_this_level
+        level_up_data['new_features_list'] = new_features_at_this_level_names # Store the raw names
         level_up_data['asi_count_available'] = asi_count_at_this_level
+        level_up_data['gained_proficiencies'] = gained_proficiencies_from_features # Store parsed proficiencies
         level_up_data.setdefault('chosen_asi', {}) 
         level_up_data.setdefault('asi_choices_log', [])
         session.modified = True
             
     if request.method == 'POST':
+        # Ensure gained_proficiencies is loaded from session if POST, as GET block might not run
+        # or might be overwritten if we POST multiple times (e.g. validation error)
+        # However, 'gained_proficiencies' should ideally be set during GET and remain unchanged during POST
+        # as features are determined when the page loads, not by user POST data on this specific form.
+        # So, we rely on it being correctly populated in the session from the GET request.
+        gained_proficiencies_from_features = level_up_data.get('gained_proficiencies', {'skills': [], 'tools': [], 'languages': [], 'armor': [], 'weapons': [], 'saving_throws': []})
+
         asi_count_available_in_session = level_up_data.get('asi_count_available', 0)
         # Important: work on a copy for ability scores until all validation passes
         current_ability_scores_copy = level_up_data.get('ability_scores', {}).copy()
@@ -1809,7 +1925,9 @@ def level_up_features_asi(character_id):
 
         level_up_data['ability_scores'] = current_ability_scores_copy 
         level_up_data['asi_choices_log'] = asi_choices_log_list 
+        # 'chosen_features_details_list' should just be the names from 'new_features_list'
         level_up_data['chosen_features_details_list'] = level_up_data.get('new_features_list', [])
+        # 'gained_proficiencies' is already updated in session from GET part
         session['level_up_data'] = level_up_data
         session.modified = True
         
@@ -1839,7 +1957,7 @@ def level_up_features_asi(character_id):
                             class_name=level_up_data.get('class_name'),
                             new_level_number=new_level_number,
                             current_ability_scores=level_up_data.get('ability_scores'), 
-                            new_features=new_features_at_this_level, 
+                            new_features=level_up_data.get('new_features_list', []), # Use 'new_features_list' which holds the names
                             asi_count=asi_count_at_this_level, 
                             ability_names=ABILITY_NAMES_FULL 
                            )
@@ -2076,8 +2194,8 @@ def level_up_apply(character_id):
         hp=current_level_entry.max_hp + level_up_data['hp_info']['gain'], 
         max_hp=current_level_entry.max_hp + level_up_data['hp_info']['gain'], 
         hit_dice_rolled=level_up_data['hp_info'].get('log_details', "N/A"), 
-        armor_class=current_level_entry.armor_class, 
-        proficiencies=current_level_entry.proficiencies, # Placeholder - should update if new profs gained
+        armor_class=current_level_entry.armor_class, # AC changes are not handled by this level up feature step yet
+        # proficiencies=current_level_entry.proficiencies, # Placeholder - should update if new profs gained
         features_gained=json.dumps(combined_features_log), 
         spells_known_ids=json.dumps(all_known_spell_ids), 
         spells_prepared_ids=current_level_entry.spells_prepared_ids, # Placeholder for prepared casters
@@ -2085,25 +2203,169 @@ def level_up_apply(character_id):
         created_at=datetime.utcnow()
     )
 
+    # Merge proficiencies
+    existing_proficiencies_json = current_level_entry.proficiencies or '{}'
+    try:
+        existing_proficiencies_dict = json.loads(existing_proficiencies_json)
+        if not isinstance(existing_proficiencies_dict, dict): # Ensure it's a dict
+             current_app.logger.warning(f"Existing proficiencies for char {character_id} L{current_level_entry.level_number} was not a dict. Resetting. Value: {existing_proficiencies_json}")
+             existing_proficiencies_dict = {}
+    except json.JSONDecodeError:
+        current_app.logger.error(f"Failed to parse existing_proficiencies_json for char {character_id} L{current_level_entry.level_number}. Value: {existing_proficiencies_json}")
+        existing_proficiencies_dict = {}
+
+    gained_proficiencies_from_session = level_up_data.get('gained_proficiencies', {})
+
+    merged_proficiencies_dict = existing_proficiencies_dict.copy()
+
+    for prof_type, prof_list in gained_proficiencies_from_session.items():
+        if not prof_list: # Skip if the list of gained proficiencies for this type is empty
+            continue
+
+        # Ensure the proficiency type category exists in merged_proficiencies_dict
+        if prof_type not in merged_proficiencies_dict:
+            merged_proficiencies_dict[prof_type] = []
+        elif not isinstance(merged_proficiencies_dict[prof_type], list): # Ensure it's a list
+            current_app.logger.warning(f"Proficiency type '{prof_type}' in existing profs for char {character_id} was not a list. Resetting for this type. Value: {merged_proficiencies_dict[prof_type]}")
+            merged_proficiencies_dict[prof_type] = []
+
+        for prof_name in prof_list:
+            if prof_name not in merged_proficiencies_dict[prof_type]:
+                merged_proficiencies_dict[prof_type].append(prof_name)
+
+    new_level_data.proficiencies = json.dumps(merged_proficiencies_dict)
+
+
     # Update the main Character object with new HP, Max HP, and AC
     character.hp = new_level_data.hp
     character.max_hp = new_level_data.max_hp
-    # Only update AC if it's actually changing.
-    # For now, level up process doesn't change AC, it's taken from current_level_entry.armor_class.
-    # If future level up steps can change AC, this line should be:
-    # character.armor_class = new_level_data.armor_class
-    # However, to match the new_level_data, which currently just copies AC from previous level:
-    character.armor_class = new_level_data.armor_class # This will reflect the AC stored for the new level.
+    # AC is not changed by features in this step, it uses the value from the previous level data
+    # which is already set in new_level_data.armor_class.
+    # character.armor_class = new_level_data.armor_class # This line is effectively redundant if AC isn't changing
+
+    # Update character's current_hit_dice to new level number
+    character.current_hit_dice = new_level_data.level_number
+    if character.current_hit_dice < 1: # Should always be >= 1
+        character.current_hit_dice = 1
 
     db.session.add(new_level_data)
     # character object is already in the session, so changes will be committed.
     try:
-        db.session.commit()
+        db.session.commit() # First commit for level up data
+
+        # Generate character sheet text and append to adventure log
+        char_class = Class.query.get(character.class_id) # Fetch class object
+        known_spell_ids_list = json.loads(new_level_data.spells_known_ids or '[]')
+        known_spell_objects = Spell.query.filter(Spell.id.in_(known_spell_ids_list)).all() if known_spell_ids_list else []
+
+        sheet_text = generate_character_sheet_text(character, new_level_data, char_class, known_spell_objects)
+        dm_update_message = f"SYSTEM: {character.name} has reached Level {new_level_data.level_number}. Their character sheet has been updated as follows:\n\n{sheet_text}"
+
+        try:
+            log_entries = json.loads(character.adventure_log or '[]')
+            if not isinstance(log_entries, list):
+                log_entries = []
+        except json.JSONDecodeError:
+            log_entries = []
+
+        log_entries.append({"sender": "system", "text": dm_update_message})
+        character.adventure_log = json.dumps(log_entries)
+        db.session.commit() # Second commit for adventure log update
+
         session.pop('level_up_data', None) 
-        flash(f"Successfully leveled up to Level {new_level_data.level_number}!", "success")
+        # Enhanced flash message and server log
+        flash(f"Successfully leveled up to Level {new_level_data.level_number}! Your character sheet is updated and ready for your DM.", "success")
+        current_app.logger.info(f"Character '{character.name}' (ID: {character.id}) successfully leveled up to Level {new_level_data.level_number}. DM notified (conceptually via adventure log).")
         return redirect(url_for('main.adventure', character_id=character_id))
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error applying level up for char {character_id} to L{new_level_data.level_number}: {str(e)}")
+        db.session.rollback() # Rollback any pending changes from both potential commits if error
+        current_app.logger.error(f"Error applying level up or updating adventure log for char {character_id} to L{new_level_data.level_number}: {str(e)}")
         flash("Error applying level up. Please try again.", "error")
         return redirect(url_for('main.level_up_start', character_id=character_id))
+
+@bp.route('/character/<int:character_id>/update_hp', methods=['POST'])
+@login_required
+def update_hp(character_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(status="error", message="Unauthorized"), 403
+
+    data = request.get_json()
+    if not data:
+        return jsonify(status="error", message="No data provided"), 400
+
+    try:
+        new_hp = int(data.get('new_hp'))
+        level_number_for_update = int(data.get('level_number_for_update'))
+    except (ValueError, TypeError):
+        return jsonify(status="error", message="Invalid HP or level number format."), 400
+
+    # Fetch the specific CharacterLevel record that the user is viewing and intending to update
+    character_level_record = CharacterLevel.query.filter_by(
+        character_id=character.id,
+        level_number=level_number_for_update
+    ).first()
+
+    if not character_level_record:
+        return jsonify(status="error", message="Character level data not found for the specified level."), 404
+
+    if new_hp < 0:
+        return jsonify(status="error", message="HP cannot be negative."), 400
+    if new_hp > character_level_record.max_hp:
+        return jsonify(status="error", message=f"HP cannot exceed Max HP ({character_level_record.max_hp})."), 400
+
+    character_level_record.hp = new_hp
+
+    # If the updated level is the character's current actual level, also update the main Character.hp
+    # Fetch all level records for the character to determine current and achieved levels
+    all_character_levels = CharacterLevel.query.filter_by(character_id=character.id).order_by(CharacterLevel.level_number).all()
+    current_actual_level_number = 0
+    if all_character_levels:
+        current_actual_level_number = all_character_levels[-1].level_number
+
+    if character_level_record.level_number == current_actual_level_number:
+        character.hp = new_hp
+        # character.max_hp is generally only updated on level up, not here.
+
+    try:
+        db.session.commit()
+        return jsonify(
+            status="success",
+            message="HP updated!",
+            new_hp=character_level_record.hp,
+            max_hp=character_level_record.max_hp, # Return max_hp for consistency, though it doesn't change here
+            level_updated=character_level_record.level_number
+        ), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating HP for char {character_id}, level {level_number_for_update}: {str(e)}")
+        return jsonify(status="error", message="Database error updating HP."), 500
+
+@bp.route('/character/<int:character_id>/update_notes', methods=['POST'])
+@login_required
+def update_notes(character_id):
+    character = Character.query.get_or_404(character_id)
+    if character.user_id != current_user.id:
+        return jsonify(status="error", message="Unauthorized"), 403
+
+    data = request.get_json()
+    if data is None: # Check if data is None, which happens if request body is empty or not JSON
+        return jsonify(status="error", message="No data provided or not JSON."), 400
+
+    player_notes_from_request = data.get('player_notes')
+    # Allow empty notes, so no specific check for empty string beyond what data.get provides (None if key missing)
+
+    if player_notes_from_request is None and 'player_notes' not in data:
+         # Key 'player_notes' was not in the request JSON at all
+        return jsonify(status="error", message="Invalid request: 'player_notes' key missing."), 400
+
+    character.player_notes = player_notes_from_request
+
+    try:
+        db.session.commit()
+        current_app.logger.info(f"Player notes updated for character {character_id}.")
+        return jsonify(status="success", message="Notes saved!")
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error saving player notes for char {character_id}: {str(e)}")
+        return jsonify(status="error", message="Database error while saving notes."), 500

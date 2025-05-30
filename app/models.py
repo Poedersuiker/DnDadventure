@@ -29,6 +29,8 @@ class Character(db.Model):
     background_name = db.Column(db.String(100), nullable=True)
     background_proficiencies = db.Column(db.Text, nullable=True)  # JSON
     adventure_log = db.Column(db.Text, nullable=True) # JSON chat history
+    current_hit_dice = db.Column(db.Integer, default=1, nullable=False) # Added for short rest
+    player_notes = db.Column(db.Text, nullable=True) # Added for player notes
 
     items = db.relationship('Item', back_populates='character', lazy=True)
     coinage = db.relationship('Coinage', back_populates='character', lazy=True)
