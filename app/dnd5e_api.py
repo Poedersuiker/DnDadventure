@@ -62,3 +62,20 @@ def get_resource_details(resource_type: str, resource_index: str) -> dict:
     """
     endpoint = f"/{resource_type}/{resource_index}"
     return _make_request(endpoint)
+
+
+def get_all_races() -> list:
+    """
+    Fetches the list of all races from the D&D 5e API.
+
+    Returns:
+        A list of race data obtained from the API.
+        Each race object in the list is a dictionary with 'index', 'name', and 'url'.
+        Returns an empty list if the 'results' key is not found in the API response.
+
+    Raises:
+        requests.exceptions.RequestException: If an error occurs while making the request.
+        json.JSONDecodeError: If an error occurs while decoding the JSON response.
+    """
+    data = _make_request("/races")
+    return data.get('results', [])
