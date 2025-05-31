@@ -847,6 +847,161 @@ class TestMainRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json()['message'], 'Item name cannot be empty.')
 
+    def test_creation_review_post_api_driven_data(self):
+        """Test POST to creation_review with data primarily sourced from API mocks in session."""
+        test_user = User(id=10, email="api_user@example.com", google_id="api_user_google_id")
+        db.session.add(test_user)
+        db.session.commit()
+
+        # Mocked API data to be placed in session
+        mock_api_race_details = {
+            'index': 'dragonborn', 'name': 'Dragonborn', 'speed': 30,
+            'ability_bonuses': [{'ability_score': {'name': 'STR'}, 'bonus': 2}, {'ability_score': {'name': 'CHA'}, 'bonus': 1}],
+            'languages': [{'name': 'Common'}, {'name': 'Draconic'}],
+            'traits': [{'name': 'Draconic Ancestry'}, {'name': 'Breath Weapon'}]
+        }
+        mock_api_class_details = {
+            'index': 'sorcerer', 'name': 'Sorcerer', 'hit_die': 6,
+            'proficiencies': [{'name': 'Daggers'}, {'name': 'Light Crossbows'}, {"name": "Arcana"}], # Arcana here is a direct prof, not choice
+            'saving_throws': [{'name': 'CON'}, {'name': 'CHA'}],
+            'proficiency_choices': [{
+                'desc': 'Choose two skills from Arcana, Deception, Insight, Intimidation, Persuasion, and Religion',
+                'choose': 2,
+                'from': {'options': [
+                    {'item': {'name': 'Skill: Arcana'}}, {'item': {'name': 'Skill: Deception'}},
+                    {'item': {'name': 'Skill: Insight'}}, {'item': {'name': 'Skill: Intimidation'}},
+                    {'item': {'name': 'Skill: Persuasion'}}, {'item': {'name': 'Skill: Religion'}}
+                ]}
+            }],
+            'starting_equipment': [{'equipment': {'name': 'Gold Coins'}, 'quantity': 10}], # Mocking 10 gold coins
+            'spellcasting': {'spellcasting_ability': {'index': 'cha', 'name': 'CHA'}}
+        }
+        mock_api_class_level_1_details = {
+            'index': 'sorcerer-1', 'level': 1,
+            'features': [{'name': 'Spellcasting (Sorcerer L1)'}, {'name': 'Sorcerous Origin'}],
+            'spellcasting': {'cantrips_known': 4, 'spells_known': 2, 'spell_slots_level_1': 2}
+        }
+
+        # Spells from local DB (as creation_spells still uses local DB for list)
+        # Ensure these IDs exist if you're using them. We have self.cantrip (id=1)
+        sorcerer_cantrip1 = Spell(id=101, index='fire-bolt-test', name='Fire Bolt Test', description='[]', level=0, school='Evocation', classes_that_can_use='["Sorcerer", "Wizard"]')
+        sorcerer_cantrip2 = Spell(id=102, index='ray-of-frost-test', name='Ray of Frost Test', description='[]', level=0, school='Evocation', classes_that_can_use='["Sorcerer", "Wizard"]')
+        sorcerer_spell1 = Spell(id=103, index='shield-test', name='Shield Test', description='[]', level=1, school='Abjuration', classes_that_can_use='["Sorcerer", "Wizard"]')
+        db.session.add_all([sorcerer_cantrip1, sorcerer_cantrip2, sorcerer_spell1])
+        db.session.commit()
+
+
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = test_user.id
+            sess['_fresh'] = True
+            sess['new_character_data'] = {
+                'race_id': None, # Explicitly None
+                'class_id': None, # Explicitly None
+                'race_name': 'Dragonborn', 'race_index': 'dragonborn',
+                'class_name': 'Sorcerer', 'class_index': 'sorcerer',
+                'api_race_details': mock_api_race_details,
+                'api_class_details': mock_api_class_details,
+                'api_class_level_1_details': mock_api_class_level_1_details,
+                'race_languages': ['Common', 'Draconic'], # Parsed in creation_race
+                'ability_scores': {'STR': 10, 'DEX': 12, 'CON': 13, 'INT': 8, 'WIS': 10, 'CHA': 15}, # Base scores
+                'base_ability_scores': {'STR': 8, 'DEX': 12, 'CON': 13, 'INT': 8, 'WIS': 10, 'CHA': 14}, # Before racial
+                'max_hp': 7, # (6/2+1 for d6 fixed) + 1 CON
+                'current_hp': 7,
+                'armor_class_base': 11, # 10 + 1 DEX
+                'speed': 30, # From race details
+                'background_name': 'Sage',
+                'background_skill_proficiencies': ['Arcana', 'History'], # Note: Arcana also from class fixed prof
+                'background_tool_proficiencies': [],
+                'background_languages': ["Elvish", "Dwarvish"], # Example background languages
+                'background_equipment': "A bottle of ink, a quill, some paper",
+                'class_skill_proficiencies': ['Persuasion', 'Intimidation'], # Chosen from options
+                'armor_proficiencies': [], # Sorcerers typically don't get armor prof from base class
+                'weapon_proficiencies': ['Daggers', 'Light Crossbows'], # From api_class_details.proficiencies
+                'tool_proficiencies_class_fixed': [], # Assuming none from class fixed
+                'saving_throw_proficiencies': ['CON', 'CHA'], # From api_class_details.saving_throws
+                'final_equipment': ["Dagger (x1)", "Component Pouch", "Explorer's Pack", "Background: A bottle of ink, a quill, some paper"],
+                'chosen_cantrip_ids': [sorcerer_cantrip1.id, sorcerer_cantrip2.id], # 2 chosen from 4 known
+                'chosen_level_1_spell_ids': [sorcerer_spell1.id] # 1 chosen from 2 known
+            }
+
+        response = self.client.post(url_for('main.creation_review'), data={
+            'character_name': 'API Driven Sorcerer',
+            'alignment': 'Chaotic Good',
+            'character_description': 'Born of magic.'
+        }, follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200) # Should redirect to index, then render index
+        self.assertIn(b'Character created successfully!', response.data)
+
+        created_char_db = Character.query.filter_by(name='API Driven Sorcerer').first()
+        self.assertIsNotNone(created_char_db)
+        self.assertIsNone(created_char_db.race_id) # As per session data
+        self.assertIsNone(created_char_db.class_id) # As per session data
+
+        char_level_1_data = created_char_db.levels.filter_by(level_number=1).first()
+        self.assertIsNotNone(char_level_1_data)
+
+        # 1. Race Data Assertions
+        # Stats (STR 8 + 2 = 10, CHA 14 + 1 = 15)
+        self.assertEqual(char_level_1_data.strength, 10)
+        self.assertEqual(char_level_1_data.charisma, 15)
+        self.assertEqual(char_level_1_data.dexterity, 12) # Unchanged by racial
+        self.assertEqual(char_level_1_data.speed, 30)
+
+        level_1_profs = json.loads(char_level_1_data.proficiencies)
+        self.assertIn('Common', level_1_profs['languages'])
+        self.assertIn('Draconic', level_1_profs['languages'])
+        self.assertIn('Elvish', level_1_profs['languages']) # From background
+        self.assertIn('Dwarvish', level_1_profs['languages']) # From background
+
+
+        level_1_features = json.loads(char_level_1_data.features_gained)
+        self.assertIn('Draconic Ancestry', level_1_features)
+        self.assertIn('Breath Weapon', level_1_features)
+
+        # 2. Class Data Assertions
+        self.assertEqual(char_level_1_data.max_hp, 7) # Sorcerer d6 (fixed 4) + CON 13 (+1) = 5.  Wait, hit_die 6 => fixed is 4. Max HP at L1 is HitDie + CON. So 6+1=7. Correct.
+
+        self.assertIn('CON', level_1_profs['saving_throws'])
+        self.assertIn('CHA', level_1_profs['saving_throws'])
+        self.assertIn('Daggers', level_1_profs['weapons'])
+        self.assertIn('Light Crossbows', level_1_profs['weapons'])
+
+        self.assertIn('Arcana', level_1_profs['skills']) # From background and/or class fixed prof
+        self.assertIn('History', level_1_profs['skills']) # From background
+        self.assertIn('Persuasion', level_1_profs['skills']) # Chosen class skill
+        self.assertIn('Intimidation', level_1_profs['skills']) # Chosen class skill
+
+        self.assertIn('Spellcasting (Sorcerer L1)', level_1_features)
+        self.assertIn('Sorcerous Origin', level_1_features)
+
+        spell_slots = json.loads(char_level_1_data.spell_slots_snapshot)
+        self.assertEqual(spell_slots.get('1'), 2) # 2 level 1 slots for L1 Sorcerer
+
+        spells_known = json.loads(char_level_1_data.spells_known_ids)
+        self.assertIn(sorcerer_cantrip1.id, spells_known)
+        self.assertIn(sorcerer_cantrip2.id, spells_known)
+        self.assertIn(sorcerer_spell1.id, spells_known)
+        # Sorcerer L1: 4 cantrips known, 2 spells known. Session data provides 2 cantrips, 1 spell.
+        # This test assumes the number of chosen spells matches the *allowed* number of choices,
+        # not necessarily the *total* known (e.g. if some are auto-known).
+        # The creation_spells logic should ensure this.
+        # For this test, we assert what was *chosen* is present.
+        # The number of chosen cantrips (2) is less than cantrips_known (4) from mock.
+        # The number of chosen L1 spells (1) is less than spells_known (2) from mock.
+        # This means the test setup for chosen spells in session might not fully align with what creation_spells would enforce.
+        # For now, this tests that what IS chosen is saved.
+        # A more robust test would mock `get_class_learnable_spells` and ensure the selection logic in `creation_spells` is also consistent.
+
+        # 3. Combined Data
+        self.assertIsNone(created_char_db.race_id)
+        self.assertIsNone(created_char_db.class_id)
+
+        # Check for gold coins from class starting equipment
+        gold_item = Coinage.query.filter_by(character_id=created_char_db.id, name="Gold Pieces").first()
+        self.assertIsNotNone(gold_item)
+        self.assertEqual(gold_item.quantity, 10)
+
 
 if __name__ == '__main__':
     unittest.main()

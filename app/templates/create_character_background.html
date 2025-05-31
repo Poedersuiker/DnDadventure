@@ -17,26 +17,53 @@
 
     <form method="POST" action="{{ url_for('main.creation_background') }}">
         <div class="list-group">
-            {% for bg_key, bg_data in backgrounds.items() %}
+            {% for bg_data in backgrounds %}
             <label class="list-group-item list-group-item-action flex-column align-items-start">
                 <div class="d-flex w-100 justify-content-between">
                     <h5 class="mb-1">
-                        <input type="radio" name="background_name" value="{{ bg_key }}" required 
-                               {% if session.get('new_character_data', {}).get('background_name') == bg_key %}checked{% endif %}>
+                        <input type="radio" name="background_index" value="{{ bg_data.index }}" required
+                               {% if session.get('new_character_data', {}).get('background_index') == bg_data.index %}checked{% endif %}>
                         {{ bg_data.name }}
                     </h5>
                 </div>
-                <p class="mb-1"><strong>Skill Proficiencies:</strong> {{ bg_data.skill_proficiencies|join(', ') if bg_data.skill_proficiencies else 'None' }}</p>
                 
-                {% if bg_data.tool_proficiencies and bg_data.tool_proficiencies|length > 0 %}
-                <p class="mb-1"><strong>Tool Proficiencies:</strong> {{ bg_data.tool_proficiencies|join(', ') }}</p>
+                {% set skills = [] %}
+                {% for prof in bg_data.starting_proficiencies %}
+                  {% if prof.name.startswith('Skill: ') %}
+                    {% set _ = skills.append(prof.name.replace('Skill: ', '')) %}
+                  {% endif %}
+                {% endfor %}
+                <p class="mb-1"><strong>Skill Proficiencies:</strong> {{ skills|join(', ') if skills else 'None' }}</p>
+
+                {% set tools = [] %}
+                {% for prof in bg_data.starting_proficiencies %}
+                  {% if prof.name.startswith('Tool: ') %}
+                    {% set _ = tools.append(prof.name.replace('Tool: ', '')) %}
+                  {% elif prof.name.startswith('Tools: ') %} {# Handling "Tools: " prefix as well #}
+                    {% set _ = tools.append(prof.name.replace('Tools: ', '')) %}
+                  {% endif %}
+                {% endfor %}
+                {% if tools %}
+                <p class="mb-1"><strong>Tool Proficiencies:</strong> {{ tools|join(', ') }}</p>
                 {% endif %}
 
-                {% if bg_data.languages and bg_data.languages|length > 0 %}
-                <p class="mb-1"><strong>Languages:</strong> {{ bg_data.languages|join(', ') }}</p>
+                {% if bg_data.language_options and bg_data.language_options.choose > 0 %}
+                <p class="mb-1"><strong>Languages:</strong> Choose {{ bg_data.language_options.choose }}</p>
+                {% else %}
+                <p class="mb-1"><strong>Languages:</strong> None</p>
                 {% endif %}
                 
-                <p class="mb-1"><small><strong>Equipment:</strong> {{ bg_data.equipment }}</small></p>
+                {% set eq_list = [] %}
+                {% for item in bg_data.starting_equipment %}
+                  {% if item.equipment and item.quantity %}
+                    {% set _ = eq_list.append(item.equipment.name ~ " (x" ~ item.quantity ~ ")") %}
+                  {% endif %}
+                {% endfor %}
+                {% for option in bg_data.starting_equipment_options %}
+                  {% set choice_desc = option.desc if 'desc' in option and option.desc else (option.from.equipment_category.name if option.from and option.from.option_set_type == 'equipment_category' and option.from.equipment_category else 'unspecified items') %}
+                  {% set _ = eq_list.append("Choose " ~ option.choose ~ " from: " ~ choice_desc) %}
+                {% endfor %}
+                <p class="mb-1"><small><strong>Equipment:</strong> {{ eq_list|join('; ') if eq_list else 'None' }}</small></p>
             </label>
             {% endfor %}
         </div>

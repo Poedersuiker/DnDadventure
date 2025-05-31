@@ -10,7 +10,7 @@ from flask_login import login_required, current_user
 from app import db
 # CharacterSpellSlot removed, CharacterLevel added
 from app.models import User, Character, Race, Class, Spell, Setting, Item, Coinage, CharacterLevel
-from app.dnd5e_api import get_all_races, get_all_classes, get_class_details, get_class_level_details # Added get_class_level_details
+from app.dnd5e_api import get_all_races, get_all_classes, get_class_details, get_class_level_details, get_all_backgrounds, get_background_details, get_resource_details, get_class_learnable_spells # Added get_resource_details
 from app.utils import roll_dice, parse_coinage, ALL_SKILLS_LIST, XP_THRESHOLDS, generate_character_sheet_text # Added generate_character_sheet_text
 from app.gemini import geminiai, GEMINI_DM_SYSTEM_RULES
 from datetime import datetime
@@ -157,20 +157,25 @@ def creation_race():
         # Storing index and name from API. ID is no longer used from local DB.
         session['new_character_data']['race_index'] = selected_race_index
         session['new_character_data']['race_name'] = selected_race_name
-        # race_id is no longer relevant as we are using API index.
-        # However, other parts of creation flow (stats, hp) might still expect race_id to query Race model for bonuses/speed.
-        # This will require further refactoring in subsequent steps if Race model is completely removed.
-        # For now, let's see if we can find a local Race entry by name if needed, or adjust those steps.
-        # Let's assume for now that 'race_id' in session is still needed for other parts of the flow that query the local DB.
-        # This is a temporary measure and should be addressed by fetching all necessary race details (like speed, bonuses) from API too.
+
+        try:
+            api_race_details = get_resource_details("races", selected_race_index)
+            session['new_character_data']['api_race_details'] = api_race_details
+            session['new_character_data']['race_languages'] = [lang.get('name') for lang in api_race_details.get('languages', []) if lang.get('name')]
+        except requests.exceptions.RequestException as e:
+            current_app.logger.error(f"API error fetching details for race '{selected_race_index}': {e}")
+            flash(f"Could not fetch detailed data for {selected_race_name}. Some features like languages and ability bonuses might be unavailable.", "warning")
+            session['new_character_data']['api_race_details'] = None # Ensure it's None if fetch fails
+            session['new_character_data']['race_languages'] = []
+
+
+        # Local DB race_id for compatibility if needed, but API is primary
         temp_local_race_for_id = Race.query.filter_by(name=selected_race_name).first()
         if temp_local_race_for_id:
             session['new_character_data']['race_id'] = temp_local_race_for_id.id
         else:
-            # If no local race matches by name, this could be an issue for later steps.
-            # For now, flash a warning and proceed, but this indicates data inconsistency or need for more API data.
-            flash(f"Warning: Could not find a local database entry for '{selected_race_name}'. Some features might not work correctly.", 'warning')
-            session['new_character_data']['race_id'] = None # Or some placeholder / handle error more strictly
+            flash(f"Warning: Could not find a local database entry for '{selected_race_name}'. Using API data primarily.", 'info')
+            session['new_character_data']['race_id'] = None
 
         session.modified = True
         flash(f'{selected_race_name} selected!', 'success')
@@ -246,13 +251,26 @@ def creation_class():
         session['new_character_data']['class_index'] = selected_class_index
         session['new_character_data']['class_name'] = selected_class_name
 
-        # Attempt to find local Class entry for compatibility
+        try:
+            api_class_details = get_class_details(selected_class_index)
+            session['new_character_data']['api_class_details'] = api_class_details
+            api_class_level_1_details = get_class_level_details(selected_class_index, 1)
+            session['new_character_data']['api_class_level_1_details'] = api_class_level_1_details
+        except requests.exceptions.RequestException as e:
+            current_app.logger.error(f"API error fetching details for class '{selected_class_index}': {e}")
+            flash(f"Could not fetch detailed data for {selected_class_name}. Proceeding with limited information.", "warning")
+            session['new_character_data']['api_class_details'] = None
+            session['new_character_data']['api_class_level_1_details'] = None
+
+        # Attempt to find local Class entry for compatibility or if API fails
         temp_local_class_for_id = Class.query.filter_by(name=selected_class_name).first()
         if temp_local_class_for_id:
             session['new_character_data']['class_id'] = temp_local_class_for_id.id
         else:
-            flash(f"Warning: Could not find a local database entry for class '{selected_class_name}'. Some class-specific features (like starting equipment, skills, HP) might not work correctly if they rely on local DB lookups. This step assumes these details will be fetched from the API or handled differently in later steps.", 'warning')
             session['new_character_data']['class_id'] = None # Explicitly set to None
+            if not session['new_character_data'].get('api_class_details'): # Only warn if API also failed
+                 flash(f"Warning: Could not find a local database entry for class '{selected_class_name}' and API fetch failed. Some features might not work.", 'error')
+
 
         session.modified = True
         flash(f'{selected_class_name} selected!', 'success')
@@ -279,119 +297,134 @@ def creation_stats():
         return redirect(url_for('main.creation_class'))
 
     selected_race = None # Will hold local Race object if found
-    if char_data.get('race_id'): # race_id is set if a local match was found in creation_race
-        selected_race = Race.query.get(char_data['race_id'])
-    # If selected_race is None here, it means no local DB entry matched the API race name.
-    # Racial bonuses and other DB-dependent race features will be missing. This is a known limitation.
+    # selected_race (local DB object) is less critical now if API details are present
+    # if char_data.get('race_id'):
+    #     selected_race = Race.query.get(char_data['race_id'])
 
     class_name_to_display = char_data.get('class_name') # Default to whatever is in session
     primary_ability = "Refer to class features" # Default
-
     ability_short_to_full = {
         "str": "Strength", "dex": "Dexterity", "con": "Constitution",
         "int": "Intelligence", "wis": "Wisdom", "cha": "Charisma"
     }
 
-    if char_data.get('class_id') is None: # No local DB class entry was found, try API
-        class_index = char_data.get('class_index')
-        if not class_index:
-            flash('Class index not found in session. Please go back and select a class.', 'error')
-            return redirect(url_for('main.creation_class'))
-        try:
-            current_app.logger.info(f"Fetching class details from API for index: {class_index}")
-            api_class_details = get_class_details(class_index)
-            session['new_character_data']['api_class_details'] = api_class_details # Store all details
-            class_name_to_display = api_class_details.get('name', class_name_to_display) # Update name from API
+    api_class_details = char_data.get('api_class_details') # Should be populated from creation_class
 
-            spellcasting_info = api_class_details.get('spellcasting')
-            if spellcasting_info and spellcasting_info.get('spellcasting_ability'):
-                sa_index = spellcasting_info['spellcasting_ability'].get('index')
-                primary_ability = ability_short_to_full.get(sa_index, "Refer to class features")
-            current_app.logger.info(f"Loaded class details from API for {class_name_to_display}. Primary ability: {primary_ability}")
-
-        except requests.exceptions.RequestException as e:
-            current_app.logger.error(f"API Error fetching class details for '{class_index}': {e}")
-            flash('Could not fetch class details from API. Please try again.', 'error')
-            return redirect(url_for('main.creation_class'))
-        except Exception as e: # Catch other potential errors like KeyError
-            current_app.logger.error(f"Error processing class details for '{class_index}': {e}")
-            flash('Error processing class details. Please try again.', 'error')
-            return redirect(url_for('main.creation_class'))
-    else: # Local DB class_id exists, use that
+    if api_class_details:
+        class_name_to_display = api_class_details.get('name', char_data.get('class_name'))
+        spellcasting_info = api_class_details.get('spellcasting')
+        if spellcasting_info and spellcasting_info.get('spellcasting_ability'):
+            sa_index = spellcasting_info['spellcasting_ability'].get('index')
+            primary_ability = ability_short_to_full.get(sa_index, "Refer to class features")
+        current_app.logger.info(f"creation_stats: Loaded class details from API session data for {class_name_to_display}. Primary ability: {primary_ability}")
+    elif char_data.get('class_id'): # Fallback to local DB if API details are missing from session
         selected_class_local = Class.query.get(char_data['class_id'])
-        if not selected_class_local:
-            # This case should ideally be prevented by previous steps, but as a safeguard:
-            flash('Selected class (local) not found despite ID in session. Please restart character creation.', 'error')
-            session.pop('new_character_data', None) # Clear potentially inconsistent data
+        if selected_class_local:
+            class_name_to_display = selected_class_local.name
+            primary_ability = selected_class_local.spellcasting_ability or "Refer to class features"
+            current_app.logger.info(f"creation_stats: Loaded class details from local DB for {class_name_to_display}. Primary ability: {primary_ability}")
+        else:
+            flash('Selected class (local) not found. Please restart character creation.', 'error')
             return redirect(url_for('main.creation_class'))
-        class_name_to_display = selected_class_local.name
-        primary_ability = selected_class_local.spellcasting_ability or "Refer to class features"
-        current_app.logger.info(f"Loaded class details from local DB for {class_name_to_display}. Primary ability: {primary_ability}")
+    else: # Critical data missing
+        flash('Class details not found in session. Please go back and select a class.', 'error')
+        return redirect(url_for('main.creation_class'))
 
     racial_bonuses_list = []
-    if selected_race: # Only try to load bonuses if a local race object was found
-        racial_bonuses_list = json.loads(selected_race.ability_score_increases or '[]')
-    else:
-        # Optional: Flash a warning if local race data (and thus bonuses) are missing
-        flash('Could not load racial bonuses as no matching local race data was found. Proceeding with base scores only for racial adjustments.', 'warning')
+    api_race_details = char_data.get('api_race_details')
+    if api_race_details and 'ability_bonuses' in api_race_details:
+        try:
+            for bonus_info in api_race_details['ability_bonuses']:
+                if bonus_info.get('ability_score') and bonus_info.get('bonus') is not None:
+                    racial_bonuses_list.append({
+                        'name': bonus_info['ability_score'].get('name'),
+                        'bonus': bonus_info.get('bonus')
+                    })
+            if not racial_bonuses_list and 'ability_bonuses' in api_race_details : # If data was there but parsing failed to populate
+                 flash('Could not parse racial ability bonuses from API data. Proceeding with base scores only.', 'warning')
+        except Exception as e: # Catch any error during parsing
+            current_app.logger.error(f"Error parsing racial bonuses from API details: {e}")
+            flash('Error processing racial bonuses from API. Proceeding with base scores only.', 'warning')
+    elif char_data.get('race_id'): # Fallback to local DB if API details are missing
+        selected_race_local_for_bonus = Race.query.get(char_data['race_id'])
+        if selected_race_local_for_bonus and selected_race_local_for_bonus.ability_score_increases:
+            try:
+                racial_bonuses_list = json.loads(selected_race_local_for_bonus.ability_score_increases)
+            except json.JSONDecodeError:
+                 flash('Could not parse local racial bonuses. Proceeding with base scores only.', 'warning')
+        else:
+            flash('Could not load racial bonuses from API or local data. Proceeding with base scores only for racial adjustments.', 'warning')
+    else: # No API details and no local race_id
+        flash('Racial bonus data is unavailable. Proceeding with base scores only.', 'warning')
+
 
     standard_array = [15, 14, 13, 12, 10, 8]
-    racial_bonuses_dict = {bonus['name']: bonus['bonus'] for bonus in racial_bonuses_list}
+    racial_bonuses_dict = {bonus['name']: bonus['bonus'] for bonus in racial_bonuses_list if bonus.get('name')} # Ensure name exists
     rolled_stats_from_session = session.get('rolled_stats')
+
     if request.method == 'POST':
         action = request.form.get('action')
         if action == 'roll_stats':
             rolled_scores = [roll_dice(4, 6, 1)[0] for _ in range(6)]
             session['rolled_stats'] = rolled_scores
             session.modified = True
+            # Re-render with updated context
             return render_template('create_character_stats.html',
                                    race_name=char_data.get('race_name', 'Unknown Race'),
-                                   class_name=class_name_to_display, # Use updated class_name
+                                   class_name=class_name_to_display,
                                    racial_bonuses_dict=racial_bonuses_dict,
-                                   primary_ability=primary_ability, # Use updated primary_ability
+                                   primary_ability=primary_ability,
                                    standard_array=standard_array,
-                                   rolled_stats=rolled_scores,
-                                   submitted_scores=request.form)
+                                   rolled_stats=rolled_scores, # Pass new rolls
+                                   submitted_scores=request.form) # Pass current form for repopulation if needed
+
         base_scores = {}
         errors = False
         ability_map = {
             'strength': 'STR', 'dexterity': 'DEX', 'constitution': 'CON',
             'intelligence': 'INT', 'wisdom': 'WIS', 'charisma': 'CHA'
         }
-        form_scores_to_repopulate = {}
+        form_scores_to_repopulate = {} # For re-rendering form with user's previous input on error
+
         for form_name, score_key in ability_map.items():
             score_val_str = request.form.get(form_name)
-            form_scores_to_repopulate[form_name] = score_val_str
+            form_scores_to_repopulate[form_name] = score_val_str # Store for re-population
             if not score_val_str:
                 flash(f'{form_name.capitalize()} score is required.', 'error')
                 errors = True
                 continue
             try:
                 score = int(score_val_str)
-                if not (3 <= score <= 18):
+                if not (3 <= score <= 18): # Validate base score range
                     flash(f'{form_name.capitalize()} score must be between 3 and 18 before racial modifiers.', 'error')
                     errors = True
                 base_scores[score_key] = score
             except ValueError:
                 flash(f'Invalid score for {form_name.capitalize()}. Must be a number.', 'error')
                 errors = True
+
         if errors:
             return render_template('create_character_stats.html',
                                    race_name=char_data.get('race_name', 'Unknown Race'),
-                                   class_name=class_name_to_display, # Use updated class_name
+                                   class_name=class_name_to_display,
                                    racial_bonuses_dict=racial_bonuses_dict,
-                                   primary_ability=primary_ability, # Use updated primary_ability
+                                   primary_ability=primary_ability,
                                    standard_array=standard_array,
-                                   rolled_stats=session.get('rolled_stats'),
-                                   submitted_scores=form_scores_to_repopulate)
+                                   rolled_stats=session.get('rolled_stats'), # Use session rolls if any
+                                   submitted_scores=form_scores_to_repopulate) # Pass back submitted scores
+
         final_scores = base_scores.copy()
-        for bonus_item in racial_bonuses_list:
+        for bonus_item in racial_bonuses_list: # racial_bonuses_list is now from API or local DB
             ability_key = bonus_item.get('name')
             bonus_value = bonus_item.get('bonus', 0)
-            if ability_key in final_scores:
+            if ability_key in final_scores: # Ensure the key from bonus_item is valid
                 final_scores[ability_key] += bonus_value
+            else:
+                current_app.logger.warning(f"Racial bonus ability key '{ability_key}' not found in base scores. Bonus not applied.")
+
+
         session['new_character_data']['ability_scores'] = final_scores
-        session['new_character_data']['base_ability_scores'] = base_scores
+        session['new_character_data']['base_ability_scores'] = base_scores # Store base scores separately if needed
         session.modified = True
         session.pop('rolled_stats', None)
         flash('Ability scores saved!', 'success')
@@ -420,22 +453,166 @@ def creation_background():
     if not char_data.get('ability_scores'):
         flash('Please determine ability scores first.', 'error')
         return redirect(url_for('main.creation_stats'))
-    if request.method == 'POST':
-        selected_bg_name = request.form.get('background_name')
-        if selected_bg_name and selected_bg_name in sample_backgrounds_data:
-            chosen_bg_data = sample_backgrounds_data[selected_bg_name]
-            session['new_character_data']['background_name'] = chosen_bg_data['name']
-            session['new_character_data']['background_skill_proficiencies'] = chosen_bg_data['skill_proficiencies']
-            session['new_character_data']['background_tool_proficiencies'] = chosen_bg_data['tool_proficiencies']
-            session['new_character_data']['background_languages'] = chosen_bg_data['languages']
-            session['new_character_data']['background_equipment'] = chosen_bg_data['equipment']
-            session.modified = True
-            flash(f"Background '{chosen_bg_data['name']}' selected.", 'success')
-            return redirect(url_for('main.creation_skills'))
+
+    if request.method == 'GET':
+        detailed_backgrounds = []
+        try:
+            background_list = get_all_backgrounds()
+            for bg_summary in background_list:
+                try:
+                    bg_detail = get_background_details(bg_summary['index'])
+                    detailed_backgrounds.append(bg_detail)
+                except requests.exceptions.RequestException as e:
+                    current_app.logger.error(f"API Error fetching details for background '{bg_summary['index']}': {e}")
+                    flash(f"Error fetching details for background '{bg_summary['name']}'. It may be unavailable.", 'warning')
+                except Exception as e:
+                    current_app.logger.error(f"Unexpected error processing background '{bg_summary['index']}': {e}")
+                    flash(f"An unexpected error occurred processing background '{bg_summary['name']}'.", 'warning')
+
+            if not background_list and not get_flashed_messages(category_filter=['error', 'warning']): # Only flash if no specific errors were already flashed for individual items
+                 flash('Could not fetch the list of backgrounds at this time. Please try again later.', 'info')
+
+        except requests.exceptions.RequestException as e:
+            current_app.logger.error(f"API Error fetching all backgrounds: {e}")
+            flash('Major error fetching backgrounds from the D&D API. Please try again later.', 'error')
+        except Exception as e:
+            current_app.logger.error(f"Unexpected error fetching all backgrounds: {e}")
+            flash('An unexpected error occurred while fetching backgrounds. Please try again later.', 'error')
+
+        return render_template('create_character_background.html',
+                               race_name=char_data.get('race_name'),
+                               class_name=char_data.get('class_name'),
+                               backgrounds=detailed_backgrounds) # Pass detailed_backgrounds
+
+    # POST request logic
+    selected_background_index = request.form.get('background_index') # Value from form will be 'background.index'
+    if not selected_background_index:
+        flash('Please select a background.', 'error')
+        # Refetch backgrounds for re-rendering
+        detailed_backgrounds_for_retry = []
+        try:
+            background_list = get_all_backgrounds()
+            for bg_summary in background_list:
+                try:
+                    detailed_backgrounds_for_retry.append(get_background_details(bg_summary['index']))
+                except requests.exceptions.RequestException: # Simplified error handling for retry
+                    pass # Warnings already flashed potentially in GET, or will be if user retries GET
+        except requests.exceptions.RequestException:
+            flash('Error fetching backgrounds list for selection. Please try again.', 'error')
+
+        return render_template('create_character_background.html',
+                               race_name=char_data.get('race_name'),
+                               class_name=char_data.get('class_name'),
+                               backgrounds=detailed_backgrounds_for_retry)
+
+    try:
+        chosen_bg_data = get_background_details(selected_background_index)
+    except requests.exceptions.RequestException as e:
+        current_app.logger.error(f"API Error fetching selected background '{selected_background_index}': {e}")
+        flash(f"Error fetching details for the selected background. Please try selecting again.", 'error')
+        # Refetch all for re-render
+        detailed_backgrounds_for_error = []
+        try:
+            background_list = get_all_backgrounds()
+            for bg_summary in background_list:
+                try:
+                    detailed_backgrounds_for_error.append(get_background_details(bg_summary['index']))
+                except requests.exceptions.RequestException:
+                    pass
+        except requests.exceptions.RequestException:
+            flash('Error fetching backgrounds list for selection. Please try again.', 'error')
+        return render_template('create_character_background.html',
+                               race_name=char_data.get('race_name'),
+                               class_name=char_data.get('class_name'),
+                               backgrounds=detailed_backgrounds_for_error)
+    except Exception as e: # Catch other potential errors like KeyError if API response is malformed
+        current_app.logger.error(f"Unexpected error processing selected background '{selected_background_index}': {e}")
+        flash('An unexpected error occurred while processing the selected background. Please try again.', 'error')
+        # Refetch all for re-render (similar to above)
+        detailed_backgrounds_for_unexpected_error = []
+        try:
+            background_list = get_all_backgrounds()
+            for bg_summary in background_list:
+                try:
+                    detailed_backgrounds_for_unexpected_error.append(get_background_details(bg_summary['index']))
+                except requests.exceptions.RequestException:
+                    pass
+        except requests.exceptions.RequestException:
+            flash('Error fetching backgrounds list. Please try again.', 'error')
+        return render_template('create_character_background.html',
+                               race_name=char_data.get('race_name'),
+                               class_name=char_data.get('class_name'),
+                               backgrounds=detailed_backgrounds_for_unexpected_error)
+
+
+    if chosen_bg_data:
+        session['new_character_data']['background_name'] = chosen_bg_data.get('name')
+
+        skill_proficiencies = []
+        for prof in chosen_bg_data.get('starting_proficiencies', []):
+            if prof.get('name', '').startswith('Skill: '):
+                skill_proficiencies.append(prof['name'].replace('Skill: ', ''))
+        session['new_character_data']['background_skill_proficiencies'] = skill_proficiencies
+
+        tool_proficiencies = []
+        for prof in chosen_bg_data.get('starting_proficiencies', []):
+            # D&D API sometimes uses "Tools: " prefix, sometimes just the tool name.
+            # And sometimes it's nested under equipment_category.
+            # This is a simplified check for now.
+            prof_name = prof.get('name', '')
+            if prof_name.startswith('Tool: ') or prof_name.startswith("Tools: "): # Common prefixes
+                 tool_proficiencies.append(prof_name.split(': ', 1)[1])
+            # Add more specific checks if general tool proficiencies are directly listed by name without "Tool:"
+            # For now, this catches explicitly prefixed tool profs.
+            # Example: "Thieves' Tools" might not have a "Tool:" prefix in some API responses.
+            # A more robust solution would check `prof.get('index')` against a list of known tool indices or categories.
+            # For now, if it's not prefixed, it won't be caught as a tool proficiency here.
+            # The prompt specifically asked for "Tool: " prefix.
+        session['new_character_data']['background_tool_proficiencies'] = tool_proficiencies
+
+        language_options = chosen_bg_data.get('language_options', {})
+        if language_options and language_options.get('choose', 0) > 0:
+            session['new_character_data']['background_languages'] = [f"Choose {language_options['choose']} language(s)"]
         else:
-            flash('Please select a valid background.', 'error')
-            return render_template('create_character_background.html', race_name=char_data.get('race_name'), class_name=char_data.get('class_name'), backgrounds=sample_backgrounds_data)
-    return render_template('create_character_background.html', race_name=char_data.get('race_name'), class_name=char_data.get('class_name'), backgrounds=sample_backgrounds_data)
+            session['new_character_data']['background_languages'] = [] # No languages or no choice
+
+        equipment_parts = []
+        for item_data in chosen_bg_data.get('starting_equipment', []):
+            if item_data.get('equipment') and item_data.get('quantity'):
+                equipment_parts.append(f"{item_data['equipment']['name']} (x{item_data['quantity']})")
+
+        for choice in chosen_bg_data.get('starting_equipment_options', []):
+            num_to_choose = choice.get('choose', 1)
+            desc = choice.get('desc')
+            if not desc and choice.get('from', {}).get('option_set_type') == 'equipment_category':
+                category_name = choice['from']['equipment_category'].get('name', 'a category choice')
+                desc = f"from {category_name}"
+            elif not desc:
+                desc = "from available options" # Fallback description
+            equipment_parts.append(f"Choose {num_to_choose} {desc}")
+
+        session['new_character_data']['background_equipment'] = ", ".join(equipment_parts) if equipment_parts else "None"
+
+        session.modified = True
+        flash(f"Background '{chosen_bg_data.get('name')}' selected.", 'success')
+        return redirect(url_for('main.creation_skills'))
+    else:
+        flash('Selected background data could not be processed. Please try again.', 'error')
+        # Refetch all for re-render (similar to above error handling)
+        detailed_backgrounds_for_final_error = []
+        try:
+            background_list = get_all_backgrounds()
+            for bg_summary in background_list:
+                try:
+                    detailed_backgrounds_for_final_error.append(get_background_details(bg_summary['index']))
+                except requests.exceptions.RequestException:
+                    pass
+        except requests.exceptions.RequestException:
+            flash('Error fetching backgrounds list. Please try again.', 'error')
+        return render_template('create_character_background.html',
+                               race_name=char_data.get('race_name'),
+                               class_name=char_data.get('class_name'),
+                               backgrounds=detailed_backgrounds_for_final_error)
 
 @bp.route('/creation/skills', methods=['GET', 'POST'])
 @login_required
@@ -445,26 +622,10 @@ def creation_skills():
         flash('Please choose your background first.', 'error')
         return redirect(url_for('main.creation_background'))
 
-    api_class_details = char_data.get('api_class_details')
-    class_id = char_data.get('class_id')
-    class_index = char_data.get('class_index')
+    api_class_details = char_data.get('api_class_details') # Expected to be in session
+    class_id = char_data.get('class_id') # May be None
+    # class_index = char_data.get('class_index') # Less critical if api_class_details is present
     class_name_from_session = char_data.get('class_name', 'Unknown Class')
-
-    # Ensure class details are loaded if primary source is API
-    if class_id is None and api_class_details is None and class_index:
-        try:
-            current_app.logger.info(f"creation_skills: Fetching class details from API for index: {class_index}")
-            api_class_details = get_class_details(class_index)
-            session['new_character_data']['api_class_details'] = api_class_details
-            session.modified = True
-        except requests.exceptions.RequestException as e:
-            current_app.logger.error(f"API Error fetching class details for '{class_index}' in creation_skills: {e}")
-            flash('Could not fetch class details from API. Please select class again.', 'error')
-            return redirect(url_for('main.creation_class'))
-        except Exception as e:
-            current_app.logger.error(f"Error processing class details for '{class_index}' in creation_skills: {e}")
-            flash('Error processing class details. Please select class again.', 'error')
-            return redirect(url_for('main.creation_class'))
 
     skill_options_to_render = []
     num_skills_to_choose = 0
@@ -595,29 +756,12 @@ def creation_hp():
         else:
             return redirect(url_for('main.creation_stats'))
 
-    api_class_details = char_data.get('api_class_details')
-    class_id = char_data.get('class_id')
-    class_index = char_data.get('class_index')
+    api_class_details = char_data.get('api_class_details') # Expected to be in session
+    class_id = char_data.get('class_id') # May be None
+    # class_index = char_data.get('class_index') # Less critical
     class_name_from_session = char_data.get('class_name', 'Unknown Class')
     hit_die_value = None
-
-    # Load API class details if not already loaded and local class_id is missing
-    if class_id is None and api_class_details is None and class_index:
-        try:
-            current_app.logger.info(f"creation_hp: Fetching class details from API for index: {class_index}")
-            api_class_details = get_class_details(class_index)
-            session['new_character_data']['api_class_details'] = api_class_details
-            session.modified = True
-        except requests.exceptions.RequestException as e:
-            current_app.logger.error(f"API Error fetching class details for '{class_index}' in creation_hp: {e}")
-            flash('Could not fetch class details from API. Please select class again.', 'error')
-            return redirect(url_for('main.creation_class'))
-        except Exception as e: # Catch other potential errors
-            current_app.logger.error(f"Error processing class details for '{class_index}' in creation_hp: {e}")
-            flash('Error processing class details. Please select class again.', 'error')
-            return redirect(url_for('main.creation_class'))
-
-    class_name_to_display = class_name_from_session
+    class_name_to_display = class_name_from_session # Default
 
     if api_class_details:
         class_name_to_display = api_class_details.get('name', class_name_from_session)
@@ -657,23 +801,28 @@ def creation_hp():
     dex_modifier = (dex_score - 10) // 2
     ac_base = 10 + dex_modifier
 
-    selected_race = None
-    if char_data.get('race_id'):
-        selected_race = Race.query.get(char_data['race_id'])
-
+    # Determine speed from API race details if available, else fallback
     speed = 30 # Default speed
-    if selected_race:
-        speed = selected_race.speed
-    else:
-        # If race_id was None, race_name should still be in session from API.
-        # Speed might need to be fetched from API for race if not using local DB. For now, default.
-        flash(f"Warning: Could not determine race speed from local data for {char_data.get('race_name', 'selected race')}. Defaulting to 30. This should ideally be fetched from the API if local data is unavailable.", 'warning')
-        char_data['speed_source'] = "default_due_to_missing_local_race_data_or_api_pending"
+    api_race_details_for_speed = char_data.get('api_race_details')
+    if api_race_details_for_speed and 'speed' in api_race_details_for_speed:
+        speed = api_race_details_for_speed['speed']
+        current_app.logger.info(f"Speed {speed} loaded from API race details for {char_data.get('race_name')}.")
+    elif char_data.get('race_id'): # Fallback to local DB if API details missing speed
+        selected_race_local_for_speed = Race.query.get(char_data['race_id'])
+        if selected_race_local_for_speed:
+            speed = selected_race_local_for_speed.speed
+            current_app.logger.info(f"Speed {speed} loaded from local DB for {char_data.get('race_name')}.")
+        else:
+            flash(f"Warning: Could not determine race speed from local DB for {char_data.get('race_name', 'selected race')}. Defaulting to {speed}.", 'warning')
+    else: # No API details with speed and no local race_id
+        flash(f"Warning: Race speed data unavailable for {char_data.get('race_name', 'selected race')}. Defaulting to {speed}.", 'warning')
+
+    session['new_character_data']['speed'] = speed # Store resolved speed
 
     session['new_character_data']['max_hp'] = max_hp
     session['new_character_data']['current_hp'] = max_hp
     session['new_character_data']['armor_class_base'] = ac_base
-    session['new_character_data']['speed'] = speed
+    # Speed is already set in session above
     session.modified = True
 
     return render_template('create_character_hp.html',
@@ -780,29 +929,12 @@ def creation_equipment():
         flash('Please complete the HP & combat stats step first.', 'error')
         return redirect(url_for('main.creation_hp'))
 
-    api_class_details = char_data.get('api_class_details')
-    class_id = char_data.get('class_id')
-    class_index = char_data.get('class_index')
+    api_class_details = char_data.get('api_class_details') # Expected to be in session
+    class_id = char_data.get('class_id') # May be None
+    # class_index = char_data.get('class_index') # Less critical
     class_name_from_session = char_data.get('class_name', 'Unknown Class')
     spellcasting_ability_exists = False
-
-    # Ensure class details are loaded
-    if class_id is None and api_class_details is None and class_index:
-        try:
-            current_app.logger.info(f"creation_equipment: Fetching class details from API for index: {class_index}")
-            api_class_details = get_class_details(class_index)
-            session['new_character_data']['api_class_details'] = api_class_details
-            session.modified = True
-        except requests.exceptions.RequestException as e:
-            current_app.logger.error(f"API Error fetching class details for '{class_index}' in creation_equipment: {e}")
-            flash('Could not fetch class details from API. Please select class again.', 'error')
-            return redirect(url_for('main.creation_class'))
-        except Exception as e:
-            current_app.logger.error(f"Error processing class details for '{class_index}' in creation_equipment: {e}")
-            flash('Error processing class details. Please select class again.', 'error')
-            return redirect(url_for('main.creation_class'))
-
-    class_name_to_display = class_name_from_session
+    class_name_to_display = class_name_from_session # Default
     fixed_items = []
     choice_groups = []
 
@@ -891,57 +1023,32 @@ def creation_spells():
         flash('Please complete the equipment step first.', 'error')
         return redirect(url_for('main.creation_equipment'))
 
-    api_class_details = char_data.get('api_class_details')
-    class_id = char_data.get('class_id') # May be None
-    class_index = char_data.get('class_index') # Should exist if class_name exists
+    api_class_details = char_data.get('api_class_details') # Expected
+    api_class_level_1_details = char_data.get('api_class_level_1_details') # Expected
+    class_id = char_data.get('class_id')
     class_name_from_session = char_data.get('class_name', 'Unknown Class')
-
-    # Ensure api_class_details are loaded if we don't have a local class_id
-    if class_id is None and api_class_details is None and class_index:
-        try:
-            current_app.logger.info(f"creation_spells: Fetching class details from API for index: {class_index}")
-            api_class_details = get_class_details(class_index)
-            session['new_character_data']['api_class_details'] = api_class_details
-            session.modified = True
-        except requests.exceptions.RequestException as e:
-            current_app.logger.error(f"API Error fetching class details for '{class_index}' in creation_spells: {e}")
-            flash('Could not fetch class details from API. Please select class again.', 'error')
-            return redirect(url_for('main.creation_class'))
-        except Exception as e:
-            current_app.logger.error(f"Error processing class details for '{class_index}' in creation_spells: {e}")
-            flash('Error processing class details. Please select class again.', 'error')
-            return redirect(url_for('main.creation_class'))
-
     spellcasting_ability_exists = False
-    class_name_to_display = class_name_from_session
-    api_class_level_1_details = char_data.get('api_class_level_1_details')
+    class_name_to_display = class_name_from_session # Default
 
     if api_class_details:
         class_name_to_display = api_class_details.get('name', class_name_from_session)
         spellcasting_ability_exists = bool(api_class_details.get('spellcasting'))
-        if class_index and api_class_level_1_details is None: # Fetch level 1 details if not already in session
-            try:
-                current_app.logger.info(f"creation_spells: Fetching L1 details for {class_index}")
-                api_class_level_1_details = get_class_level_details(class_index, 1)
-                session['new_character_data']['api_class_level_1_details'] = api_class_level_1_details
-                session.modified = True
-            except requests.exceptions.RequestException as e:
-                current_app.logger.error(f"API Error fetching L1 details for '{class_index}': {e}")
-                flash('Could not fetch class level 1 details from API. Please try again.', 'error')
-                return redirect(url_for('main.creation_class')) # Or a more appropriate redirect
-            except Exception as e:
-                current_app.logger.error(f"Error processing L1 details for '{class_index}': {e}")
-                flash('Error processing class level 1 details. Please try again.', 'error')
-                return redirect(url_for('main.creation_class'))
-    elif class_id: # Fallback to local DB if class_id exists
+        # api_class_level_1_details should already be in session from creation_class
+        if not api_class_level_1_details: # Safety check if it's somehow missing
+             flash('Critical class level 1 details are missing from session. Please re-select your class.', 'error')
+             return redirect(url_for('main.creation_class'))
+    elif class_id: # Fallback to local DB if API details are critically missing
         selected_class_local = Class.query.get(class_id)
-        if not selected_class_local:
-            flash('Selected class (local) not found. Please restart.', 'error')
+        if selected_class_local:
+            class_name_to_display = selected_class_local.name
+            spellcasting_ability_exists = bool(selected_class_local.spellcasting_ability)
+            # Note: spell counts will rely on local DB hardcoded values in this fallback
+            current_app.logger.warning(f"creation_spells: Using local DB fallback for {class_name_to_display} as API details were missing.")
+        else:
+            flash('Selected class (local) not found. Please restart character creation.', 'error')
             return redirect(url_for('main.creation_class'))
-        class_name_to_display = selected_class_local.name
-        spellcasting_ability_exists = bool(selected_class_local.spellcasting_ability)
-    else: # Should not happen if previous steps are fine
-        flash('Critical class information missing. Please restart character creation.', 'error')
+    else:
+        flash('Critical class information (API or local) missing. Please restart character creation.', 'error')
         return redirect(url_for('main.creation_race'))
 
     if not spellcasting_ability_exists:
@@ -994,12 +1101,49 @@ def creation_spells():
         # Paladin & Ranger are half-casters, usually no spells at L1 from spellcasting feature itself
         # but might get some from sub-class or other features not covered here.
         # For now, default to 0 if not explicitly listed.
-        current_app.logger.info(f"Spells (Local DB): {class_name_to_display} - Cantrips: {num_cantrips_to_select}, L1 Spells: {num_level_1_spells_to_select}")
+        current_app.logger.info(f"Spells (Local DB Fallback): {class_name_to_display} - Cantrips: {num_cantrips_to_select}, L1 Spells: {num_level_1_spells_to_select}")
+
+    available_cantrips_api = []
+    available_level_1_spells_api = []
+
+    if api_class_details and class_index: # Prefer API for learnable spells
+        try:
+            learnable_spells_data = get_class_learnable_spells(class_index)
+            for spell_data in learnable_spells_data:
+                # The API for class spells returns a list of spell summaries.
+                # We need to fetch full spell details to get the level.
+                # This is inefficient here. A better approach would be if /classes/{index}/spells included level,
+                # or if we had a local spell list that's kept up to date.
+                # For now, we'll assume the Spell model is populated from API and query it,
+                # but ideally, this step should avoid N+1 queries if possible.
+                # The prompt says: "Filter learnable_spells_data for spell['level'] == 0"
+                # This implies learnable_spells_data should have level.
+                # Let's assume for now /api/classes/{class_index}/spells DOES return level,
+                # or we adjust get_class_learnable_spells to fetch details if needed.
+                # For this implementation, we'll filter based on a 'level' key presumed to be in spell_data.
+                # This is a deviation if the API only returns summaries.
+                # A quick check on dnd5eapi.co shows /api/classes/{class_index}/spells returns only name/index/url.
+                # This means the requirement to filter learnable_spells_data by level is not directly possible
+                # without either:
+                #   a) fetching details for each spell (very inefficient)
+                #   b) relying on local DB (which we are trying to move away from for this part)
+                #   c) changing get_class_learnable_spells (out of scope for this subtask if it means new API functions)
+                # Given the constraint, I will revert to using local DB for "available spells" for now,
+                # as the API structure doesn't directly support filtering learnable spells by level from the /spells endpoint of a class.
+                # The prompt "Filter learnable_spells_data for spell['level'] == 0" implies a structure that isn't there.
+                # So, I will keep the existing local DB query for available_cantrips and available_level_1_spells.
+                # This part of point 8 cannot be fully implemented as written due to API structure.
+                pass # Keep existing local DB query below
+        except requests.exceptions.RequestException as e:
+            current_app.logger.error(f"API Error fetching learnable spells for '{class_index}': {e}")
+            flash('Could not fetch learnable spells from API. Using local data as fallback.', 'warning')
+        except Exception as e: # Catch other potential errors
+            current_app.logger.error(f"Error processing learnable spells for '{class_index}': {e}")
+            flash('Error processing learnable spells. Using local data as fallback.', 'warning')
 
 
-    # Fetch available spells from local DB (as per instruction)
-    # Using class_name_to_display which is resolved from API or local DB
-    search_pattern = f'%"{class_name_to_display}"%'
+    # Fetch available spells from local DB (fallback or primary if API structure is insufficient)
+    search_pattern = f'%"{class_name_to_display}"%' # class_name_to_display is resolved from API or local
     available_cantrips = Spell.query.filter(Spell.level == 0, Spell.classes_that_can_use.like(search_pattern)).order_by(Spell.name).all()
     available_level_1_spells = Spell.query.filter(Spell.level == 1, Spell.classes_that_can_use.like(search_pattern)).order_by(Spell.name).all()
 
@@ -1071,6 +1215,9 @@ def creation_spells():
 @login_required
 def creation_review():
     char_data = session.get('new_character_data', {})
+    if not char_data.get('background_name'): # Check if background was selected
+        flash('Please complete the background selection step first.', 'error')
+        return redirect(url_for('main.creation_background'))
     if not char_data.get('ability_scores'): # Should be caught by earlier steps, but good safeguard
         flash('Please complete the core character creation steps first, starting with ability scores.', 'error')
         return redirect(url_for('main.creation_stats'))
@@ -1141,7 +1288,19 @@ def creation_review():
     all_skill_proficiencies.update(char_data.get('class_skill_proficiencies', []))
     all_tool_proficiencies = set(char_data.get('background_tool_proficiencies', []))
     all_tool_proficiencies.update(char_data.get('tool_proficiencies_class_fixed', []))
-    all_language_proficiencies = set(char_data.get('background_languages', []))
+
+    # Aggregate languages from race and background
+    all_language_proficiencies = set(char_data.get('race_languages', []))
+    # Background languages might be a list with a "Choose X" string, or actual languages if parsed differently.
+    # Assuming background_languages is a list of language names or descriptive strings for now.
+    # If it contains "Choose X", it will be added as is. This might need further refinement if actual language choices are made earlier.
+    background_langs = char_data.get('background_languages', [])
+    if isinstance(background_langs, list):
+        all_language_proficiencies.update(background_langs)
+    elif isinstance(background_langs, str): # Handle if it's a single string
+        all_language_proficiencies.add(background_langs)
+    # No class languages are typically added directly at L1 beyond choices made, which would be part of other prof fields.
+
     # player_notes is handled by default in model
 
     if request.method == 'POST':
@@ -1160,11 +1319,9 @@ def creation_review():
                                    submitted_name=character_name, submitted_alignment=alignment,
                                    submitted_description=char_description)
 
-        current_skills_set = set(char_data.get('background_skill_proficiencies', []))
-        current_skills_set.update(char_data.get('class_skill_proficiencies', []))
-        current_tools_set = set(char_data.get('background_tool_proficiencies', []))
-        current_tools_set.update(char_data.get('tool_proficiencies_class_fixed', []))
-        current_languages_set = set(char_data.get('background_languages', []))
+        current_skills_set = set(all_skill_proficiencies) # Use the already aggregated set
+        current_tools_set = set(all_tool_proficiencies)   # Use the already aggregated set
+        current_languages_set = set(all_language_proficiencies) # Use the already aggregated set
 
         new_char = Character(
             name=character_name,
@@ -1191,7 +1348,7 @@ def creation_review():
         level_1_proficiencies = {
             'skills': list(current_skills_set),
             'tools': list(current_tools_set),
-            'languages': list(current_languages_set), 
+            'languages': list(current_languages_set),
             'armor': char_data.get('armor_proficiencies', []),
             'weapons': char_data.get('weapon_proficiencies', []),
             'saving_throws': char_data.get('saving_throw_proficiencies', [])
@@ -1235,9 +1392,13 @@ def creation_review():
             hp=char_data.get('max_hp', 0),
             max_hp=char_data.get('max_hp', 0),
             armor_class=char_data.get('armor_class_base'),
+            speed=char_data.get('speed', 30), # Add speed here
             hit_dice_rolled="Max HP at L1", 
             proficiencies=json.dumps(level_1_proficiencies),
-            features_gained=json.dumps(["Initial class features", "Initial race features"]), 
+            features_gained=json.dumps(list(set( # Use set to ensure uniqueness
+                [trait.get('name') for trait in char_data.get('api_race_details', {}).get('traits', []) if trait.get('name')] +
+                [feature.get('name') for feature in char_data.get('api_class_level_1_details', {}).get('features', []) if feature.get('name')]
+            ))),
             spells_known_ids=json.dumps(char_data.get('chosen_cantrip_ids', []) + char_data.get('chosen_level_1_spell_ids', [])),
             spells_prepared_ids=json.dumps([]), 
             spell_slots_snapshot=json.dumps(spell_slots_L1),
