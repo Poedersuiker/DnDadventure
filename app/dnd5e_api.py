@@ -134,3 +134,38 @@ def get_class_level_details(class_index: str, level: int) -> dict:
     """
     endpoint = f"/classes/{class_index}/levels/{level}"
     return _make_request(endpoint)
+
+
+def get_all_backgrounds() -> list:
+    """
+    Fetches the list of all backgrounds from the D&D 5e API.
+
+    Returns:
+        A list of background data obtained from the API.
+        Each background object in the list is a dictionary with 'index', 'name', and 'url'.
+        Returns an empty list if the 'results' key is not found in the API response.
+
+    Raises:
+        requests.exceptions.RequestException: If an error occurs while making the request.
+        json.JSONDecodeError: If an error occurs while decoding the JSON response.
+    """
+    data = _make_request("/backgrounds")
+    return data.get('results', [])
+
+
+def get_background_details(background_index: str) -> dict:
+    """
+    Fetches detailed information for a specific background from the D&D 5e API.
+
+    Args:
+        background_index: The index of the background (e.g., 'acolyte', 'charlatan').
+
+    Returns:
+        A dictionary containing the detailed JSON data for the specified background.
+
+    Raises:
+        requests.exceptions.RequestException: If an error occurs while making the request.
+        json.JSONDecodeError: If an error occurs while decoding the JSON response.
+    """
+    endpoint = f"/backgrounds/{background_index}"
+    return _make_request(endpoint)

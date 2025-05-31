@@ -10,7 +10,7 @@ from flask_login import login_required, current_user
 from app import db
 # CharacterSpellSlot removed, CharacterLevel added
 from app.models import User, Character, Race, Class, Spell, Setting, Item, Coinage, CharacterLevel
-from app.dnd5e_api import get_all_races, get_all_classes, get_class_details, get_class_level_details # Added get_class_level_details
+from app.dnd5e_api import get_all_races, get_all_classes, get_class_details, get_class_level_details, get_all_backgrounds, get_background_details # Added get_class_level_details
 from app.utils import roll_dice, parse_coinage, ALL_SKILLS_LIST, XP_THRESHOLDS, generate_character_sheet_text # Added generate_character_sheet_text
 from app.gemini import geminiai, GEMINI_DM_SYSTEM_RULES
 from datetime import datetime
@@ -420,22 +420,166 @@ def creation_background():
     if not char_data.get('ability_scores'):
         flash('Please determine ability scores first.', 'error')
         return redirect(url_for('main.creation_stats'))
-    if request.method == 'POST':
-        selected_bg_name = request.form.get('background_name')
-        if selected_bg_name and selected_bg_name in sample_backgrounds_data:
-            chosen_bg_data = sample_backgrounds_data[selected_bg_name]
-            session['new_character_data']['background_name'] = chosen_bg_data['name']
-            session['new_character_data']['background_skill_proficiencies'] = chosen_bg_data['skill_proficiencies']
-            session['new_character_data']['background_tool_proficiencies'] = chosen_bg_data['tool_proficiencies']
-            session['new_character_data']['background_languages'] = chosen_bg_data['languages']
-            session['new_character_data']['background_equipment'] = chosen_bg_data['equipment']
-            session.modified = True
-            flash(f"Background '{chosen_bg_data['name']}' selected.", 'success')
-            return redirect(url_for('main.creation_skills'))
+
+    if request.method == 'GET':
+        detailed_backgrounds = []
+        try:
+            background_list = get_all_backgrounds()
+            for bg_summary in background_list:
+                try:
+                    bg_detail = get_background_details(bg_summary['index'])
+                    detailed_backgrounds.append(bg_detail)
+                except requests.exceptions.RequestException as e:
+                    current_app.logger.error(f"API Error fetching details for background '{bg_summary['index']}': {e}")
+                    flash(f"Error fetching details for background '{bg_summary['name']}'. It may be unavailable.", 'warning')
+                except Exception as e:
+                    current_app.logger.error(f"Unexpected error processing background '{bg_summary['index']}': {e}")
+                    flash(f"An unexpected error occurred processing background '{bg_summary['name']}'.", 'warning')
+
+            if not background_list and not get_flashed_messages(category_filter=['error', 'warning']): # Only flash if no specific errors were already flashed for individual items
+                 flash('Could not fetch the list of backgrounds at this time. Please try again later.', 'info')
+
+        except requests.exceptions.RequestException as e:
+            current_app.logger.error(f"API Error fetching all backgrounds: {e}")
+            flash('Major error fetching backgrounds from the D&D API. Please try again later.', 'error')
+        except Exception as e:
+            current_app.logger.error(f"Unexpected error fetching all backgrounds: {e}")
+            flash('An unexpected error occurred while fetching backgrounds. Please try again later.', 'error')
+
+        return render_template('create_character_background.html',
+                               race_name=char_data.get('race_name'),
+                               class_name=char_data.get('class_name'),
+                               backgrounds=detailed_backgrounds) # Pass detailed_backgrounds
+
+    # POST request logic
+    selected_background_index = request.form.get('background_index') # Value from form will be 'background.index'
+    if not selected_background_index:
+        flash('Please select a background.', 'error')
+        # Refetch backgrounds for re-rendering
+        detailed_backgrounds_for_retry = []
+        try:
+            background_list = get_all_backgrounds()
+            for bg_summary in background_list:
+                try:
+                    detailed_backgrounds_for_retry.append(get_background_details(bg_summary['index']))
+                except requests.exceptions.RequestException: # Simplified error handling for retry
+                    pass # Warnings already flashed potentially in GET, or will be if user retries GET
+        except requests.exceptions.RequestException:
+            flash('Error fetching backgrounds list for selection. Please try again.', 'error')
+
+        return render_template('create_character_background.html',
+                               race_name=char_data.get('race_name'),
+                               class_name=char_data.get('class_name'),
+                               backgrounds=detailed_backgrounds_for_retry)
+
+    try:
+        chosen_bg_data = get_background_details(selected_background_index)
+    except requests.exceptions.RequestException as e:
+        current_app.logger.error(f"API Error fetching selected background '{selected_background_index}': {e}")
+        flash(f"Error fetching details for the selected background. Please try selecting again.", 'error')
+        # Refetch all for re-render
+        detailed_backgrounds_for_error = []
+        try:
+            background_list = get_all_backgrounds()
+            for bg_summary in background_list:
+                try:
+                    detailed_backgrounds_for_error.append(get_background_details(bg_summary['index']))
+                except requests.exceptions.RequestException:
+                    pass
+        except requests.exceptions.RequestException:
+            flash('Error fetching backgrounds list for selection. Please try again.', 'error')
+        return render_template('create_character_background.html',
+                               race_name=char_data.get('race_name'),
+                               class_name=char_data.get('class_name'),
+                               backgrounds=detailed_backgrounds_for_error)
+    except Exception as e: # Catch other potential errors like KeyError if API response is malformed
+        current_app.logger.error(f"Unexpected error processing selected background '{selected_background_index}': {e}")
+        flash('An unexpected error occurred while processing the selected background. Please try again.', 'error')
+        # Refetch all for re-render (similar to above)
+        detailed_backgrounds_for_unexpected_error = []
+        try:
+            background_list = get_all_backgrounds()
+            for bg_summary in background_list:
+                try:
+                    detailed_backgrounds_for_unexpected_error.append(get_background_details(bg_summary['index']))
+                except requests.exceptions.RequestException:
+                    pass
+        except requests.exceptions.RequestException:
+            flash('Error fetching backgrounds list. Please try again.', 'error')
+        return render_template('create_character_background.html',
+                               race_name=char_data.get('race_name'),
+                               class_name=char_data.get('class_name'),
+                               backgrounds=detailed_backgrounds_for_unexpected_error)
+
+
+    if chosen_bg_data:
+        session['new_character_data']['background_name'] = chosen_bg_data.get('name')
+
+        skill_proficiencies = []
+        for prof in chosen_bg_data.get('starting_proficiencies', []):
+            if prof.get('name', '').startswith('Skill: '):
+                skill_proficiencies.append(prof['name'].replace('Skill: ', ''))
+        session['new_character_data']['background_skill_proficiencies'] = skill_proficiencies
+
+        tool_proficiencies = []
+        for prof in chosen_bg_data.get('starting_proficiencies', []):
+            # D&D API sometimes uses "Tools: " prefix, sometimes just the tool name.
+            # And sometimes it's nested under equipment_category.
+            # This is a simplified check for now.
+            prof_name = prof.get('name', '')
+            if prof_name.startswith('Tool: ') or prof_name.startswith("Tools: "): # Common prefixes
+                 tool_proficiencies.append(prof_name.split(': ', 1)[1])
+            # Add more specific checks if general tool proficiencies are directly listed by name without "Tool:"
+            # For now, this catches explicitly prefixed tool profs.
+            # Example: "Thieves' Tools" might not have a "Tool:" prefix in some API responses.
+            # A more robust solution would check `prof.get('index')` against a list of known tool indices or categories.
+            # For now, if it's not prefixed, it won't be caught as a tool proficiency here.
+            # The prompt specifically asked for "Tool: " prefix.
+        session['new_character_data']['background_tool_proficiencies'] = tool_proficiencies
+
+        language_options = chosen_bg_data.get('language_options', {})
+        if language_options and language_options.get('choose', 0) > 0:
+            session['new_character_data']['background_languages'] = [f"Choose {language_options['choose']} language(s)"]
         else:
-            flash('Please select a valid background.', 'error')
-            return render_template('create_character_background.html', race_name=char_data.get('race_name'), class_name=char_data.get('class_name'), backgrounds=sample_backgrounds_data)
-    return render_template('create_character_background.html', race_name=char_data.get('race_name'), class_name=char_data.get('class_name'), backgrounds=sample_backgrounds_data)
+            session['new_character_data']['background_languages'] = [] # No languages or no choice
+
+        equipment_parts = []
+        for item_data in chosen_bg_data.get('starting_equipment', []):
+            if item_data.get('equipment') and item_data.get('quantity'):
+                equipment_parts.append(f"{item_data['equipment']['name']} (x{item_data['quantity']})")
+
+        for choice in chosen_bg_data.get('starting_equipment_options', []):
+            num_to_choose = choice.get('choose', 1)
+            desc = choice.get('desc')
+            if not desc and choice.get('from', {}).get('option_set_type') == 'equipment_category':
+                category_name = choice['from']['equipment_category'].get('name', 'a category choice')
+                desc = f"from {category_name}"
+            elif not desc:
+                desc = "from available options" # Fallback description
+            equipment_parts.append(f"Choose {num_to_choose} {desc}")
+
+        session['new_character_data']['background_equipment'] = ", ".join(equipment_parts) if equipment_parts else "None"
+
+        session.modified = True
+        flash(f"Background '{chosen_bg_data.get('name')}' selected.", 'success')
+        return redirect(url_for('main.creation_skills'))
+    else:
+        flash('Selected background data could not be processed. Please try again.', 'error')
+        # Refetch all for re-render (similar to above error handling)
+        detailed_backgrounds_for_final_error = []
+        try:
+            background_list = get_all_backgrounds()
+            for bg_summary in background_list:
+                try:
+                    detailed_backgrounds_for_final_error.append(get_background_details(bg_summary['index']))
+                except requests.exceptions.RequestException:
+                    pass
+        except requests.exceptions.RequestException:
+            flash('Error fetching backgrounds list. Please try again.', 'error')
+        return render_template('create_character_background.html',
+                               race_name=char_data.get('race_name'),
+                               class_name=char_data.get('class_name'),
+                               backgrounds=detailed_backgrounds_for_final_error)
 
 @bp.route('/creation/skills', methods=['GET', 'POST'])
 @login_required
@@ -1071,6 +1215,9 @@ def creation_spells():
 @login_required
 def creation_review():
     char_data = session.get('new_character_data', {})
+    if not char_data.get('background_name'): # Check if background was selected
+        flash('Please complete the background selection step first.', 'error')
+        return redirect(url_for('main.creation_background'))
     if not char_data.get('ability_scores'): # Should be caught by earlier steps, but good safeguard
         flash('Please complete the core character creation steps first, starting with ability scores.', 'error')
         return redirect(url_for('main.creation_stats'))

@@ -199,5 +199,74 @@ class TestDnd5eApi(unittest.TestCase):
             get_class_level_details(class_index, level)
         mock_make_request.assert_called_once_with(f"/classes/{class_index}/levels/{level}")
 
+    # --- Tests for Backgrounds ---
+    @patch('app.dnd5e_api._make_request')
+    def test_get_all_backgrounds_success(self, mock_make_request):
+        """Test get_all_backgrounds successfully fetches and extracts background list."""
+        expected_backgrounds = [{"index": "acolyte", "name": "Acolyte", "url": "/api/backgrounds/acolyte"}]
+        mock_make_request.return_value = {"count": 1, "results": expected_backgrounds}
+
+        from app.dnd5e_api import get_all_backgrounds # Import here due to execution order
+        result = get_all_backgrounds()
+
+        mock_make_request.assert_called_once_with("/backgrounds")
+        self.assertEqual(result, expected_backgrounds)
+
+    @patch('app.dnd5e_api._make_request')
+    def test_get_all_backgrounds_missing_results(self, mock_make_request):
+        """Test get_all_backgrounds returns empty list if 'results' key is missing."""
+        mock_make_request.return_value = {"count": 0} # No 'results' key
+        from app.dnd5e_api import get_all_backgrounds
+        result = get_all_backgrounds()
+        mock_make_request.assert_called_once_with("/backgrounds")
+        self.assertEqual(result, [])
+
+    @patch('app.dnd5e_api._make_request')
+    def test_get_all_backgrounds_empty_results(self, mock_make_request):
+        """Test get_all_backgrounds returns empty list if 'results' is empty."""
+        mock_make_request.return_value = {"count": 0, "results": []}
+        from app.dnd5e_api import get_all_backgrounds
+        result = get_all_backgrounds()
+        mock_make_request.assert_called_once_with("/backgrounds")
+        self.assertEqual(result, [])
+
+    @patch('app.dnd5e_api._make_request')
+    def test_get_all_backgrounds_api_error(self, mock_make_request):
+        """Test get_all_backgrounds re-raises RequestException from _make_request."""
+        mock_make_request.side_effect = requests.exceptions.RequestException("API down")
+        from app.dnd5e_api import get_all_backgrounds
+        with self.assertRaises(requests.exceptions.RequestException):
+            get_all_backgrounds()
+        mock_make_request.assert_called_once_with("/backgrounds")
+
+    @patch('app.dnd5e_api._make_request')
+    def test_get_background_details_success(self, mock_make_request):
+        """Test get_background_details calls _make_request with correct endpoint and returns data."""
+        background_index = "acolyte"
+        expected_details = {
+            "index": "acolyte",
+            "name": "Acolyte",
+            "starting_proficiencies": [{"name": "Skill: Insight"}, {"name": "Skill: Religion"}],
+            "language_options": {"choose": 2, "from": {"option_set_type": "options_array", "options": []}},
+            "starting_equipment": [{"equipment": {"name": "Holy symbol"}, "quantity": 1}],
+            "starting_equipment_options": []
+        }
+        mock_make_request.return_value = expected_details
+        from app.dnd5e_api import get_background_details
+        result = get_background_details(background_index)
+
+        mock_make_request.assert_called_once_with(f"/backgrounds/{background_index}")
+        self.assertEqual(result, expected_details)
+
+    @patch('app.dnd5e_api._make_request')
+    def test_get_background_details_api_error(self, mock_make_request):
+        """Test get_background_details re-raises RequestException."""
+        background_index = "acolyte"
+        mock_make_request.side_effect = requests.exceptions.RequestException("API error")
+        from app.dnd5e_api import get_background_details
+        with self.assertRaises(requests.exceptions.RequestException):
+            get_background_details(background_index)
+        mock_make_request.assert_called_once_with(f"/backgrounds/{background_index}")
+
 if __name__ == '__main__':
     unittest.main()
