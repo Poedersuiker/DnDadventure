@@ -66,6 +66,7 @@ class CharacterLevel(db.Model):
     spells_known_ids = db.Column(db.Text, nullable=True) # JSON list of Spell IDs
     spells_prepared_ids = db.Column(db.Text, nullable=True) # JSON list of Spell IDs
     spell_slots_snapshot = db.Column(db.Text, nullable=True) # JSON
+    speed = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # The relationship back to Character is implicitly created by backref='parent_character' in Character.levels
