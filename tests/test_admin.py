@@ -189,73 +189,75 @@ class AdminTestCase(unittest.TestCase):
         self.login(email=app.config['ADMIN_EMAIL'])
         response = self.client.get('/admin/db-populate')
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Database Population", response.get_data(as_text=True))
-        self.assertIn("Populate Races", response.get_data(as_text=True))
-        self.assertIn("Populate Classes", response.get_data(as_text=True))
-        self.assertIn("Populate Spells", response.get_data(as_text=True))
+        response_data_text = response.get_data(as_text=True)
+        self.assertIn("Database Population", response_data_text)
+        self.assertNotIn("Populate Races", response_data_text) # Check removed
+        self.assertNotIn("Populate Classes", response_data_text) # Check removed
+        self.assertNotIn("Populate Spells", response_data_text) # Check removed
+        self.assertIn("Previously available options for populating races, classes, and spells have been removed.", response_data_text)
         self.logout()
 
-    @patch('app.admin.routes.populate_races_data')
-    def test_run_populate_races(self, mock_populate_races):
-        """Test triggering the populate_races_data script."""
-        self.login(email=app.config['ADMIN_EMAIL'])
-        response = self.client.post('/admin/db-populate/races', follow_redirects=False)
+    # @patch('app.admin.routes.populate_races_data') # Removed
+    # def test_run_populate_races(self, mock_populate_races): # Removed
+    #     """Test triggering the populate_races_data script."""
+    #     self.login(email=app.config['ADMIN_EMAIL'])
+    #     response = self.client.post('/admin/db-populate/races', follow_redirects=False)
         
-        self.assertEqual(response.status_code, 302) # Should redirect
-        self.assertIn('/admin/db-populate', response.location)
-        mock_populate_races.assert_called_once()
+    #     self.assertEqual(response.status_code, 302) # Should redirect
+    #     self.assertIn('/admin/db-populate', response.location)
+    #     mock_populate_races.assert_called_once()
         
-        with self.client.session_transaction() as sess:
-            flashed_messages = dict(sess.get('_flashes', []))
-            self.assertIn('info', flashed_messages) # Check for initial info message
-            # The success message is added *after* the script runs,
-            # so we'd need to check it on the redirected page or mock the script to add it before returning
-            # For simplicity, here we just check the info message and that the script was called.
-            # To test the success message properly, you might need a more complex setup or to check the session *after* redirect.
-            # For this test, let's assume the script adds its own flash for completion if necessary or relies on the route.
-            # The route *does* add a success flash, so we check it after redirection.
+    #     with self.client.session_transaction() as sess:
+    #         flashed_messages = dict(sess.get('_flashes', []))
+    #         self.assertIn('info', flashed_messages) # Check for initial info message
+    #         # The success message is added *after* the script runs,
+    #         # so we'd need to check it on the redirected page or mock the script to add it before returning
+    #         # For simplicity, here we just check the info message and that the script was called.
+    #         # To test the success message properly, you might need a more complex setup or to check the session *after* redirect.
+    #         # For this test, let's assume the script adds its own flash for completion if necessary or relies on the route.
+    #         # The route *does* add a success flash, so we check it after redirection.
         
-        # Follow redirect to check for success flash
-        response_redirect = self.client.get(response.location)
-        with self.client.session_transaction() as sess_redirect: # Need to re-access session for the new request
-            flashed_messages_redirect = dict(sess_redirect.get('_flashes', []))
-            self.assertIn('success', flashed_messages_redirect, "Success flash for race population missing after redirect")
-            self.assertIn("Race population script finished successfully.", flashed_messages_redirect['success'])
+    #     # Follow redirect to check for success flash
+    #     response_redirect = self.client.get(response.location)
+    #     with self.client.session_transaction() as sess_redirect: # Need to re-access session for the new request
+    #         flashed_messages_redirect = dict(sess_redirect.get('_flashes', []))
+    #         self.assertIn('success', flashed_messages_redirect, "Success flash for race population missing after redirect")
+    #         self.assertIn("Race population script finished successfully.", flashed_messages_redirect['success'])
 
-        self.logout()
+    #     self.logout()
 
-    @patch('app.admin.routes.populate_classes_data')
-    def test_run_populate_classes(self, mock_populate_classes):
-        """Test triggering the populate_classes_data script."""
-        self.login(email=app.config['ADMIN_EMAIL'])
-        response = self.client.post('/admin/db-populate/classes', follow_redirects=True) # Follow redirect for flash
+    # @patch('app.admin.routes.populate_classes_data') # Removed
+    # def test_run_populate_classes(self, mock_populate_classes): # Removed
+    #     """Test triggering the populate_classes_data script."""
+    #     self.login(email=app.config['ADMIN_EMAIL'])
+    #     response = self.client.post('/admin/db-populate/classes', follow_redirects=True) # Follow redirect for flash
         
-        self.assertEqual(response.status_code, 200) # After redirect
-        mock_populate_classes.assert_called_once()
+    #     self.assertEqual(response.status_code, 200) # After redirect
+    #     mock_populate_classes.assert_called_once()
         
-        with self.client.session_transaction() as sess:
-            flashed_messages = dict(sess.get('_flashes', []))
-            # Order of flashes might matter, or if one overwrites another.
-            # Typically, flash messages are consumed after being displayed.
-            # Let's check for the final success message.
-            self.assertIn('success', flashed_messages)
-            self.assertIn("Class population script finished successfully.", flashed_messages['success'])
-        self.logout()
+    #     with self.client.session_transaction() as sess:
+    #         flashed_messages = dict(sess.get('_flashes', []))
+    #         # Order of flashes might matter, or if one overwrites another.
+    #         # Typically, flash messages are consumed after being displayed.
+    #         # Let's check for the final success message.
+    #         self.assertIn('success', flashed_messages)
+    #         self.assertIn("Class population script finished successfully.", flashed_messages['success'])
+    #     self.logout()
 
-    @patch('app.admin.routes.populate_spells_data')
-    def test_run_populate_spells(self, mock_populate_spells):
-        """Test triggering the populate_spells_data script."""
-        self.login(email=app.config['ADMIN_EMAIL'])
-        response = self.client.post('/admin/db-populate/spells', follow_redirects=True) # Follow redirect for flash
+    # @patch('app.admin.routes.populate_spells_data') # Removed
+    # def test_run_populate_spells(self, mock_populate_spells): # Removed
+    #     """Test triggering the populate_spells_data script."""
+    #     self.login(email=app.config['ADMIN_EMAIL'])
+    #     response = self.client.post('/admin/db-populate/spells', follow_redirects=True) # Follow redirect for flash
         
-        self.assertEqual(response.status_code, 200) # After redirect
-        mock_populate_spells.assert_called_once()
+    #     self.assertEqual(response.status_code, 200) # After redirect
+    #     mock_populate_spells.assert_called_once()
 
-        with self.client.session_transaction() as sess:
-            flashed_messages = dict(sess.get('_flashes', []))
-            self.assertIn('success', flashed_messages)
-            self.assertIn("Spell population script finished successfully.", flashed_messages['success'])
-        self.logout()
+    #     with self.client.session_transaction() as sess:
+    #         flashed_messages = dict(sess.get('_flashes', []))
+    #         self.assertIn('success', flashed_messages)
+    #         self.assertIn("Spell population script finished successfully.", flashed_messages['success'])
+    #     self.logout()
 
     # Step 6: Tests for Server Logging Tab (/admin/server-logs)
     @patch('os.path.exists')

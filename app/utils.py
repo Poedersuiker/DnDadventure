@@ -122,8 +122,9 @@ def generate_character_sheet_text(character, character_level, char_class_obj, sp
 
     # Basic Information
     sheet_lines.append(f"Name: {character.name}")
-    sheet_lines.append(f"Race: {character.race.name if character.race else 'N/A'}")
-    sheet_lines.append(f"Class: {char_class_obj.name if char_class_obj else 'N/A'}")
+    # sheet_lines.append(f"Race: {character.race.name if character.race else 'N/A'}") # character.race no longer exists
+    sheet_lines.append(f"Race: N/A") # Placeholder
+    sheet_lines.append(f"Class: {char_class_obj.name if char_class_obj else 'N/A'}") # Keep as is, will show N/A if char_class_obj is None
     sheet_lines.append(f"Level: {character_level.level_number}")
     sheet_lines.append(f"Background: {character.background_name or 'N/A'}")
     sheet_lines.append(f"Alignment: {character.alignment or 'N/A'}")
@@ -147,10 +148,11 @@ def generate_character_sheet_text(character, character_level, char_class_obj, sp
     sheet_lines.append("Combat Stats:")
     sheet_lines.append(f"  HP: {character_level.hp}/{character_level.max_hp}")
     sheet_lines.append(f"  AC: {character_level.armor_class or 'N/A'}")
-    sheet_lines.append(f"  Speed: {character.race.speed if character.race else 'N/A'} ft.")
+    # sheet_lines.append(f"  Speed: {character.race.speed if character.race else 'N/A'} ft.") # character.race no longer exists
+    sheet_lines.append(f"  Speed: {character.speed if hasattr(character, 'speed') else 'N/A'} ft.") # Use character.speed if available
     prof_bonus = (character_level.level_number - 1) // 4 + 2
     sheet_lines.append(f"  Proficiency Bonus: +{prof_bonus}")
-    sheet_lines.append(f"  Hit Dice: {character.current_hit_dice}/{character_level.level_number} ({char_class_obj.hit_die if char_class_obj else 'N/A'})")
+    sheet_lines.append(f"  Hit Dice: {character.current_hit_dice}/{character_level.level_number} ({char_class_obj.hit_die if char_class_obj and hasattr(char_class_obj, 'hit_die') else 'N/A'})")
     sheet_lines.append(separator)
 
     # Proficiencies
@@ -186,7 +188,7 @@ def generate_character_sheet_text(character, character_level, char_class_obj, sp
     sheet_lines.append(separator)
 
     # Spells
-    if char_class_obj and char_class_obj.spellcasting_ability:
+    if char_class_obj and hasattr(char_class_obj, 'spellcasting_ability') and char_class_obj.spellcasting_ability:
         sheet_lines.append("Spells:")
         known_spell_ids_json = character_level.spells_known_ids or '[]'
         known_spell_ids_list = []
@@ -195,15 +197,17 @@ def generate_character_sheet_text(character, character_level, char_class_obj, sp
         except json.JSONDecodeError:
             logging.warning(f"Could not parse spells_known_ids for char_level {character_level.id}: {known_spell_ids_json}")
 
-        if spell_objects_known: # If full spell objects are provided
-            cantrips = sorted([sp.name for sp in spell_objects_known if sp.level == 0])
-            other_spells = sorted([sp.name for sp in spell_objects_known if sp.level > 0])
+        if spell_objects_known: # If full spell objects are provided (which will be [] if Spell model is gone)
+            cantrips = sorted([sp.name for sp in spell_objects_known if hasattr(sp, 'level') and sp.level == 0])
+            other_spells = sorted([sp.name for sp in spell_objects_known if hasattr(sp, 'level') and sp.level > 0])
             sheet_lines.append(f"  Known Cantrips ({len(cantrips)}): {', '.join(cantrips) or 'None'}")
             sheet_lines.append(f"  Known Spells ({len(other_spells)}): {', '.join(other_spells) or 'None'}")
         else: # Fallback to just count if full objects aren't available
-             # This part is tricky without querying Spell model here.
-             # For simplicity, we'll just state the number of IDs.
             sheet_lines.append(f"  Known Spell IDs Count: {len(known_spell_ids_list)}")
+
+        # Display raw known spell IDs if spell_objects_known is empty but IDs exist
+        if not spell_objects_known and known_spell_ids_list:
+            sheet_lines.append(f"  Known Spell IDs (raw): {', '.join(map(str, known_spell_ids_list))}")
 
 
         slots_summary_parts = []
@@ -217,6 +221,10 @@ def generate_character_sheet_text(character, character_level, char_class_obj, sp
                 slots_summary_parts.append("Error parsing slots data")
         sheet_lines.append(f"  Spell Slots Available: {', '.join(slots_summary_parts) if slots_summary_parts else 'None (or Non-caster)'}")
         sheet_lines.append(separator)
+    else: # char_class_obj is None or not a spellcaster
+        sheet_lines.append("Spells: N/A (Character class not specified or is not a spellcaster)")
+        sheet_lines.append(separator)
+
 
     # Experience
     sheet_lines.append("Experience:")

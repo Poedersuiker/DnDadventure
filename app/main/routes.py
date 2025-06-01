@@ -8,7 +8,7 @@ from flask_babel import _
 from flask_login import login_required, current_user
 from app import db
 # CharacterSpellSlot removed, CharacterLevel added
-from app.models import User, Character, Race, Class, Spell, Setting, Item, Coinage, CharacterLevel 
+from app.models import User, Character, Setting, Item, Coinage, CharacterLevel
 from app.utils import roll_dice, parse_coinage, ALL_SKILLS_LIST, XP_THRESHOLDS, generate_character_sheet_text # Added generate_character_sheet_text
 from app.gemini import geminiai, GEMINI_DM_SYSTEM_RULES
 from datetime import datetime
@@ -79,7 +79,8 @@ def creation_wizard():
         char_description = char_data.get('character_description', '')
 
         # Essential data checks
-        required_fields = ['race_id', 'class_id', 'ability_scores', 'background_name', 'max_hp', 'armor_class_base', 'speed']
+        # Removed 'race_id', 'class_id' from required_fields
+        required_fields = ['ability_scores', 'background_name', 'max_hp', 'armor_class_base', 'speed']
         missing_fields = [field for field in required_fields if field not in char_data]
         if missing_fields:
             flash(f'Critical data missing: {", ".join(missing_fields)}. Cannot finalize character.', 'error')
@@ -87,19 +88,18 @@ def creation_wizard():
             # Client-side should prevent this. Respond with error for AJAX or redirect if it's a direct form post.
             return jsonify(status="error", message=f"Missing data: {', '.join(missing_fields)}"), 400
 
+        # race = Race.query.get(char_data.get('race_id')) # Removed
+        # char_class_obj = Class.query.get(char_data.get('class_id')) # Removed
 
-        race = Race.query.get(char_data.get('race_id'))
-        char_class_obj = Class.query.get(char_data.get('class_id'))
-
-        if not race or not char_class_obj:
-            flash('Race or Class data invalid. Cannot finalize character.', 'error')
-            current_app.logger.error(f"Race or Class object not found. Race ID: {char_data.get('race_id')}, Class ID: {char_data.get('class_id')}")
-            return jsonify(status="error", message="Invalid Race or Class ID"), 400
+        # if not race or not char_class_obj: # Adjusted: This check might be removed or always pass
+        #     flash('Race or Class data invalid. Cannot finalize character.', 'error')
+        #     current_app.logger.error(f"Race or Class object not found. Race ID: {char_data.get('race_id')}, Class ID: {char_data.get('class_id')}")
+        #     return jsonify(status="error", message="Invalid Race or Class ID"), 400
 
         # Aggregate proficiencies
         all_skill_proficiencies = set(char_data.get('background_skill_proficiencies', []))
         all_skill_proficiencies.update(char_data.get('class_skill_proficiencies', []))
-        all_skill_proficiencies.update(char_data.get('race_skill_proficiencies', [])) # Added race skills
+        # all_skill_proficiencies.update(char_data.get('race_skill_proficiencies', [])) # Removed race skills
 
         all_tool_proficiencies = set(char_data.get('background_tool_proficiencies', [])) # From BG definition
         all_tool_proficiencies.update(char_data.get('tool_proficiencies_class_fixed', [])) # From class definition
@@ -114,8 +114,8 @@ def creation_wizard():
             name=character_name,
             description=char_description,
             user_id=current_user.id,
-            race_id=race.id,
-            class_id=char_class_obj.id,
+            # race_id=race.id, # Removed
+            # class_id=char_class_obj.id, # Removed
             alignment=alignment,
             background_name=char_data.get('background_name'),
             background_proficiencies=json.dumps({ # Store only the profs granted directly by background definition
@@ -141,17 +141,17 @@ def creation_wizard():
             'saving_throws': sorted(list(char_data.get('saving_throw_proficiencies', [])))
         }
 
-        spell_slots_L1 = {}
-        if char_class_obj.spell_slots_by_level:
-            try:
-                all_class_level_slots = json.loads(char_class_obj.spell_slots_by_level)
-                slots_for_char_level_1_list = all_class_level_slots.get("1")
-                if slots_for_char_level_1_list:
-                    for spell_lvl_idx, num_slots in enumerate(slots_for_char_level_1_list):
-                        if num_slots > 0:
-                            spell_slots_L1[str(spell_lvl_idx + 1)] = num_slots
-            except json.JSONDecodeError:
-                current_app.logger.error(f"Failed to parse spell_slots_by_level for class {char_class_obj.name}")
+        spell_slots_L1 = {} # Default to empty dict as char_class_obj is removed
+        # if char_class_obj.spell_slots_by_level: # Removed
+        #     try:
+        #         all_class_level_slots = json.loads(char_class_obj.spell_slots_by_level)
+        #         slots_for_char_level_1_list = all_class_level_slots.get("1")
+        #         if slots_for_char_level_1_list:
+        #             for spell_lvl_idx, num_slots in enumerate(slots_for_char_level_1_list):
+        #                 if num_slots > 0:
+        #                     spell_slots_L1[str(spell_lvl_idx + 1)] = num_slots
+        #     except json.JSONDecodeError:
+        #         current_app.logger.error(f"Failed to parse spell_slots_by_level for class {char_class_obj.name}")
 
         ability_scores_final = char_data.get('ability_scores', {})
         new_char_level_1 = CharacterLevel(
@@ -254,116 +254,123 @@ def creation_wizard_step_data(step_name):
     char_data_session = session.get('new_character_data', {})
 
     if step_name == 'race':
-        races = Race.query.all()
-        data = {'races': [r.to_dict() for r in races]}
+        # races = Race.query.all() # Removed
+        data = {'races': []} # Changed
     elif step_name == 'class':
-        classes = Class.query.all()
-        data = {'classes': [c.to_dict() for c in classes]}
+        # classes = Class.query.all() # Removed
+        data = {'classes': []} # Changed
     elif step_name == 'stats':
         data = {'standard_array': [15, 14, 13, 12, 10, 8]}
-        race_id = char_data_session.get('race_id')
-        if race_id:
-            race = Race.query.get(race_id)
-            if race:
-                # ability_score_increases should be JSON string like '{"STR": 1, "DEX": 2}' in model
-                # to_dict() should handle json.loads for this field.
-                data['racial_bonuses'] = race.to_dict().get('ability_score_increases', {})
-            else: data['racial_bonuses'] = {}
-        else: data['racial_bonuses'] = {}
+        # race_id = char_data_session.get('race_id') # Removed
+        # if race_id: # Removed
+        #     race = Race.query.get(race_id) # Removed
+        #     if race: # Removed
+        #         # ability_score_increases should be JSON string like '{"STR": 1, "DEX": 2}' in model
+        #         # to_dict() should handle json.loads for this field.
+        #         data['racial_bonuses'] = race.to_dict().get('ability_score_increases', {}) # Removed
+        #     else: data['racial_bonuses'] = {} # Removed
+        # else: data['racial_bonuses'] = {} # Removed
+        data['racial_bonuses'] = {} # Changed: Set directly
     elif step_name == 'background':
         data = {'backgrounds': sample_backgrounds_data} # Predefined dict
     elif step_name == 'skills':
-        class_id = char_data_session.get('class_id')
-        if class_id:
-            selected_class = Class.query.get(class_id)
-            if selected_class:
-                class_dict = selected_class.to_dict()
-                data = {
-                    'skill_options': class_dict.get('skill_proficiencies_options', []),
-                    'num_to_choose': class_dict.get('skill_proficiencies_option_count', 0),
-                    # These are fixed profs from class, review if they should be sent here or on class selection
-                    'saving_throws': class_dict.get('proficiency_saving_throws', []),
-                    'armor_proficiencies': class_dict.get('proficiencies_armor', []),
-                    'weapon_proficiencies': class_dict.get('proficiencies_weapons', []),
-                    'tool_proficiencies_class_fixed': class_dict.get('proficiencies_tools', [])
-                }
-            else: data = {'error': 'Class not found'}
-        else: data = {'error': 'Class ID not in session'}
+        # class_id = char_data_session.get('class_id') # Removed
+        # if class_id: # Removed
+        #     selected_class = Class.query.get(class_id) # Removed
+        #     if selected_class: # Removed
+        #         class_dict = selected_class.to_dict() # Removed
+        #         data = { # Removed
+        #             'skill_options': class_dict.get('skill_proficiencies_options', []), # Removed
+        #             'num_to_choose': class_dict.get('skill_proficiencies_option_count', 0), # Removed
+        #             # These are fixed profs from class, review if they should be sent here or on class selection
+        #             'saving_throws': class_dict.get('proficiency_saving_throws', []), # Removed
+        #             'armor_proficiencies': class_dict.get('proficiencies_armor', []), # Removed
+        #             'weapon_proficiencies': class_dict.get('proficiencies_weapons', []), # Removed
+        #             'tool_proficiencies_class_fixed': class_dict.get('proficiencies_tools', []) # Removed
+        #         } # Removed
+        #     else: data = {'error': 'Class not found'} # Removed
+        # else: data = {'error': 'Class ID not in session'} # Removed
+        data = {'skill_options': [], 'num_to_choose': 0, 'saving_throws': [], 'armor_proficiencies': [], 'weapon_proficiencies': [], 'tool_proficiencies_class_fixed': []} # Changed
     elif step_name == 'hp':
-        race_id = char_data_session.get('race_id')
-        class_id = char_data_session.get('class_id')
-        ability_scores = char_data_session.get('ability_scores')
-        if race_id and class_id and ability_scores:
-            race = Race.query.get(race_id)
-            s_class = Class.query.get(class_id)
-            if race and s_class:
-                con_score = ability_scores.get('CON', 10)
-                con_mod = (con_score - 10) // 2
-                try:
-                    hit_die_val = int(s_class.hit_die[1:]) # Assumes "dX" format
-                except: hit_die_val = 8 # Default
-                max_hp = hit_die_val + con_mod
+        # race_id = char_data_session.get('race_id') # Removed
+        # class_id = char_data_session.get('class_id') # Removed
+        # ability_scores = char_data_session.get('ability_scores') # Removed
+        # if race_id and class_id and ability_scores: # Removed
+        #     race = Race.query.get(race_id) # Removed
+        #     s_class = Class.query.get(class_id) # Removed
+        #     if race and s_class: # Removed
+        #         con_score = ability_scores.get('CON', 10) # Removed
+        #         con_mod = (con_score - 10) // 2 # Removed
+        #         try: # Removed
+        #             hit_die_val = int(s_class.hit_die[1:]) # Assumes "dX" format # Removed
+        #         except: hit_die_val = 8 # Default # Removed
+        #         max_hp = hit_die_val + con_mod # Removed
 
-                dex_score = ability_scores.get('DEX', 10)
-                dex_mod = (dex_score - 10) // 2
-                ac_base = 10 + dex_mod
-                data = {'max_hp': max_hp, 'ac_base': ac_base, 'speed': race.speed}
-            else: data = {'error': 'Race or Class not found for HP calc'}
-        else: data = {'error': 'Missing data for HP calc (race, class, or scores)'}
+        #         dex_score = ability_scores.get('DEX', 10) # Removed
+        #         dex_mod = (dex_score - 10) // 2 # Removed
+        #         ac_base = 10 + dex_mod # Removed
+        #         data = {'max_hp': max_hp, 'ac_base': ac_base, 'speed': race.speed} # Removed
+        #     else: data = {'error': 'Race or Class not found for HP calc'} # Removed
+        # else: data = {'error': 'Missing data for HP calc (race, class, or scores)'} # Removed
+        data = {'max_hp': 10, 'ac_base': 10, 'speed': 30} # Changed
     elif step_name == 'equipment':
-        class_id = char_data_session.get('class_id')
-        background_name = char_data_session.get('background_name')
-        if class_id and background_name:
-            selected_class = Class.query.get(class_id)
-            background_details = sample_backgrounds_data.get(background_name)
-            if selected_class and background_details:
-                fixed_items, choice_groups = parse_starting_equipment(selected_class.starting_equipment or '[]')
-                data = {
-                    'fixed_items': fixed_items,
-                    'choice_groups': choice_groups,
-                    'background_equipment_string': background_details.get('equipment', '')
-                }
-            else: data = {'error': 'Class or Background details not found for equipment'}
-        else: data = {'error': 'Class ID or Background name not in session for equipment'}
+        # class_id = char_data_session.get('class_id') # Removed
+        background_name = char_data_session.get('background_name') # Kept background_name for now
+        # if class_id and background_name: # Removed
+        #     selected_class = Class.query.get(class_id) # Removed
+        #     background_details = sample_backgrounds_data.get(background_name) # Kept
+        #     if selected_class and background_details: # Removed selected_class
+        #         fixed_items, choice_groups = parse_starting_equipment(selected_class.starting_equipment or '[]') # Removed
+        #         data = { # Removed
+        #             'fixed_items': fixed_items, # Removed
+        #             'choice_groups': choice_groups, # Removed
+        #             'background_equipment_string': background_details.get('equipment', '') # Kept
+        #         } # Removed
+        #     else: data = {'error': 'Class or Background details not found for equipment'} # Removed
+        # else: data = {'error': 'Class ID or Background name not in session for equipment'} # Removed
+        # Simplified data for equipment, assuming background_details might still be used if available
+        background_details = sample_backgrounds_data.get(background_name) if background_name else {}
+        data = {'fixed_items': [], 'choice_groups': [], 'background_equipment_string': background_details.get('equipment', '')} # Changed
     elif step_name == 'spells':
-        class_id = char_data_session.get('class_id')
-        if class_id:
-            s_class = Class.query.get(class_id)
-            if s_class and s_class.spellcasting_ability:
-                s_class_dict = s_class.to_dict()
-                # Determine number of cantrips/spells to pick at L1
-                # This logic is simplified; actual numbers depend on class rules (Wizard, Sorc, etc.)
-                # For L1, cantrips_known_by_level/spells_known_by_level map for key "1"
-                cantrips_known_map = s_class_dict.get('cantrips_known_by_level', {})
-                spells_known_map = s_class_dict.get('spells_known_by_level', {})
+        # class_id = char_data_session.get('class_id') # Removed
+        # if class_id: # Removed
+        #     s_class = Class.query.get(class_id) # Removed
+        #     if s_class and s_class.spellcasting_ability: # Removed
+        #         s_class_dict = s_class.to_dict() # Removed
+        #         # Determine number of cantrips/spells to pick at L1
+        #         # This logic is simplified; actual numbers depend on class rules (Wizard, Sorc, etc.)
+        #         # For L1, cantrips_known_by_level/spells_known_by_level map for key "1"
+        #         cantrips_known_map = s_class_dict.get('cantrips_known_by_level', {}) # Removed
+        #         spells_known_map = s_class_dict.get('spells_known_by_level', {}) # Removed
 
-                num_cantrips = int(cantrips_known_map.get("1", 0))
-                num_level_1_spells = int(spells_known_map.get("1", 0))
+        #         num_cantrips = int(cantrips_known_map.get("1", 0)) # Removed
+        #         num_level_1_spells = int(spells_known_map.get("1", 0)) # Removed
 
-                # Special case for Wizard L1 spells
-                if s_class.name == "Wizard": num_level_1_spells = 6
+        #         # Special case for Wizard L1 spells
+        #         if s_class.name == "Wizard": num_level_1_spells = 6 # Removed
 
-                search_pattern = f'%"{s_class.name}"%' # For Spell.classes_that_can_use
-                cantrips = Spell.query.filter(Spell.level == 0, Spell.classes_that_can_use.like(search_pattern)).order_by(Spell.name).all()
-                level_1_spells = Spell.query.filter(Spell.level == 1, Spell.classes_that_can_use.like(search_pattern)).order_by(Spell.name).all()
-                data = {
-                    'num_cantrips_to_select': num_cantrips,
-                    'num_level_1_spells_to_select': num_level_1_spells,
-                    'available_cantrips': [{'id': sp.id, 'name': sp.name, 'description': sp.description} for sp in cantrips],
-                    'available_level_1_spells': [{'id': sp.id, 'name': sp.name, 'description': sp.description} for sp in level_1_spells],
-                    'can_prepare_spells': s_class_dict.get('can_prepare_spells', False)
-                }
-            else: data = {'no_spells_or_class_issue': True} # No spellcasting ability or class not found
-        else: data = {'error': 'Class ID not in session for spells'}
+        #         search_pattern = f'%"{s_class.name}"%' # For Spell.classes_that_can_use # Removed
+        #         cantrips = Spell.query.filter(Spell.level == 0, Spell.classes_that_can_use.like(search_pattern)).order_by(Spell.name).all() # Removed
+        #         level_1_spells = Spell.query.filter(Spell.level == 1, Spell.classes_that_can_use.like(search_pattern)).order_by(Spell.name).all() # Removed
+        #         data = { # Removed
+        #             'num_cantrips_to_select': num_cantrips, # Removed
+        #             'num_level_1_spells_to_select': num_level_1_spells, # Removed
+        #             'available_cantrips': [{'id': sp.id, 'name': sp.name, 'description': sp.description} for sp in cantrips], # Removed
+        #             'available_level_1_spells': [{'id': sp.id, 'name': sp.name, 'description': sp.description} for sp in level_1_spells], # Removed
+        #             'can_prepare_spells': s_class_dict.get('can_prepare_spells', False) # Removed
+        #         } # Removed
+        #     else: data = {'no_spells_or_class_issue': True} # No spellcasting ability or class not found # Removed
+        # else: data = {'error': 'Class ID not in session for spells'} # Removed
+        data = {'num_cantrips_to_select': 0, 'num_level_1_spells_to_select': 0, 'available_cantrips': [], 'available_level_1_spells': [], 'can_prepare_spells': False} # Changed
     elif step_name == 'review':
         # Review step primarily uses data already in session. This can confirm/load full objects.
         data = {'current_character_summary': char_data_session} # Send all accumulated data
-        if char_data_session.get('race_id'):
-            race = Race.query.get(char_data_session.get('race_id'))
-            if race: data['race_details'] = race.to_dict()
-        if char_data_session.get('class_id'):
-            s_class = Class.query.get(char_data_session.get('class_id'))
-            if s_class: data['class_details'] = s_class.to_dict()
+        # if char_data_session.get('race_id'): # Removed
+        #     race = Race.query.get(char_data_session.get('race_id')) # Removed
+        #     if race: data['race_details'] = race.to_dict() # Removed
+        # if char_data_session.get('class_id'): # Removed
+        #     s_class = Class.query.get(char_data_session.get('class_id')) # Removed
+        #     if s_class: data['class_details'] = s_class.to_dict() # Removed
         # Add more details as needed for review page, e.g., spell names
     else:
         return jsonify(error="Invalid step name"), 404
@@ -407,70 +414,83 @@ def creation_wizard_update_session():
         # Always look up the race by slug to get its database ID and for fallback
         # This assumes slugs in DB match names after hyphen-to-space and title case,
         # which is how they were populated by populate_races.py from Open5e slugs.
-        race_name_candidate = race_slug_to_lookup.replace('-', ' ').title()
-        race = Race.query.filter_by(name=race_name_candidate).first()
+        # race_name_candidate = race_slug_to_lookup.replace('-', ' ').title() # Removed
+        # race = Race.query.filter_by(name=race_name_candidate).first() # Removed
 
-        if not race: # This means the slug sent from frontend didn't match any race name
-            current_app.logger.warning(f"Race not found for name candidate: '{race_name_candidate}' (from slug: '{race_slug_to_lookup}')")
-            return jsonify(status="error", message=f"Invalid Race Slug: {race_slug_to_lookup}"), 400
+        # if not race: # This means the slug sent from frontend didn't match any race name # Removed
+        #     current_app.logger.warning(f"Race not found for name candidate: '{race_name_candidate}' (from slug: '{race_slug_to_lookup}')") # Removed
+        #     return jsonify(status="error", message=f"Invalid Race Slug: {race_slug_to_lookup}"), 400 # Removed
 
         # Store the fundamental race_id and the original slug from the selected race/subrace
-        session['new_character_data']['race_id'] = race.id
-        session['new_character_data']['selected_race_slug'] = race_slug_to_lookup
+        # session['new_character_data']['race_id'] = race.id # Removed
+        session['new_character_data']['selected_race_slug'] = race_slug_to_lookup # Kept slug for now, though race_id is gone
 
         if effective_details:
             current_app.logger.info(f"Using effective_race_details for race: {effective_details.get('name')}")
             session['new_character_data']['race_name'] = effective_details.get('name')
             session['new_character_data']['speed'] = effective_details.get('speed')
             session['new_character_data']['languages_from_race'] = effective_details.get('languages', [])
-            session['new_character_data']['ability_score_increases_details'] = effective_details.get('asi')
+            session['new_character_data']['ability_score_increases_details'] = effective_details.get('asi') # This is just data now
             session['new_character_data']['race_trait_names'] = effective_details.get('traits', [])
             session['new_character_data']['is_subrace'] = effective_details.get('is_subrace', False)
             if effective_details.get('is_subrace'):
                 session['new_character_data']['parent_race_slug'] = effective_details.get('parent_slug')
 
             # Fallback for skill proficiencies for now, as it's not in effective_details
-            race_model_dict = race.to_dict()
-            session['new_character_data']['race_skill_proficiencies'] = race_model_dict.get('skill_proficiencies', [])
+            # race_model_dict = race.to_dict() # Removed
+            # session['new_character_data']['race_skill_proficiencies'] = race_model_dict.get('skill_proficiencies', []) # Removed
+            session['new_character_data']['race_skill_proficiencies'] = [] # Default to empty list
             # Also ensure other fields that might be expected directly from race_dict are present if not in effective_details
-            session['new_character_data'].setdefault('race_document__slug', race_model_dict.get('document__slug'))
+            # session['new_character_data'].setdefault('race_document__slug', race_model_dict.get('document__slug')) # Removed
+            session['new_character_data'].setdefault('race_document__slug', None) # Default to None
 
 
         else:
             # Fallback to old logic if effective_race_details is not provided
-            current_app.logger.info(f"Using race.to_dict() for race: {race.name} as no effective_details provided.")
-            race_dict = race.to_dict()
-            session['new_character_data']['race_name'] = race_dict.get('name')
-            session['new_character_data']['speed'] = race_dict.get('speed')
-            session['new_character_data']['languages_from_race'] = race_dict.get('languages', [])
-            session['new_character_data']['race_skill_proficiencies'] = race_dict.get('skill_proficiencies', [])
-            session['new_character_data']['ability_score_increases_details'] = race_dict.get('ability_score_increases')
-            session['new_character_data']['is_subrace'] = race_dict.get('is_subrace', False)
-            session['new_character_data']['race_trait_names'] = [t.get('name') for t in race_dict.get('traits', []) if t.get('name')]
-            session['new_character_data'].setdefault('race_document__slug', race_dict.get('document__slug'))
+            # current_app.logger.info(f"Using race.to_dict() for race: {race.name} as no effective_details provided.") # Removed
+            # race_dict = race.to_dict() # Removed
+            session['new_character_data']['race_name'] = "Default Race" # Default
+            session['new_character_data']['speed'] = 30 # Default
+            session['new_character_data']['languages_from_race'] = [] # Default
+            session['new_character_data']['race_skill_proficiencies'] = [] # Default
+            session['new_character_data']['ability_score_increases_details'] = {} # Default
+            session['new_character_data']['is_subrace'] = False # Default
+            session['new_character_data']['race_trait_names'] = [] # Default
+            session['new_character_data'].setdefault('race_document__slug', None) # Default
 
 
-        current_app.logger.info(f"Session updated for race. Race ID: {session['new_character_data']['race_id']}, Name: {session['new_character_data']['race_name']}")
+        current_app.logger.info(f"Session updated for race. Name: {session['new_character_data'].get('race_name', 'N/A')}")
 
     # If not 'race' step, or if 'race' step didn't have specific payload fields like 'race_slug',
     # we might still want the generic update for other step types.
     # However, for 'race', we've handled it. For other steps, the generic update is fine.
-    if step_key != 'race':
-        session['new_character_data'].update(step_payload)
+    # This logic needs adjustment as 'race' step should now also fall into generic update for most fields
+    # session['new_character_data'].update(step_payload) # Apply generic update for all steps initially
+    # The specific 'race' logic above now mostly populates defaults if race object is not available.
+
+    # Let's refine: Apply step_payload generally, then override with specific logic if needed.
+    session['new_character_data'].update(step_payload)
 
 
-    elif step_key == 'class' and 'class_id' in step_payload:
-        s_class = Class.query.get(step_payload['class_id'])
-        if s_class:
-            class_dict = s_class.to_dict()
-            session['new_character_data']['class_name'] = class_dict.get('name')
+    if step_key == 'class' and 'class_id' in step_payload: # class_id is kept in payload for now
+        # s_class = Class.query.get(step_payload['class_id']) # Removed
+        # if s_class: # Removed
+            # class_dict = s_class.to_dict() # Removed
+            # session['new_character_data']['class_name'] = class_dict.get('name') # Removed
             # Store proficiencies that are fixed for the class
-            session['new_character_data']['saving_throw_proficiencies'] = class_dict.get('proficiency_saving_throws', [])
-            session['new_character_data']['armor_proficiencies'] = class_dict.get('proficiencies_armor', [])
-            session['new_character_data']['weapon_proficiencies'] = class_dict.get('proficiencies_weapons', [])
-            session['new_character_data']['tool_proficiencies_class_fixed'] = class_dict.get('proficiencies_tools', [])
-        else:
-            return jsonify(status="error", message="Invalid Class ID"), 400
+            # session['new_character_data']['saving_throw_proficiencies'] = class_dict.get('proficiency_saving_throws', []) # Removed
+            # session['new_character_data']['armor_proficiencies'] = class_dict.get('proficiencies_armor', []) # Removed
+            # session['new_character_data']['weapon_proficiencies'] = class_dict.get('proficiencies_weapons', []) # Removed
+            # session['new_character_data']['tool_proficiencies_class_fixed'] = class_dict.get('proficiencies_tools', []) # Removed
+        # else: # Removed
+            # return jsonify(status="error", message="Invalid Class ID"), 400 # Removed
+        # Defaulting class related fields as Class object is removed
+        session['new_character_data']['class_name'] = step_payload.get('class_name', "Default Class") # Use name from payload if sent
+        session['new_character_data']['saving_throw_proficiencies'] = []
+        session['new_character_data']['armor_proficiencies'] = []
+        session['new_character_data']['weapon_proficiencies'] = []
+        session['new_character_data']['tool_proficiencies_class_fixed'] = []
+
 
     elif step_key == 'background' and 'background_name' in step_payload:
         bg_name = step_payload['background_name']
@@ -658,8 +678,10 @@ def adventure(character_id):
             character_sheet_prompt = (
                 f"PLAYER CHARACTER SHEET:\n"
                 f"Name: {character.name}\n"
-                f"Race: {character.race.name if character.race else 'N/A'}\n"
-                f"Class: {character.char_class.name if character.char_class else 'N/A'}\n"
+                # f"Race: {character.race.name if character.race else 'N/A'}\n" # Removed
+                # f"Class: {character.char_class.name if character.char_class else 'N/A'}\n" # Removed
+                f"Race: N/A\n"  # Placeholder
+                f"Class: N/A\n" # Placeholder
                 f"Level: {current_actual_level}\n\n" 
                 f"Ability Scores:\n"
                 f"  Strength: {current_character_level_data.strength}\n"
@@ -752,13 +774,14 @@ def adventure(character_id):
             current_app.logger.error(f"Failed to parse spells_known_ids for char {character_id} L{viewed_level_number}")
     
     if known_spell_ids:
-        known_spells_objects = Spell.query.filter(Spell.id.in_(known_spell_ids)).all()
-        for spell in known_spells_objects:
-            if spell.level not in spells_by_level:
-                spells_by_level[spell.level] = []
-            spells_by_level[spell.level].append(spell)
-        for level in spells_by_level:
-            spells_by_level[level].sort(key=lambda s: s.name)
+        # known_spells_objects = Spell.query.filter(Spell.id.in_(known_spell_ids)).all() # Removed
+        # for spell in known_spells_objects: # Removed
+        #     if spell.level not in spells_by_level: # Removed
+        #         spells_by_level[spell.level] = [] # Removed
+        #     spells_by_level[spell.level].append(spell) # Removed
+        # for level in spells_by_level: # Removed
+        #     spells_by_level[level].sort(key=lambda s: s.name) # Removed
+        spells_by_level = {} # Set to empty dict
 
     spell_slots_data = {}
     if current_character_level_data.spell_slots_snapshot:
@@ -1547,7 +1570,8 @@ def get_character_level_data(character_id, level_number):
         'spells_prepared_ids': [],
         'spell_slots_snapshot': {},
         'created_at': character_level_record.created_at.isoformat() if character_level_record.created_at else None,
-        'speed': character.race.speed if character.race else 30 
+        # 'speed': character.race.speed if character.race else 30 # Removed
+        'speed': 30 # Default speed
     }
     
     try:
@@ -1577,25 +1601,27 @@ def get_character_level_data(character_id, level_number):
     except json.JSONDecodeError:
         current_app.logger.error(f"Failed to parse spell_slots_snapshot JSON for CLID {character_level_record.id}")
     
-    level_data_dict['character_class_name'] = character.char_class.name if character.char_class else "Unknown"
+    # level_data_dict['character_class_name'] = character.char_class.name if character.char_class else "Unknown" # Removed
+    level_data_dict['character_class_name'] = "Unknown" # Default
 
-    if raw_spell_ids and isinstance(raw_spell_ids, list):
-        try:
-            known_spells_objects = Spell.query.filter(Spell.id.in_(raw_spell_ids)).all()
-            spells_details_list = []
-            for spell_obj in known_spells_objects:
-                spells_details_list.append({
-                    'id': spell_obj.id, 'index': spell_obj.index, 'name': spell_obj.name,
-                    'level': spell_obj.level, 'school': spell_obj.school,
-                    'casting_time': spell_obj.casting_time, 'range': spell_obj.range,
-                    'components': spell_obj.components, 'material': spell_obj.material,
-                    'duration': spell_obj.duration, 'concentration': spell_obj.concentration,
-                    'description': spell_obj.description, # Already JSON string of paragraphs
-                    'higher_level': spell_obj.higher_level # Already JSON string of paragraphs
-                })
-            level_data_dict['spells_known_details'] = spells_details_list
-        except Exception as e:
-            current_app.logger.error(f"Error processing spells_known_details for CLID {character_level_record.id}: {str(e)}")
+    # if raw_spell_ids and isinstance(raw_spell_ids, list): # Removed block
+    #     try:
+    #         known_spells_objects = Spell.query.filter(Spell.id.in_(raw_spell_ids)).all()
+    #         spells_details_list = []
+    #         for spell_obj in known_spells_objects:
+    #             spells_details_list.append({
+    #                 'id': spell_obj.id, 'index': spell_obj.index, 'name': spell_obj.name,
+    #                 'level': spell_obj.level, 'school': spell_obj.school,
+    #                 'casting_time': spell_obj.casting_time, 'range': spell_obj.range,
+    #                 'components': spell_obj.components, 'material': spell_obj.material,
+    #                 'duration': spell_obj.duration, 'concentration': spell_obj.concentration,
+    #                 'description': spell_obj.description, # Already JSON string of paragraphs
+    #                 'higher_level': spell_obj.higher_level # Already JSON string of paragraphs
+    #             })
+    #         level_data_dict['spells_known_details'] = spells_details_list
+    #     except Exception as e:
+    #         current_app.logger.error(f"Error processing spells_known_details for CLID {character_level_record.id}: {str(e)}")
+    level_data_dict['spells_known_details'] = [] # Set to empty list
 
     return jsonify(level_data_dict)
 # --- End of New Route ---
@@ -1629,9 +1655,11 @@ def level_up_start(character_id):
         'character_id': character.id,
         'current_level_number': current_level_number,
         'new_level_number': new_level_number,
-        'class_id': character.class_id,
-        'class_name': character.char_class.name,
-        'hit_die': character.char_class.hit_die,
+        # 'class_id': character.class_id, # Removed
+        # 'class_name': character.char_class.name, # Removed
+        # 'hit_die': character.char_class.hit_die, # Removed
+        'class_name': "Unknown Class", # Default
+        'hit_die': "d8", # Default
         'ability_scores': {
             'STR': latest_level_data.strength,
             'DEX': latest_level_data.dexterity,
@@ -1732,12 +1760,12 @@ def level_up_features_asi(character_id):
         flash("Level up process not started correctly or HP step missed. Please start over.", "error")
         return redirect(url_for('main.level_up_start', character_id=character_id))
 
-    char_class_id = level_up_data.get('class_id')
-    char_class = Class.query.get(char_class_id)
-    if not char_class:
-        flash("Could not retrieve class data. Aborting level up.", "error")
-        session.pop('level_up_data', None)
-        return redirect(url_for('main.adventure', character_id=character_id))
+    # char_class_id = level_up_data.get('class_id') # Removed
+    # char_class = Class.query.get(char_class_id) # Removed
+    # if not char_class: # Removed
+    #     flash("Could not retrieve class data. Aborting level up.", "error") # Removed
+    #     session.pop('level_up_data', None) # Removed
+    #     return redirect(url_for('main.adventure', character_id=character_id)) # Removed
 
     new_level_number = level_up_data.get('new_level_number')
     # These are for GET request display, might be overwritten by POST
@@ -1747,41 +1775,46 @@ def level_up_features_asi(character_id):
 
 
     if request.method == 'GET': 
-        if char_class.level_specific_data:
-            try:
-                level_specific_progression = json.loads(char_class.level_specific_data)
-                current_level_prog_data = level_specific_progression.get(str(new_level_number))
-                if current_level_prog_data:
-                    new_features_at_this_level_names = current_level_prog_data.get('features', [])
-                    asi_count_at_this_level = current_level_prog_data.get('asi_count', 0)
+        # if char_class.level_specific_data: # Removed
+        #     try:
+        #         level_specific_progression = json.loads(char_class.level_specific_data)
+        #         current_level_prog_data = level_specific_progression.get(str(new_level_number))
+        #         if current_level_prog_data:
+        #             new_features_at_this_level_names = current_level_prog_data.get('features', [])
+        #             asi_count_at_this_level = current_level_prog_data.get('asi_count', 0)
 
-                    # Parse features for proficiencies
-                    # This is a simplified approach. A robust solution needs structured feature data.
-                    gained_proficiencies_from_features = {'skills': [], 'tools': [], 'languages': [], 'armor': [], 'weapons': [], 'saving_throws': []}
-                    for feature_name in new_features_at_this_level_names:
-                        if feature_name.startswith("Skill Proficiency:"):
-                            prof_name = feature_name.replace("Skill Proficiency:", "").strip()
-                            if prof_name: gained_proficiencies_from_features['skills'].append(prof_name)
-                        elif feature_name.startswith("Tool Proficiency:"):
-                            prof_name = feature_name.replace("Tool Proficiency:", "").strip()
-                            if prof_name: gained_proficiencies_from_features['tools'].append(prof_name)
-                        elif feature_name.startswith("Language Proficiency:"):
-                            prof_name = feature_name.replace("Language Proficiency:", "").strip()
-                            if prof_name: gained_proficiencies_from_features['languages'].append(prof_name)
-                        elif feature_name.startswith("Armor Proficiency:"):
-                            prof_name = feature_name.replace("Armor Proficiency:", "").strip()
-                            if prof_name: gained_proficiencies_from_features['armor'].append(prof_name)
-                        elif feature_name.startswith("Weapon Proficiency:"):
-                            prof_name = feature_name.replace("Weapon Proficiency:", "").strip()
-                            if prof_name: gained_proficiencies_from_features['weapons'].append(prof_name)
-                        elif feature_name.startswith("Saving Throw Proficiency:"):
-                            prof_name = feature_name.replace("Saving Throw Proficiency:", "").strip()
-                            if prof_name: gained_proficiencies_from_features['saving_throws'].append(prof_name)
+        #             # Parse features for proficiencies
+        #             # This is a simplified approach. A robust solution needs structured feature data.
+        #             gained_proficiencies_from_features = {'skills': [], 'tools': [], 'languages': [], 'armor': [], 'weapons': [], 'saving_throws': []}
+        #             for feature_name in new_features_at_this_level_names:
+        #                 if feature_name.startswith("Skill Proficiency:"):
+        #                     prof_name = feature_name.replace("Skill Proficiency:", "").strip()
+        #                     if prof_name: gained_proficiencies_from_features['skills'].append(prof_name)
+        #                 elif feature_name.startswith("Tool Proficiency:"):
+        #                     prof_name = feature_name.replace("Tool Proficiency:", "").strip()
+        #                     if prof_name: gained_proficiencies_from_features['tools'].append(prof_name)
+        #                 elif feature_name.startswith("Language Proficiency:"):
+        #                     prof_name = feature_name.replace("Language Proficiency:", "").strip()
+        #                     if prof_name: gained_proficiencies_from_features['languages'].append(prof_name)
+        #                 elif feature_name.startswith("Armor Proficiency:"):
+        #                     prof_name = feature_name.replace("Armor Proficiency:", "").strip()
+        #                     if prof_name: gained_proficiencies_from_features['armor'].append(prof_name)
+        #                 elif feature_name.startswith("Weapon Proficiency:"):
+        #                     prof_name = feature_name.replace("Weapon Proficiency:", "").strip()
+        #                     if prof_name: gained_proficiencies_from_features['weapons'].append(prof_name)
+        #                 elif feature_name.startswith("Saving Throw Proficiency:"):
+        #                     prof_name = feature_name.replace("Saving Throw Proficiency:", "").strip()
+        #                     if prof_name: gained_proficiencies_from_features['saving_throws'].append(prof_name)
 
-            except json.JSONDecodeError:
-                current_app.logger.error(f"Could not parse level_specific_data for class {char_class.name}")
-                flash("Error reading class progression data.", "error")
+        #     except json.JSONDecodeError:
+        #         current_app.logger.error(f"Could not parse level_specific_data for class {char_class.name}") # char_class removed
+        #         flash("Error reading class progression data.", "error")
         
+        # Defaulting features and ASI count
+        new_features_at_this_level_names = []
+        asi_count_at_this_level = 0
+        gained_proficiencies_from_features = {'skills': [], 'tools': [], 'languages': [], 'armor': [], 'weapons': [], 'saving_throws': []}
+
         level_up_data['new_features_list'] = new_features_at_this_level_names # Store the raw names
         level_up_data['asi_count_available'] = asi_count_at_this_level
         level_up_data['gained_proficiencies'] = gained_proficiencies_from_features # Store parsed proficiencies
@@ -1866,23 +1899,24 @@ def level_up_features_asi(character_id):
         session.modified = True
         
         flash("Features and ASI choices processed.", "success")
-        if char_class.spellcasting_ability:
-            cantrips_known_map = json.loads(char_class.cantrips_known_by_level or '{}')
-            spells_known_map = json.loads(char_class.spells_known_by_level or '{}')
+        # if char_class.spellcasting_ability: # Removed char_class
+            # cantrips_known_map = json.loads(char_class.cantrips_known_by_level or '{}') # Removed
+            # spells_known_map = json.loads(char_class.spells_known_by_level or '{}') # Removed
             
-            cantrips_now = int(cantrips_known_map.get(str(new_level_number), 0))
-            cantrips_before = int(cantrips_known_map.get(str(level_up_data['current_level_number']), 0))
+            # cantrips_now = int(cantrips_known_map.get(str(new_level_number), 0)) # Removed
+            # cantrips_before = int(cantrips_known_map.get(str(level_up_data['current_level_number']), 0)) # Removed
             
-            spells_now = int(spells_known_map.get(str(new_level_number), 0))
-            spells_before = int(spells_known_map.get(str(level_up_data['current_level_number']), 0))
+            # spells_now = int(spells_known_map.get(str(new_level_number), 0)) # Removed
+            # spells_before = int(spells_known_map.get(str(level_up_data['current_level_number']), 0)) # Removed
 
-            learns_new_cantrips = cantrips_now > cantrips_before
-            learns_new_spells = spells_now > spells_before
-            if char_class.name == "Wizard": # Wizards always get to add 2 spells
-                learns_new_spells = True 
+            # learns_new_cantrips = cantrips_now > cantrips_before # Removed
+            # learns_new_spells = spells_now > spells_before # Removed
+            # if char_class.name == "Wizard": # Wizards always get to add 2 spells # Removed
+            #     learns_new_spells = True # Removed
 
-            if learns_new_cantrips or learns_new_spells or char_class.can_prepare_spells:
-                 return redirect(url_for('main.level_up_spells', character_id=character_id))
+            # if learns_new_cantrips or learns_new_spells or char_class.can_prepare_spells: # Removed
+            #      return redirect(url_for('main.level_up_spells', character_id=character_id)) # Removed
+        # Defaulting to not redirecting to spells
         return redirect(url_for('main.level_up_review', character_id=character_id))
 
     # For GET request
@@ -1907,81 +1941,84 @@ def level_up_spells(character_id):
         flash("Level up process not started correctly or a step was missed. Please start over.", "error")
         return redirect(url_for('main.level_up_start', character_id=character_id))
 
-    char_class_id = level_up_data.get('class_id')
-    char_class = Class.query.get(char_class_id)
-    new_level_number_str = str(level_up_data.get('new_level_number'))
-    current_level_number_str = str(level_up_data.get('current_level_number'))
+    # char_class_id = level_up_data.get('class_id') # Removed
+    # char_class = Class.query.get(char_class_id) # Removed
+    # new_level_number_str = str(level_up_data.get('new_level_number')) # Kept for potential use, though class logic is gone
+    # current_level_number_str = str(level_up_data.get('current_level_number')) # Kept for potential use
 
-    if not char_class or not char_class.spellcasting_ability:
-        level_up_data['selected_new_cantrip_ids'] = [] 
-        level_up_data['selected_new_spell_ids'] = []
-        session['level_up_data'] = level_up_data
-        session.modified = True
-        return redirect(url_for('main.level_up_review', character_id=character_id))
+    # if not char_class or not char_class.spellcasting_ability: # Adjusted: Assume no spellcasting ability
+    level_up_data['selected_new_cantrip_ids'] = []
+    level_up_data['selected_new_spell_ids'] = []
+    # session['level_up_data'] = level_up_data # This will be set later if we proceed
+    # session.modified = True # This will be set later if we proceed
+    # return redirect(url_for('main.level_up_review', character_id=character_id)) # Logic changed, this path might not be hit directly
 
-    num_new_cantrips_to_choose = 0
-    num_new_spells_to_choose = 0
+    num_new_cantrips_to_choose = 0 # Default
+    num_new_spells_to_choose = 0 # Default
 
-    try:
-        cantrips_known_map = json.loads(char_class.cantrips_known_by_level or '{}')
-        spells_known_map = json.loads(char_class.spells_known_by_level or '{}')
+    # try: # Removed try-except block as char_class logic is gone
+        # cantrips_known_map = json.loads(char_class.cantrips_known_by_level or '{}')
+        # spells_known_map = json.loads(char_class.spells_known_by_level or '{}')
 
-        cantrips_at_new_level = int(cantrips_known_map.get(new_level_number_str, 0))
-        cantrips_at_current_level = int(cantrips_known_map.get(current_level_number_str, 0))
-        num_new_cantrips_to_choose = max(0, cantrips_at_new_level - cantrips_at_current_level)
+        # cantrips_at_new_level = int(cantrips_known_map.get(new_level_number_str, 0))
+        # cantrips_at_current_level = int(cantrips_known_map.get(current_level_number_str, 0))
+        # num_new_cantrips_to_choose = max(0, cantrips_at_new_level - cantrips_at_current_level)
 
-        spells_at_new_level = int(spells_known_map.get(new_level_number_str, 0))
-        spells_at_current_level = int(spells_known_map.get(current_level_number_str, 0))
+        # spells_at_new_level = int(spells_known_map.get(new_level_number_str, 0))
+        # spells_at_current_level = int(spells_known_map.get(current_level_number_str, 0))
         
-        if char_class.name == "Wizard": 
-            num_new_spells_to_choose = 2 
-        else: 
-            num_new_spells_to_choose = max(0, spells_at_new_level - spells_at_current_level)
+        # if char_class.name == "Wizard":
+        #     num_new_spells_to_choose = 2
+        # else:
+        #     num_new_spells_to_choose = max(0, spells_at_new_level - spells_at_current_level)
 
-    except (json.JSONDecodeError, ValueError) as e:
-        current_app.logger.error(f"Could not parse cantrips/spells known for class {char_class.name}: {e}")
-        flash("Error reading class spell progression data.", "error")
-        return redirect(url_for('main.level_up_review', character_id=character_id))
+    # except (json.JSONDecodeError, ValueError) as e:
+    #     current_app.logger.error(f"Could not parse cantrips/spells known for class {char_class.name}: {e}") # char_class removed
+    #     flash("Error reading class spell progression data.", "error")
+    #     return redirect(url_for('main.level_up_review', character_id=character_id))
 
-    if num_new_cantrips_to_choose == 0 and num_new_spells_to_choose == 0 and not char_class.can_prepare_spells:
+    # if num_new_cantrips_to_choose == 0 and num_new_spells_to_choose == 0 and not char_class.can_prepare_spells: # char_class removed
+    if num_new_cantrips_to_choose == 0 and num_new_spells_to_choose == 0: # Simplified condition
         level_up_data['selected_new_cantrip_ids'] = []
         level_up_data['selected_new_spell_ids'] = []
         session['level_up_data'] = level_up_data
         session.modified = True
-        flash("No new spells to learn or choose at this level.", "info")
+        flash("No new spells to learn or choose at this level (based on current simplified logic).", "info")
         return redirect(url_for('main.level_up_review', character_id=character_id))
     
     previous_spells_known_ids = set(level_up_data.get('previous_spells_known_ids', []))
     
-    max_spell_level_castable = 0
-    if char_class.spell_slots_by_level:
-        try:
-            slots_by_char_level = json.loads(char_class.spell_slots_by_level)
-            slots_for_new_level = slots_by_char_level.get(new_level_number_str, [])
-            for i, num_slots in reversed(list(enumerate(slots_for_new_level))):
-                if num_slots > 0:
-                    max_spell_level_castable = i + 1 
-                    break
-        except json.JSONDecodeError:
-            current_app.logger.error(f"Could not parse spell_slots_by_level for class {char_class.name}")
+    max_spell_level_castable = 0 # Default
+    # if char_class.spell_slots_by_level: # Removed
+    #     try:
+    #         slots_by_char_level = json.loads(char_class.spell_slots_by_level)
+    #         slots_for_new_level = slots_by_char_level.get(new_level_number_str, [])
+    #         for i, num_slots in reversed(list(enumerate(slots_for_new_level))):
+    #             if num_slots > 0:
+    #                 max_spell_level_castable = i + 1
+    #                 break
+    #     except json.JSONDecodeError:
+    #         current_app.logger.error(f"Could not parse spell_slots_by_level for class {char_class.name}") # char_class removed
 
 
-    available_cantrips_query = Spell.query.filter(
-        Spell.level == 0, 
-        Spell.classes_that_can_use.like(f'%"{char_class.name}"%')
-    )
-    if previous_spells_known_ids: 
-        available_cantrips_query = available_cantrips_query.filter(~Spell.id.in_(previous_spells_known_ids))
-    available_cantrips = available_cantrips_query.order_by(Spell.name).all()
+    # available_cantrips_query = Spell.query.filter( # Removed
+    #     Spell.level == 0, # Removed
+    #     Spell.classes_that_can_use.like(f'%"{char_class.name}"%') # Removed
+    # ) # Removed
+    # if previous_spells_known_ids: # Removed
+    #     available_cantrips_query = available_cantrips_query.filter(~Spell.id.in_(previous_spells_known_ids)) # Removed
+    # available_cantrips = available_cantrips_query.order_by(Spell.name).all() # Removed
+    available_cantrips = [] # Default
     
-    available_spells_query = Spell.query.filter(
-        Spell.level > 0,
-        Spell.level <= max_spell_level_castable, 
-        Spell.classes_that_can_use.like(f'%"{char_class.name}"%')
-    )
-    if previous_spells_known_ids: 
-        available_spells_query = available_spells_query.filter(~Spell.id.in_(previous_spells_known_ids))
-    available_spells = available_spells_query.order_by(Spell.level, Spell.name).all()
+    # available_spells_query = Spell.query.filter( # Removed
+    #     Spell.level > 0, # Removed
+    #     Spell.level <= max_spell_level_castable, # Removed
+    #     Spell.classes_that_can_use.like(f'%"{char_class.name}"%') # Removed
+    # ) # Removed
+    # if previous_spells_known_ids: # Removed
+    #     available_spells_query = available_spells_query.filter(~Spell.id.in_(previous_spells_known_ids)) # Removed
+    # available_spells = available_spells_query.order_by(Spell.level, Spell.name).all() # Removed
+    available_spells = [] # Default
 
 
     if request.method == 'POST':
@@ -2047,20 +2084,23 @@ def level_up_review(character_id):
         'new_features_list': level_up_data.get('new_features_list', []),
         'asi_choices_log': level_up_data.get('asi_choices_log', []),
         'final_ability_scores': level_up_data.get('ability_scores', {}), # These are the scores *after* ASI
-        'selected_new_cantrips': Spell.query.filter(Spell.id.in_(level_up_data.get('selected_new_cantrip_ids', []))).all(),
-        'selected_new_spells': Spell.query.filter(Spell.id.in_(level_up_data.get('selected_new_spell_ids', []))).all()
+        # 'selected_new_cantrips': Spell.query.filter(Spell.id.in_(level_up_data.get('selected_new_cantrip_ids', []))).all(), # Removed
+        # 'selected_new_spells': Spell.query.filter(Spell.id.in_(level_up_data.get('selected_new_spell_ids', []))).all() # Removed
+        'selected_new_cantrips': [], # Default to empty list
+        'selected_new_spells': []  # Default to empty list
     }
     
     # Fetch the Class object to pass to the template
-    char_class = Class.query.get(level_up_data.get('class_id'))
-    if char_class:
-        review_data['char_class'] = char_class
-    else:
+    # char_class = Class.query.get(level_up_data.get('class_id')) # Removed
+    # if char_class: # Removed
+    #     review_data['char_class'] = char_class # Removed
+    # else: # Removed
         # Handle case where class_id might be invalid or not found, though session should be reliable.
         # Setting to None or a default object, or flashing an error might be options.
         # For now, if not found, it won't be in review_data, template needs to handle potential absence.
-        current_app.logger.warning(f"Could not find class with ID {level_up_data.get('class_id')} during level_up_review for char {character_id}.")
-        review_data['char_class'] = None # Explicitly set to None if not found
+        # current_app.logger.warning(f"Could not find class with ID {level_up_data.get('class_id')} during level_up_review for char {character_id}.") # Removed
+        # review_data['char_class'] = None # Explicitly set to None if not found # Removed
+    review_data['char_class'] = None # Default to None
 
     return render_template('level_up/level_up_review.html', level_up_data=level_up_data, **review_data)
 
@@ -2099,20 +2139,20 @@ def level_up_apply(character_id):
     all_known_spell_ids = list(old_spells_known_ids.union(newly_selected_cantrips).union(newly_selected_spells))
 
     # Update spell_slots_snapshot based on new level and class data
-    new_spell_slots_snapshot_dict = {}
-    char_class = Class.query.get(level_up_data['class_id'])
-    if char_class and char_class.spell_slots_by_level:
-        try:
-            all_slots_data = json.loads(char_class.spell_slots_by_level)
-            slots_for_new_level_list = all_slots_data.get(str(level_up_data['new_level_number'])) # list like [4,2,0,0...]
-            if slots_for_new_level_list:
-                for i, num_slots in enumerate(slots_for_new_level_list):
-                    if num_slots > 0:
-                        new_spell_slots_snapshot_dict[str(i + 1)] = num_slots # Store as {"1": count, "2": count}
-        except json.JSONDecodeError:
-            current_app.logger.error(f"Could not parse spell_slots_by_level for class {char_class.name} during level up apply.")
-            # Fallback to previous level's snapshot if parsing fails
-            new_spell_slots_snapshot_dict = json.loads(current_level_entry.spell_slots_snapshot or '{}')
+    new_spell_slots_snapshot_dict = {} # Default to empty
+    # char_class = Class.query.get(level_up_data['class_id']) # Removed
+    # if char_class and char_class.spell_slots_by_level: # Removed
+    #     try:
+    #         all_slots_data = json.loads(char_class.spell_slots_by_level)
+    #         slots_for_new_level_list = all_slots_data.get(str(level_up_data['new_level_number'])) # list like [4,2,0,0...]
+    #         if slots_for_new_level_list:
+    #             for i, num_slots in enumerate(slots_for_new_level_list):
+    #                 if num_slots > 0:
+    #                     new_spell_slots_snapshot_dict[str(i + 1)] = num_slots # Store as {"1": count, "2": count}
+    #     except json.JSONDecodeError:
+    #         current_app.logger.error(f"Could not parse spell_slots_by_level for class {char_class.name} during level up apply.") # char_class removed
+    #         # Fallback to previous level's snapshot if parsing fails
+    #         new_spell_slots_snapshot_dict = json.loads(current_level_entry.spell_slots_snapshot or '{}')
 
 
     new_level_data = CharacterLevel(
@@ -2188,11 +2228,13 @@ def level_up_apply(character_id):
         db.session.commit() # First commit for level up data
 
         # Generate character sheet text and append to adventure log
-        char_class = Class.query.get(character.class_id) # Fetch class object
-        known_spell_ids_list = json.loads(new_level_data.spells_known_ids or '[]')
-        known_spell_objects = Spell.query.filter(Spell.id.in_(known_spell_ids_list)).all() if known_spell_ids_list else []
+        # char_class = Class.query.get(character.class_id) # Fetch class object # Removed
+        # known_spell_ids_list = json.loads(new_level_data.spells_known_ids or '[]') # Removed
+        # known_spell_objects = Spell.query.filter(Spell.id.in_(known_spell_ids_list)).all() if known_spell_ids_list else [] # Removed
 
-        sheet_text = generate_character_sheet_text(character, new_level_data, char_class, known_spell_objects)
+        # generate_character_sheet_text will need to be updated or this call will fail.
+        # For now, passing None for char_class and empty list for known_spell_objects
+        sheet_text = generate_character_sheet_text(character, new_level_data, None, [])
         dm_update_message = f"SYSTEM: {character.name} has reached Level {new_level_data.level_number}. Their character sheet has been updated as follows:\n\n{sheet_text}"
 
         try:
