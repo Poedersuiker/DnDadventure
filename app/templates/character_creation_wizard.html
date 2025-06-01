@@ -592,6 +592,153 @@
         return parts.length > 0 ? parts.join(', ') : "None";
     }
 
+    // Helper function to extract just trait names
+    function extractTraitNames(traitsArray) {
+        if (!Array.isArray(traitsArray)) {
+            return [];
+        }
+        return traitsArray.map(trait => (typeof trait === 'object' && trait.name) ? trait.name : trait).filter(name => name);
+    }
+
+    // Helper function to parse skill proficiencies from trait descriptions
+    function extractSkillProficienciesFromTraits(traitsArray) {
+        if (!Array.isArray(traitsArray)) return [];
+        let skills = [];
+        const skillRegexSimple = /proficiency in the ([^\s.,]+(?: [^\s.,]+)?) skill/gi; // "Perception skill" or "Stealth skill"
+        const skillRegexMultiple = /proficiency in the ([^\s.,]+(?: [^\s.,]+)?(?:, (?:and )?[^\s.,]+(?: [^\s.,]+)?)*) skills/gi; // "Athletics and Acrobatics skills"
+        const skillInListRegex = /proficiency in (one|two|three|four) of the following skills: ([^.]+)/i; // "one of the following skills: Arcana, History"
+        const chooseAnySkillRegex = /gain proficiency in one skill of your choice/i;
+        const grantsProficiencyInSkillRegex = /grants proficiency in the (\w+) skill/i;
+
+
+        traitsArray.forEach(trait => {
+            if (trait && trait.desc) {
+                let match;
+                while ((match = skillRegexSimple.exec(trait.desc)) !== null) {
+                    skills.push(match[1].trim());
+                }
+
+                // Reset lastIndex for regex if it was used in a loop above with `g` flag and didn't exhaust
+                skillRegexMultiple.lastIndex = 0;
+                while ((match = skillRegexMultiple.exec(trait.desc)) !== null) {
+                    const skillGroup = match[1].replace(/ and /g, ',').split(',');
+                    skillGroup.forEach(s => skills.push(s.trim()));
+                }
+
+                match = trait.desc.match(skillInListRegex);
+                if (match) {
+                    const numChoices = match[1];
+                    const skillList = match[2].split(',').map(s => s.trim());
+                    skills.push(`Choose ${numChoices} from: ${skillList.join(', ')}`);
+                }
+
+                if (chooseAnySkillRegex.test(trait.desc) && !skills.some(s => s.toLowerCase().includes("choose one skill"))) {
+                    skills.push("Choose one skill of your choice");
+                }
+
+                match = trait.desc.match(grantsProficiencyInSkillRegex);
+                if (match) {
+                    skills.push(match[1].trim());
+                }
+
+            }
+        });
+        return [...new Set(skills.filter(s => s))]; // Unique, non-empty skills
+    }
+
+    // Helper function to parse tool proficiencies from trait descriptions
+    function extractToolProficienciesFromTraits(traitsArray) {
+        if (!Array.isArray(traitsArray)) return [];
+        let tools = [];
+
+        const artisanChoiceRegex = /proficiency with one type of artisan's tools of your choice/i;
+        const musicalInstrumentChoiceRegex = /proficiency with one musical instrument of your choice/i;
+        const specificToolRegex = /proficiency with ((?:the )?[a-zA-Z\s']+(?: tools|'s supplies|'s kit))/gi; // e.g., thieves' tools, navigator's tools, brewer's supplies
+
+        traitsArray.forEach(trait => {
+            if (trait && trait.desc) {
+                const descLower = trait.desc.toLowerCase();
+                if (artisanChoiceRegex.test(descLower)) {
+                    tools.push("Choice: Artisan's Tools");
+                } else if (musicalInstrumentChoiceRegex.test(descLower)) {
+                    tools.push("Choice: Musical Instrument");
+                } else {
+                    let match;
+                    specificToolRegex.lastIndex = 0; // Reset for global regex
+                    while ((match = specificToolRegex.exec(trait.desc)) !== null) {
+                        let toolName = match[1].replace(/^the\s+/i, '').trim();
+                        // Normalize common tool names
+                        if (toolName.toLowerCase().includes("artisan's tools")) toolName = "Artisan's Tools";
+                        else if (toolName.toLowerCase().includes("thieves' tools")) toolName = "Thieves' Tools";
+                        else if (toolName.toLowerCase().includes("navigator's tools")) toolName = "Navigator's Tools";
+                        else if (toolName.toLowerCase().includes("brewer's supplies")) toolName = "Brewer's Supplies";
+                        else if (toolName.toLowerCase().includes("smith's tools")) toolName = "Smith's Tools";
+                        else if (toolName.toLowerCase().includes("tinker's tools")) toolName = "Tinker's Tools";
+                        // Add more normalizations if needed
+                        tools.push(toolName);
+                    }
+                }
+            }
+        });
+        return [...new Set(tools.filter(t => t))];
+    }
+
+    // Helper function to parse weapon proficiencies from trait descriptions
+    function extractWeaponProficienciesFromTraits(traitsArray) {
+        if (!Array.isArray(traitsArray)) return [];
+        let weapons = [];
+        const weaponRegex = /proficiency with (all simple weapons|all martial weapons|((?:the )?[a-zA-Z\s-]+(?:, (?:and )?[a-zA-Z\s-]+)*))/gi;
+        // Added hyphen to character set for weapons like "short-sword" if they appear, though D&D usually uses space.
+
+        traitsArray.forEach(trait => {
+            if (trait && trait.desc) {
+                let match;
+                weaponRegex.lastIndex = 0;
+                while ((match = weaponRegex.exec(trait.desc)) !== null) {
+                    if (match[1].toLowerCase() === "all simple weapons") {
+                        weapons.push("All simple weapons");
+                    } else if (match[1].toLowerCase() === "all martial weapons") {
+                        weapons.push("All martial weapons");
+                    } else if (match[2]) {
+                        const weaponList = match[2].replace(/the /g, '').replace(/ and /g, ',').split(',');
+                        weaponList.forEach(w => {
+                            let cleanedWeapon = w.trim();
+                            cleanedWeapon = cleanedWeapon.replace(/\s*\(any\)/i, '');
+                            if(cleanedWeapon) weapons.push(cleanedWeapon);
+                        });
+                    }
+                }
+            }
+        });
+        return [...new Set(weapons.filter(w => w))];
+    }
+
+    // Helper function to parse armor proficiencies from trait descriptions
+    function extractArmorProficienciesFromTraits(traitsArray) {
+        if (!Array.isArray(traitsArray)) return [];
+        let armor = [];
+        const armorTerms = ["light armor", "medium armor", "heavy armor", "shields", "all armor"];
+
+        traitsArray.forEach(trait => {
+            if (trait && trait.desc) {
+                const descLower = trait.desc.toLowerCase();
+                armorTerms.forEach(term => {
+                    // Check for "proficiency with light armor" or just "light armor" if the trait name implies proficiency
+                    if (descLower.includes(term) && (descLower.includes("proficiency with " + term) || trait.name?.toLowerCase().includes("armor proficiencies"))) {
+                        const formattedTerm = term.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                        armor.push(formattedTerm);
+                    }
+                });
+                 // Specific check for "padded armor", "leather armor" etc. if not covered by broad terms and trait name isn't generic
+                if (descLower.includes("padded") && descLower.includes("armor") && !armor.includes("Light Armor")) armor.push("Padded Armor");
+                if (descLower.includes("leather") && descLower.includes("armor") && !armor.includes("Light Armor")) armor.push("Leather Armor");
+                // Add more specific armor types if necessary and not covered by broad categories.
+            }
+        });
+        return [...new Set(armor.filter(a => a))];
+    }
+
+
     function handleRaceSelection(raceSlug, selectedRaceDetails) {
         selectedRaceSlug = raceSlug; // global variable for the selected slug
 
@@ -661,31 +808,57 @@
 
         const speed = extractSpeedFromTraits(finalTraits);
 
+        // Extract all trait names
+        const allTraitNames = extractTraitNames(finalTraits);
+
+        // Extract proficiencies
+        const skillProficiencies = extractSkillProficienciesFromTraits(finalTraits);
+        const toolProficiencies = extractToolProficienciesFromTraits(finalTraits);
+        const weaponProficiencies = extractWeaponProficienciesFromTraits(finalTraits);
+        const armorProficiencies = extractArmorProficienciesFromTraits(finalTraits);
+
         let detailsHtml = `<h4>${finalName}</h4>`;
         detailsHtml += `<p><strong>Speed:</strong> ${speed !== null ? speed + ' feet' : 'N/A'}</p>`;
         detailsHtml += `<p><strong>Ability Score Increases:</strong> ${asiDisplay}</p>`;
         detailsHtml += `<p><strong>Languages:</strong> ${languagesDisplay}</p>`;
 
-        if (Array.isArray(finalTraits) && finalTraits.length > 0) {
-            const traitNamesDisplay = finalTraits.map(trait => (typeof trait === 'object' && trait.name) ? trait.name : trait).filter(name => name).join(', ');
-            detailsHtml += `<p><strong>Traits:</strong> ${traitNamesDisplay || 'No specific traits listed'}</p>`;
+        if (selectedRaceDetails.size) detailsHtml += `<p><strong>Size:</strong> ${selectedRaceDetails.size}</p>`;
+
+        // Display Trait Names first
+        if (allTraitNames.length > 0) {
+            detailsHtml += `<p><strong>Traits:</strong> ${allTraitNames.join(', ')}</p>`;
         } else {
             detailsHtml += `<p><strong>Traits:</strong> No specific traits listed</p>`;
         }
 
-        if (selectedRaceDetails.size) detailsHtml += `<p><strong>Size:</strong> ${selectedRaceDetails.size}</p>`;
+        // Display Proficiencies
+        if (skillProficiencies.length > 0) {
+            detailsHtml += `<p><strong>Skill Proficiencies (Racial):</strong> ${skillProficiencies.join(', ')}</p>`;
+        }
+        if (toolProficiencies.length > 0) {
+            detailsHtml += `<p><strong>Tool Proficiencies (Racial):</strong> ${toolProficiencies.join(', ')}</p>`;
+        }
+        if (weaponProficiencies.length > 0) {
+            detailsHtml += `<p><strong>Weapon Proficiencies (Racial):</strong> ${weaponProficiencies.join(', ')}</p>`;
+        }
+        if (armorProficiencies.length > 0) {
+            detailsHtml += `<p><strong>Armor Proficiencies (Racial):</strong> ${armorProficiencies.join(', ')}</p>`;
+        }
 
         effectiveRaceDetailsForSession = {
             name: finalName,
             speed: speed,
             asi: finalASIObject,
             languages: uniqueLanguages,
-            traits: finalTraits.map(trait => (typeof trait === 'object' && trait.name) ? trait.name : trait).filter(name => name),
+            trait_names: allTraitNames, // Updated key
+            skill_proficiencies_from_traits: skillProficiencies,
+            tool_proficiencies_from_traits: toolProficiencies,
+            weapon_proficiencies_from_traits: weaponProficiencies,
+            armor_proficiencies_from_traits: armorProficiencies,
             is_subrace: selectedRaceDetails.is_subrace,
-            base_slug: raceSlug,
-            parent_slug: (selectedRaceDetails.is_subrace && parentRaceFullObject) ? parentRaceFullObject.slug : null // Corrected to use parentRaceFullObject.slug
+            base_slug: raceSlug, // This is the slug of the selected race/subrace
+            parent_slug: (selectedRaceDetails.is_subrace && parentRaceFullObject) ? parentRaceFullObject.slug : null
         };
-        // selectedRaceSlug is already set at the top of this function.
 
         console.log("Effective details for session:", effectiveRaceDetailsForSession);
 
