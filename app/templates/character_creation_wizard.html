@@ -113,7 +113,17 @@
         </div>
         <div id="step-4" class="wizard-step" style="display: none;">
             <h2>Step 4: Background Selection</h2>
-            <p>Background selection content will go here.</p>
+            <h3>Choose Your Background</h3>
+            <div id="background-selection-container" style="display: flex; flex-direction: row; gap: 20px;">
+                <div id="background-selection-area" style="flex: 1;">
+                    <p>Loading backgrounds...</p>
+                    <!-- Background list will be populated here by JavaScript -->
+                </div>
+                <div id="background-details-area" style="flex: 2; padding: 10px; border: 1px solid #eee; background-color: #f9f9f9; margin-top: 0;">
+                    <p>Select a background to see details here.</p>
+                    <!-- Selected background details will be shown here by JavaScript -->
+                </div>
+            </div>
         </div>
         <div id="step-5" class="wizard-step" style="display: none;">
             <h2>Step 5: Skills & Proficiencies</h2>
@@ -181,6 +191,12 @@
         { name: 'Wisdom', abbr: 'WIS' },
         { name: 'Charisma', abbr: 'CHA' }
     ];
+
+    // Global variables for Background Selection (Step 4)
+    let allBackgroundsData = null;
+    let selectedBackgroundName = null;
+    const backgroundSelectionArea = document.getElementById('background-selection-area');
+    const backgroundDetailsArea = document.getElementById('background-details-area');
 
     const prevButton = document.getElementById('prev-button'); // This ID is now in wizard-top-controls
     const nextButton = document.getElementById('next-button'); // This ID is now in wizard-top-controls
@@ -336,6 +352,18 @@
             }
         } else if (stepNumber === 3) {
             initializeAbilityScoresStep();
+        } else if (stepNumber === 4) {
+            if (!allBackgroundsData) {
+                fetchBackgrounds();
+            } else {
+                populateBackgroundSelectionUI(allBackgroundsData);
+            }
+            backgroundDetailsArea.innerHTML = '<p>Select a background to see details here.</p>';
+            selectedBackgroundName = null;
+            const currentlySelectedBackground = backgroundSelectionArea.querySelector('.selected-background');
+            if (currentlySelectedBackground) {
+                currentlySelectedBackground.classList.remove('selected-background');
+            }
         }
 
 
@@ -526,6 +554,41 @@
                 alert(`Error saving ability scores: ${error.message}. Please try again.`);
                 return;
             }
+        } else if (currentStep === 4) {
+            if (!selectedBackgroundName) {
+                alert('Please select a background before proceeding.');
+                return;
+            }
+            try {
+                const backgroundData = allBackgroundsData[selectedBackgroundName];
+                const payload = {
+                    background_name: selectedBackgroundName,
+                    background_skill_proficiencies: backgroundData.skill_proficiencies || [],
+                    background_tool_proficiencies: backgroundData.tool_proficiencies || [],
+                    background_languages_fixed: backgroundData.languages || [],
+                    background_equipment_string: backgroundData.equipment || ""
+                };
+                const response = await fetch('/creation_wizard/update_session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ step_key: 'background', payload: payload })
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                }
+                const result = await response.json();
+                if (result.status !== 'success') {
+                    throw new Error(result.message || 'Failed to update session with background selection.');
+                }
+                console.log('Session updated with background:', result.current_character_data);
+                currentStep++;
+                showStep(currentStep);
+            } catch (error) {
+                console.error('Error updating session with background:', error);
+                alert(`Error saving background selection: ${error.message}. Please try again.`);
+                return;
+            }
         } else if (currentStep < totalSteps) { // Original logic for other steps
             currentStep++;
             showStep(currentStep);
@@ -536,6 +599,81 @@
             // finalizeCharacter(); // Assuming a new function for final submission
         }
     });
+
+    // --- BACKGROUND SELECTION (STEP 4) FUNCTIONS ---
+    async function fetchBackgrounds() {
+        try {
+            const response = await fetch('/creation_wizard/step_data/background');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const result = await response.json();
+            if (result.backgrounds) { // Server nests data under 'backgrounds'
+                allBackgroundsData = result.backgrounds;
+                populateBackgroundSelectionUI(allBackgroundsData);
+            } else {
+                backgroundSelectionArea.innerHTML = '<p>No backgrounds found or error in data format.</p>';
+                allBackgroundsData = {}; // Ensure it's an object
+            }
+        } catch (error) {
+            console.error('Error fetching backgrounds:', error);
+            backgroundSelectionArea.innerHTML = '<p>Error fetching backgrounds. Please try again later.</p>';
+            allBackgroundsData = {}; // Ensure it's an object
+        }
+    }
+
+    function populateBackgroundSelectionUI(backgroundsData) {
+        backgroundSelectionArea.innerHTML = ''; // Clear loading message
+        const ul = document.createElement('ul');
+        ul.className = 'background-list'; // Similar to class-list for styling consistency
+
+        Object.keys(backgroundsData).forEach(backgroundName => {
+            const li = document.createElement('li');
+            li.textContent = backgroundName;
+            li.dataset.backgroundName = backgroundName;
+            li.addEventListener('click', (event) => { // Added event argument
+                handleBackgroundSelection(backgroundName, backgroundsData[backgroundName], event); // Pass event
+            });
+            ul.appendChild(li);
+        });
+        backgroundSelectionArea.appendChild(ul);
+    }
+
+    function handleBackgroundSelection(backgroundName, backgroundDetails, event) { // Added event argument
+        selectedBackgroundName = backgroundName;
+
+        let detailsHtml = `<h4>${backgroundName}</h4>`;
+        detailsHtml += `<p><strong>Skill Proficiencies:</strong> ${backgroundDetails.skill_proficiencies && backgroundDetails.skill_proficiencies.length > 0 ? backgroundDetails.skill_proficiencies.join(', ') : 'None'}</p>`;
+        detailsHtml += `<p><strong>Tool Proficiencies:</strong> ${backgroundDetails.tool_proficiencies && backgroundDetails.tool_proficiencies.length > 0 ? backgroundDetails.tool_proficiencies.join(', ') : 'None'}</p>`;
+        detailsHtml += `<p><strong>Languages:</strong> ${backgroundDetails.languages && backgroundDetails.languages.length > 0 ? backgroundDetails.languages.join(', ') : 'None'}</p>`;
+        detailsHtml += `<p><strong>Equipment:</strong> ${backgroundDetails.equipment || 'None'}</p>`;
+        // Assuming 'feature_name' and 'feature_desc' are part of backgroundDetails
+        if (backgroundDetails.feature_name) {
+             detailsHtml += `<p><strong>Feature: ${backgroundDetails.feature_name}</strong></p>`;
+             if (backgroundDetails.feature_desc) {
+                 detailsHtml += `<p>${backgroundDetails.feature_desc}</p>`;
+             }
+        }
+        // You might want to add suggested characteristics if available in backgroundDetails
+        // e.g., personality_traits, ideals, bonds, flaws
+
+        backgroundDetailsArea.innerHTML = detailsHtml;
+
+        // Visually highlight the selected background
+        const allBackgroundElements = backgroundSelectionArea.querySelectorAll('li');
+        allBackgroundElements.forEach(el => el.classList.remove('selected-background'));
+
+        // Use event.currentTarget if available and correct, otherwise query by dataset
+        if (event && event.currentTarget) {
+            event.currentTarget.classList.add('selected-background');
+        } else {
+            const selectedElement = backgroundSelectionArea.querySelector(`li[data-background-name='${backgroundName}']`);
+            if (selectedElement) {
+                selectedElement.classList.add('selected-background');
+            }
+        }
+    }
+    // --- END OF BACKGROUND SELECTION (STEP 4) FUNCTIONS ---
 
     async function fetchClasses() {
         try {
