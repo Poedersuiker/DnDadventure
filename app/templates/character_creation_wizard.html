@@ -338,7 +338,7 @@
         ul.className = 'race-list';
         races.forEach(race => { // race is an object like { id: db_id, slug: "...", data: "JSON_string_here" }
             try {
-                const raceDetails = JSON.parse(race.data); // Parse the JSON string in race.data
+                const raceDetails = race.data;
 
                 const li = document.createElement('li');
                 // Display name and speed from parsed details
