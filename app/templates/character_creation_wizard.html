@@ -41,7 +41,17 @@
         </div>
         <div id="step-2" class="wizard-step" style="display: none;">
             <h2>Step 2: Class Selection</h2>
-            <p>Class selection content will go here.</p>
+            <h3>Choose Your Class</h3>
+            <div id="class-selection-container" style="display: flex; flex-direction: row; gap: 20px;">
+                <div id="class-selection-area" style="flex: 1;">
+                    <p>Loading classes...</p>
+                    <!-- Class list will be populated here by JavaScript -->
+                </div>
+                <div id="class-details-area" style="flex: 2; padding: 10px; border: 1px solid #eee; background-color: #f9f9f9; margin-top: 0;">
+                    <p>Select a class to see details here.</p>
+                    <!-- Selected class details will be shown here by JavaScript -->
+                </div>
+            </div>
         </div>
         <div id="step-3" class="wizard-step" style="display: none;">
             <h2>Step 3: Ability Scores</h2>
@@ -94,6 +104,13 @@
     let effectiveRaceDetailsForSession = null;
     const raceSelectionArea = document.getElementById('race-selection-area');
     const raceDetailsArea = document.getElementById('race-details-area');
+
+    // Global variables for Class Selection (Step 2)
+    let allClassesData = null; // To store fetched class data
+    let selectedClassSlug = null;
+    let selectedClassData = null;
+    const classSelectionArea = document.getElementById('class-selection-area');
+    const classDetailsArea = document.getElementById('class-details-area');
 
     const prevButton = document.getElementById('prev-button');
     const nextButton = document.getElementById('next-button');
@@ -225,9 +242,24 @@
             selectedRaceSlug = null;
             effectiveRaceDetailsForSession = null; // Reset this too
             // Potentially clear visual selection from race list if any
-            const currentlySelected = raceSelectionArea.querySelector('.selected-race');
-            if (currentlySelected) {
-                currentlySelected.classList.remove('selected-race');
+            const currentlySelectedRace = raceSelectionArea.querySelector('.selected-race');
+            if (currentlySelectedRace) {
+                currentlySelectedRace.classList.remove('selected-race');
+            }
+        } else if (stepNumber === 2) {
+            if (!allClassesData) {
+                fetchClasses();
+            } else {
+                populateClassSelectionUI(allClassesData);
+            }
+            // Clear details area and selection if returning to this step
+            classDetailsArea.innerHTML = '<p>Select a class to see details here.</p>';
+            selectedClassSlug = null;
+            selectedClassData = null;
+            // Potentially clear visual selection from class list if any
+            const currentlySelectedClass = classSelectionArea.querySelector('.selected-class');
+            if (currentlySelectedClass) {
+                currentlySelectedClass.classList.remove('selected-class');
             }
         }
 
@@ -313,6 +345,64 @@
                 alert(`Error saving race selection: ${error.message}. Please try again.`);
                 return; // Prevent moving to next step on error
             }
+        } else if (currentStep === 2) {
+            if (!selectedClassSlug) {
+                alert('Please select a class before proceeding.');
+                return;
+            }
+            try {
+                const payload_data = {
+                    class_slug: selectedClassSlug,
+                    class_name: selectedClassData.name,
+                    hit_die: selectedClassData.hit_die,
+                    proficiencies_armor: selectedClassData.prof_armor ? selectedClassData.prof_armor.split(',').map(s => s.trim()).filter(s => s) : [],
+                    proficiencies_weapons: selectedClassData.prof_weapons ? selectedClassData.prof_weapons.split(',').map(s => s.trim()).filter(s => s) : [],
+                    proficiencies_tools: selectedClassData.prof_tools ? selectedClassData.prof_tools.split(/,(?![^()]*\))|\sor\s(?![^()]*\))/g).map(s => s.trim()).filter(s => s) : [], // Handles "or" and commas not in parentheses
+                    saving_throw_proficiencies: selectedClassData.prof_saving_throws ? selectedClassData.prof_saving_throws.split(',').map(s => s.trim()).filter(s => s) : [],
+                    spellcasting_ability: selectedClassData.spellcasting_ability || "",
+                    // Placeholder: Extracting detailed L1 features is complex.
+                    // For now, send an empty list or a generic description if easily parseable.
+                    class_features_list: [], // Example: selectedClassData.desc.substring(0,100) for a snippet
+                    skill_proficiencies_options: selectedClassData.prof_skills || "", // e.g. "Choose two from Animal Handling, Athletics,..."
+                    skill_proficiencies_option_count: 0 // Placeholder, parse from prof_skills if possible
+                };
+
+                // Attempt to parse skill_proficiencies_option_count
+                if (selectedClassData.prof_skills) {
+                    const match = selectedClassData.prof_skills.toLowerCase().match(/choose (one|two|three|four|five|six)/);
+                    if (match) {
+                        const countMap = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
+                        payload_data.skill_proficiencies_option_count = countMap[match[1]];
+                    }
+                }
+
+
+                const response = await fetch('/creation_wizard/update_session', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        step_key: 'class',
+                        payload: payload_data
+                    }),
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                }
+                const result = await response.json();
+                if (result.status !== 'success') {
+                    throw new Error(result.message || 'Failed to update session with class selection.');
+                }
+                console.log('Session updated with class:', result.current_character_data);
+                currentStep++;
+                showStep(currentStep);
+            } catch (error) {
+                console.error('Error updating session with class:', error);
+                alert(`Error saving class selection: ${error.message}. Please try again.`);
+                return;
+            }
         } else if (currentStep < totalSteps) { // Original logic for other steps
             currentStep++;
             showStep(currentStep);
@@ -323,6 +413,81 @@
             // finalizeCharacter(); // Assuming a new function for final submission
         }
     });
+
+    async function fetchClasses() {
+        try {
+            // Fetching all at once. The API might paginate; ensure limit is high enough.
+            const response = await fetch('/api/v1/classes/?limit=50');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const apiResult = await response.json();
+            if (apiResult.results && apiResult.results.length > 0) {
+                allClassesData = apiResult.results.map(cls => ({ slug: cls.slug, data: cls })); // Store slug and data directly
+                populateClassSelectionUI(allClassesData);
+            } else {
+                classSelectionArea.innerHTML = '<p>No classes found or error fetching classes from API.</p>';
+                allClassesData = [];
+            }
+        } catch (error) {
+            console.error('Error fetching classes from API:', error);
+            classSelectionArea.innerHTML = '<p>Error fetching classes from API. Please try again later.</p>';
+            allClassesData = [];
+        }
+    }
+
+    function populateClassSelectionUI(classesData) {
+        classSelectionArea.innerHTML = ''; // Clear loading message
+        const ul = document.createElement('ul');
+        ul.className = 'class-list'; // Similar styling to race-list
+
+        classesData.forEach(classObj => {
+            const li = document.createElement('li');
+            li.textContent = classObj.data.name;
+            li.dataset.classSlug = classObj.slug; // Store slug in data attribute
+            li.addEventListener('click', () => {
+                handleClassSelection(classObj.slug, classObj.data);
+            });
+            ul.appendChild(li);
+        });
+        classSelectionArea.appendChild(ul);
+    }
+
+    function handleClassSelection(classSlug, classData) {
+        selectedClassSlug = classSlug;
+        selectedClassData = classData;
+
+        let detailsHtml = `<h4>${classData.name}</h4>`;
+        detailsHtml += `<p><strong>Hit Die:</strong> ${classData.hit_die}</p>`;
+        if (classData.prof_armor) detailsHtml += `<p><strong>Armor Proficiencies:</strong> ${classData.prof_armor}</p>`;
+        if (classData.prof_weapons) detailsHtml += `<p><strong>Weapon Proficiencies:</strong> ${classData.prof_weapons}</p>`;
+        if (classData.prof_tools) detailsHtml += `<p><strong>Tool Proficiencies:</strong> ${classData.prof_tools}</p>`;
+        if (classData.prof_saving_throws) detailsHtml += `<p><strong>Saving Throw Proficiencies:</strong> ${classData.prof_saving_throws}</p>`;
+        if (classData.spellcasting_ability) detailsHtml += `<p><strong>Spellcasting Ability:</strong> ${classData.spellcasting_ability}</p>`;
+        if (classData.prof_skills) detailsHtml += `<p><strong>Skill Proficiencies:</strong> ${classData.prof_skills}</p>`;
+
+        // Description snippet (first ~200 chars, basic parsing)
+        if (classData.desc) {
+            let descriptionSnippet = classData.desc;
+            // Remove markdown-like headers for brevity in snippet
+            descriptionSnippet = descriptionSnippet.replace(/#{1,6}\s.*/g, '');
+            descriptionSnippet = descriptionSnippet.replace(/\*\*(.*?)\*\*/g, '$1'); // Bold
+            descriptionSnippet = descriptionSnippet.replace(/\*(.*?)\*/g, '$1');   // Italics
+            descriptionSnippet = descriptionSnippet.substring(0, 250) + (descriptionSnippet.length > 250 ? '...' : '');
+            detailsHtml += `<p><strong>Description Snippet:</strong> ${descriptionSnippet}</p>`;
+        }
+
+        classDetailsArea.innerHTML = detailsHtml;
+
+        // Visually highlight the selected class
+        const allClassElements = classSelectionArea.querySelectorAll('li');
+        allClassElements.forEach(el => el.classList.remove('selected-class'));
+        const selectedElement = classSelectionArea.querySelector(`li[data-class-slug='${classSlug}']`);
+        if (selectedElement) {
+            selectedElement.classList.add('selected-class');
+        }
+        console.log("Selected Class:", selectedClassSlug, selectedClassData);
+    }
 
     async function fetchRaces() {
         try {
@@ -915,15 +1080,15 @@
         cursor: pointer;
         transition: background-color 0.3s;
     }
-    .race-list li:hover {
+    .race-list li:hover, .class-list li:hover {
         background-color: #f0f0f0;
     }
-    .race-list li.selected-race {
+    .race-list li.selected-race, .class-list li.selected-class {
         background-color: #007bff;
         color: white;
         border-color: #0056b3;
     }
-    #race-details-area {
+    #race-details-area, #class-details-area {
        background-color: #f9f9f9; /* Light background for details section */
     }
     .subrace-list {
@@ -938,6 +1103,17 @@
     .subrace-item {
         /* Optional: styles for subrace items if needed */
         font-weight: normal;
+    }
+    .class-list { /* Basic styling for class list, can be expanded */
+        list-style-type: none;
+        padding: 0;
+    }
+    .class-list li {
+        padding: 8px;
+        border: 1px solid #ddd;
+        margin-bottom: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s;
     }
 </style>
 {% endblock %}
