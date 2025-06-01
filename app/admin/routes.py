@@ -5,10 +5,6 @@ from . import admin_bp
 from app.utils import list_gemini_models
 from app.models import User, Setting # Add Setting import
 from app import db # Add db import
-# Imports for population scripts from app/scripts/
-from app.scripts.populate_races import populate_races_data
-from app.scripts.populate_classes import populate_classes_data
-from app.scripts.populate_spells import populate_spells_data
 
 @admin_bp.route('/')
 @login_required
@@ -74,48 +70,6 @@ def db_population_status():
     if not current_user.is_authenticated or current_user.email != current_app.config.get('ADMIN_EMAIL'):
         abort(403)
     return render_template('admin/db_population.html')
-
-@admin_bp.route('/db-populate/races', methods=['POST'])
-@login_required
-def run_populate_races():
-    if not current_user.is_authenticated or current_user.email != current_app.config.get('ADMIN_EMAIL'):
-        abort(403)
-    try:
-        flash("Race population script started. Check server console for progress.", "info")
-        populate_races_data()
-        flash("Race population script finished successfully.", "success") # Changed message for clarity
-    except Exception as e:
-        current_app.logger.error(f"Error during race population: {str(e)}")
-        flash(f"Error during race population: {str(e)}", "danger")
-    return redirect(url_for('admin.db_population_status'))
-
-@admin_bp.route('/db-populate/classes', methods=['POST'])
-@login_required
-def run_populate_classes():
-    if not current_user.is_authenticated or current_user.email != current_app.config.get('ADMIN_EMAIL'):
-        abort(403)
-    try:
-        flash("Class population script started. Check server console for progress.", "info")
-        populate_classes_data()
-        flash("Class population script finished successfully.", "success") # Changed message for clarity
-    except Exception as e:
-        current_app.logger.error(f"Error during class population: {str(e)}")
-        flash(f"Error during class population: {str(e)}", "danger")
-    return redirect(url_for('admin.db_population_status'))
-
-@admin_bp.route('/db-populate/spells', methods=['POST'])
-@login_required
-def run_populate_spells():
-    if not current_user.is_authenticated or current_user.email != current_app.config.get('ADMIN_EMAIL'):
-        abort(403)
-    try:
-        flash("Spell population script started. Check server console for progress.", "info")
-        populate_spells_data()
-        flash("Spell population script finished successfully.", "success") # Changed message for clarity
-    except Exception as e:
-        current_app.logger.error(f"Error during spell population: {str(e)}")
-        flash(f"Error during spell population: {str(e)}", "danger")
-    return redirect(url_for('admin.db_population_status'))
 
 @admin_bp.route('/server-logs')
 @login_required

@@ -21,8 +21,6 @@ class Character(db.Model):
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=True)  # General character description
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    race_id = db.Column(db.Integer, db.ForeignKey('race.id'), nullable=False)
-    class_id = db.Column(db.Integer, db.ForeignKey('class.id'), nullable=False)
     speed = db.Column(db.Integer, default=30, nullable=False) 
     alignment = db.Column(db.String(100), nullable=True)
     dm_allowed_level = db.Column(db.Integer, default=1, nullable=False)
@@ -35,9 +33,6 @@ class Character(db.Model):
 
     items = db.relationship('Item', back_populates='character', lazy=True)
     coinage = db.relationship('Coinage', back_populates='character', lazy=True)
-
-    race = db.relationship('Race', backref='characters')
-    char_class = db.relationship('Class', backref='characters')
 
     levels = db.relationship('CharacterLevel', backref='parent_character', lazy='dynamic', 
                              order_by='CharacterLevel.level_number', cascade='all, delete-orphan')
@@ -79,88 +74,6 @@ class CharacterLevel(db.Model):
 # Removed character_known_spells table
 # Removed character_prepared_spells table
 # Removed CharacterSpellSlot model
-
-class Spell(db.Model):
-    __tablename__ = 'spell'
-    id = db.Column(db.Integer, primary_key=True)
-    index = db.Column(db.String(100), unique=True, nullable=False) # from dnd5eapi
-    name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.Text, nullable=False)  # JSON list as string
-    higher_level = db.Column(db.Text, nullable=True)  # JSON list as string
-    range = db.Column(db.String(100))
-    components = db.Column(db.String(50))  # e.g., "V, S, M"
-    material = db.Column(db.Text, nullable=True)
-    ritual = db.Column(db.Boolean, default=False)
-    duration = db.Column(db.String(100))
-    concentration = db.Column(db.Boolean, default=False)
-    casting_time = db.Column(db.String(100))
-    level = db.Column(db.Integer, nullable=False) # Spell level, 0 for cantrips
-    attack_type = db.Column(db.String(100), nullable=True) # e.g., "melee", "ranged"
-    damage_type = db.Column(db.String(50), nullable=True) # e.g., "Fire", "Cold"
-    damage_at_slot_level = db.Column(db.Text, nullable=True)  # JSON dict as string
-    school = db.Column(db.String(50), nullable=False) # e.g., "Evocation"
-    classes_that_can_use = db.Column(db.Text, nullable=False) # JSON list of class names
-    subclasses_that_can_use = db.Column(db.Text, nullable=True) # JSON list of subclass names
-
-    def __repr__(self):
-        return f'<Spell {self.name}>'
-
-
-class Class(db.Model):
-    __tablename__ = 'class'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), unique=True, nullable=False)
-    hit_die = db.Column(db.String(10)) # e.g., "d8"
-    proficiencies_armor = db.Column(db.Text, nullable=True) # JSON list
-    proficiencies_weapons = db.Column(db.Text, nullable=True) # JSON list
-    proficiencies_tools = db.Column(db.Text, nullable=True) # JSON list
-    proficiency_saving_throws = db.Column(db.Text, nullable=False) # JSON list, e.g., ["INT", "WIS"]
-    skill_proficiencies_option_count = db.Column(db.Integer, nullable=False)
-    skill_proficiencies_options = db.Column(db.Text, nullable=False) # JSON list of skill choices
-    starting_equipment = db.Column(db.Text, nullable=False) # JSON structure
-    spellcasting_ability = db.Column(db.String(20), nullable=True) # e.g., "WIS", "CHA"
-    spell_slots_by_level = db.Column(db.Text, nullable=True) # JSON: {level: [slots]}
-    cantrips_known_by_level = db.Column(db.Text, nullable=True) # JSON: {level: count}
-    spells_known_by_level = db.Column(db.Text, nullable=True) # JSON: {level: count}
-    can_prepare_spells = db.Column(db.Boolean, default=False) # For classes like Wizard vs Sorcerer
-    level_specific_data = db.Column(db.Text, nullable=True) # JSON: {level: {"features": ["Feature Name"], "asi_count": 0/1}}
-
-    def __repr__(self):
-        return f'<Class {self.name}>'
-
-
-class Race(db.Model):
-    __tablename__ = 'race'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), unique=True, nullable=False)
-    speed = db.Column(db.Integer, nullable=False)
-    ability_score_increases = db.Column(db.Text, nullable=False) # JSON: { "STR": 1, "DEX": 2 }
-    age_description = db.Column(db.Text, nullable=True)
-    alignment_description = db.Column(db.Text, nullable=True)
-    size = db.Column(db.String(20)) # e.g., "Medium", "Small"
-    size_description = db.Column(db.Text, nullable=True)
-    languages = db.Column(db.Text, nullable=False) # JSON list
-    traits = db.Column(db.Text, nullable=True) # JSON list of trait names/descriptions
-    skill_proficiencies = db.Column(db.Text, nullable=True) # JSON list, optional choices
-    parent_slug = db.Column(db.String(100), nullable=True) # To link sub-races to parent races
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'speed': self.speed,
-            'ability_score_increases': json.loads(self.ability_score_increases or '{}'), # Ensure it's a dict
-            'age_description': self.age_description,
-            'alignment_description': self.alignment_description,
-            'size': self.size,
-            'size_description': self.size_description,
-            'languages': json.loads(self.languages or '[]'),
-            'traits': json.loads(self.traits or '[]'),
-            'skill_proficiencies': json.loads(self.skill_proficiencies or '[]')
-        }
-
-    def __repr__(self):
-        return f'<Race {self.name}>'
 
 class Setting(db.Model):
     __tablename__ = 'setting'
