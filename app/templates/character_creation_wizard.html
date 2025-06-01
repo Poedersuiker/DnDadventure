@@ -941,16 +941,23 @@
         // The original code had 'skills' populated from benefits and then fallbacks.
         // Let's assume 'skills_for_display' (which was 'skills' before my rename in the payload section)
         // is the correct one for this display logic.
+        // Directly use the collected raw skill description strings for display
         if (skills_for_display.length > 0) {
-            // Further parse skills_for_display for better UI presentation if needed
-            // For example, using parseProficiencyString if skills_for_display contains "Choose..." strings
-            let skillsForUIDisplay = [];
-            skills_for_display.forEach(skillEntry => {
-                skillsForUIDisplay = skillsForUIDisplay.concat(parseProficiencyString(skillEntry));
+            // Each item in skills_for_display should be a raw string like
+            // "Religion, and either Insight or Persuasion." or "Two of your choice."
+            // We can join them if there are multiple, or just display if one.
+            // Using a list format might be cleaner if multiple skill benefit lines exist.
+            detailsHtml += `<h5>Skill Proficiencies:</h5>`; // Heading
+            const skillListUl = document.createElement('ul');
+            skills_for_display.forEach(rawSkillText => {
+                const skillItemLi = document.createElement('li');
+                skillItemLi.textContent = rawSkillText; // Display the raw text
+                skillListUl.appendChild(skillItemLi);
             });
-            if (skillsForUIDisplay.length > 0) {
-                detailsHtml += `<p><strong>Skill Proficiencies:</strong> ${[...new Set(skillsForUIDisplay)].join('; ')}</p>`;
-            }
+            // Temporarily create a div to get innerHTML of the ul
+            const tempDiv = document.createElement('div');
+            tempDiv.appendChild(skillListUl);
+            detailsHtml += tempDiv.innerHTML;
         }
         if (tools.length > 0) {
             detailsHtml += `<p><strong>Tool Proficiencies:</strong> ${tools.join('; ')}</p>`;
