@@ -1147,3 +1147,164 @@ footer {
 #rest-status-message.pending { /* Add a class for pending messages */
     color: #8B4513; /* Brown for pending */
 }
+
+/* Character Creation Wizard Specific Styles */
+#wizard-container .wizard-top-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+#wizard-container .wizard-top-controls .left-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+/* Navigation Buttons in Wizard */
+#wizard-container #prev-button,
+#wizard-container #next-button,
+#wizard-container #cancel-button {
+    background-image: linear-gradient(to bottom, #EFE8D8, #D8CCA3); /* Light parchment gradient */
+    border: 1px solid #543C2C; /* Dark brown border */
+    border-radius: 3px;
+    color: #4A3B31; /* Dark grayish brown text */
+    font-family: 'Merriweather', serif;
+    padding: 8px 15px;
+    box-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#wizard-container #prev-button:hover,
+#wizard-container #next-button:hover,
+#wizard-container #cancel-button:hover {
+    background-image: none; /* Remove gradient on hover for solid color */
+    background-color: #C1A37E; /* Tan / darker parchment */
+    border-color: #3E2C21; /* Darker brown border */
+}
+
+#wizard-container #prev-button:active,
+#wizard-container #next-button:active,
+#wizard-container #cancel-button:active {
+    background-image: none;
+    background-color: #B0926F; /* Even darker parchment */
+    box-shadow: inset 1px 1px 2px rgba(0,0,0,0.1);
+}
+
+/* Step Indicators in Wizard Top Controls */
+#wizard-container .wizard-top-controls .step-indicators {
+    text-align: center; /* Center indicators if they have space */
+    /* Removed margin-bottom as wizard-top-controls handles it */
+}
+
+#wizard-container .wizard-top-controls .step-indicator {
+    display: inline-block;
+    width: 30px;
+    height: 30px;
+    line-height: 30px;
+    border-radius: 50%;
+    background-color: #ddd; /* Default background */
+    margin: 0 5px;
+    cursor: default; /* Not clickable */
+    color: #3B2F2F; /* Default text color */
+    font-family: 'Cinzel', serif; /* Consistent with other UI elements */
+    font-size: 0.9em;
+    font-weight: bold;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+#wizard-container .wizard-top-controls .step-indicator.active {
+    background-color: #A0522D; /* Sienna for active step */
+    color: #fff9e6; /* Light parchment text */
+    border: 1px solid #5D4037; /* Dark brown border for active */
+}
+
+/* Styles for Race/Class selection lists and details from embedded style tag */
+#wizard-container .race-list,
+#wizard-container .class-list {
+    list-style-type: none;
+    padding: 0;
+}
+
+#wizard-container .race-list li,
+#wizard-container .class-list li {
+    padding: 8px;
+    border: 1px solid #A0522D; /* Sienna border */
+    margin-bottom: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s, color 0.3s;
+    border-radius: 2px;
+    background-color: #fff9e6; /* Light parchment background */
+}
+
+#wizard-container .race-list li:hover,
+#wizard-container .class-list li:hover {
+    background-color: #f5e8c3; /* Slightly darker parchment on hover */
+}
+
+#wizard-container .race-list li.selected-race,
+#wizard-container .class-list li.selected-class {
+    background-color: #A0522D; /* Sienna for selected */
+    color: white;
+    border-color: #5D4037; /* Darker brown border for selected */
+}
+
+#wizard-container #race-details-area,
+#wizard-container #class-details-area {
+   background-color: #fdf5e6; /* Very light parchment for details area */
+   border: 1px solid #D1C7B7; /* Light border */
+   padding: 10px;
+   margin-top: 10px; /* Add some space above details */
+}
+
+#wizard-container .subrace-list {
+    margin-left: 20px; /* Indent subraces */
+    padding-left: 10px;
+    border-left: 1px solid #D1C7B7; /* Light border for visual nesting */
+}
+
+#wizard-container .parent-race {
+    font-weight: bold; /* Make parent races bold */
+    color: #5D4037; /* Darker brown for parent race names */
+}
+
+#wizard-container .subrace-item {
+    font-weight: normal;
+}
+
+#wizard-container #phb-description {
+    margin-top: 20px;
+    padding: 15px; /* Increased padding */
+    border: 1px solid #A0522D; /* Sienna border */
+    background-color: #fdf5e6; /* Very light parchment */
+    border-radius: 3px;
+}
+
+#wizard-container #phb-description h3 {
+    margin-top: 0; /* Remove top margin for h3 inside PHB description */
+    font-size: 1.5em; /* Adjust size as needed */
+    color: #5D4037; /* Dark Brown */
+}
+#wizard-container #phb-description p {
+    font-size: 0.95em; /* Slightly smaller than body default for dense text */
+    line-height: 1.5;
+}
+#wizard-container #phb-description strong {
+    color: #4A3B31; /* Slightly darker for emphasis */
+}
+
+/* Class Selection specific layout */
+#wizard-container #class-selection-container {
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+}
+#wizard-container #class-selection-area {
+    flex: 1;
+}
+#wizard-container #class-details-area {
+    flex: 2; /* Make details area wider */
+    /* background-color, border, padding already defined above */
+    margin-top: 0; /* Remove margin-top if not needed due to gap */
+}

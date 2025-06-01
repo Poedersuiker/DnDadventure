@@ -7,19 +7,21 @@
     <h1>Character Creation Wizard</h1>
 
     <div id="wizard-container">
-        <!-- Step Indicators (Optional) - Step 0 (Intro) won't have a number -->
-        <div class="step-indicators">
-            <span class="step-indicator" data-step="0">Intro</span>
-            <span class="step-indicator" data-step="1">1</span>
-            <span class="step-indicator" data-step="2">2</span>
-            <span class="step-indicator" data-step="3">3</span>
-            <span class="step-indicator" data-step="4">4</span>
-            <span class="step-indicator" data-step="5">5</span>
-            <span class="step-indicator" data-step="6">6</span>
-            <span class="step-indicator" data-step="7">7</span>
-            <span class="step-indicator" data-step="8">8</span>
-            <span class="step-indicator" data-step="9">9</span>
+        <!-- New Top Controls Area -->
+        <div class="wizard-top-controls">
+            <div class="left-buttons">
+                <button id="prev-button" style="display: none;">Previous</button>
+                <button id="cancel-button" onclick="window.location.href='{{ url_for('main.index') }}'">Cancel</button>
+            </div>
+            <div class="step-indicators">
+                <span class="step-indicator" data-step="0">Intro</span>
+                <span class="step-indicator" data-step="1">1</span>
+            </div>
+            <div class="right-button-container">
+                <button id="next-button">Next</button>
+            </div>
         </div>
+        <!-- Redundant step-indicators div removed -->
 
         <!-- Step 0: Introduction Content Area (optional, can be empty if PHB description is enough) -->
         <div id="step-0" class="wizard-step" style="display: none;">
@@ -86,11 +88,14 @@
             <p>Description for the current step will go here.</p>
         </div>
 
+        <!-- Original navigation-buttons div is now removed as its contents are reorganized into wizard-top-controls -->
+        <!--
         <div class="navigation-buttons">
             <button id="prev-button" style="display: none;">Previous</button>
             <button id="next-button">Next</button>
             <button id="cancel-button" onclick="window.location.href='{{ url_for('main.index') }}'">Cancel</button>
         </div>
+        -->
     </div>
 </div>
 
@@ -112,9 +117,12 @@
     const classSelectionArea = document.getElementById('class-selection-area');
     const classDetailsArea = document.getElementById('class-details-area');
 
-    const prevButton = document.getElementById('prev-button');
-    const nextButton = document.getElementById('next-button');
-    const stepIndicators = document.querySelectorAll('.step-indicator');
+    const prevButton = document.getElementById('prev-button'); // This ID is now in wizard-top-controls
+    const nextButton = document.getElementById('next-button'); // This ID is now in wizard-top-controls
+    const cancelButton = document.getElementById('cancel-button'); // This ID is now in wizard-top-controls
+    // Ensure stepIndicators query selector targets the one inside wizard-top-controls for active class updates
+    const stepIndicators = document.querySelectorAll('.wizard-top-controls .step-indicator');
+
 
     const phbPlaceholders = {
         0: `<h3>Character Creation Steps</h3>
@@ -1043,79 +1051,5 @@
     showStep(currentStep);
 </script>
 
-<style>
-    .step-indicators {
-        margin-bottom: 20px;
-        text-align: center;
-    }
-    .step-indicator {
-        display: inline-block;
-        width: 30px;
-        height: 30px;
-        line-height: 30px;
-        border-radius: 50%;
-        background-color: #ddd;
-        margin: 0 5px;
-        cursor: default;
-    }
-    .step-indicator.active {
-        background-color: #007bff;
-        color: white;
-    }
-    #phb-description {
-        margin-top: 20px;
-        padding: 10px;
-        border: 1px solid #eee;
-        background-color: #f9f9f9;
-    }
-    .navigation-buttons {
-        margin-top: 20px;
-    }
-    .race-list {
-        list-style-type: none;
-        padding: 0;
-    }
-    .race-list li {
-        padding: 8px;
-        border: 1px solid #ddd;
-        margin-bottom: 5px;
-        cursor: pointer;
-        transition: background-color 0.3s;
-    }
-    .race-list li:hover, .class-list li:hover {
-        background-color: #f0f0f0;
-    }
-    .race-list li.selected-race, .class-list li.selected-class {
-        background-color: #007bff;
-        color: white;
-        border-color: #0056b3;
-    }
-    #race-details-area, #class-details-area {
-       background-color: #f9f9f9; /* Light background for details section */
-    }
-    .subrace-list {
-        margin-left: 20px; /* Indent subraces */
-        padding-left: 10px;
-        border-left: 1px solid #ccc; /* Optional: visual indicator for nesting */
-    }
-    .parent-race {
-        /* Optional: styles for parent races if needed */
-        font-weight: bold; /* Example: make parent races bold */
-    }
-    .subrace-item {
-        /* Optional: styles for subrace items if needed */
-        font-weight: normal;
-    }
-    .class-list { /* Basic styling for class list, can be expanded */
-        list-style-type: none;
-        padding: 0;
-    }
-    .class-list li {
-        padding: 8px;
-        border: 1px solid #ddd;
-        margin-bottom: 5px;
-        cursor: pointer;
-        transition: background-color 0.3s;
-    }
-</style>
+<!-- Embedded styles removed, moved to static/css/style.css -->
 {% endblock %}
