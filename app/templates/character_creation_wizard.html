@@ -849,7 +849,7 @@
         let displayName = backgroundDetails.name || 'Unknown Background';
         let mainDesc = (backgroundDetails.desc && backgroundDetails.desc !== "[No description provided]") ? backgroundDetails.desc : "";
 
-        let skills_for_display = []; // Use the 'display_skills' from above for UI consistency
+        let skills_for_display = [];
         let tools = [];
         let languages = [];
         let equipment = "";
@@ -864,7 +864,7 @@
                 const benefitType = benefit.type || "";
 
                 if (benefitType === "skill_proficiency") {
-                    skills.push(benefitDesc || benefitName);
+                    skills_for_display.push(benefitDesc || benefitName);
                 } else if (benefitType === "tool_proficiency") {
                     tools.push(benefitDesc || benefitName);
                 } else if (benefitType === "language" || benefitName.toLowerCase().includes("language")) {
@@ -895,10 +895,10 @@
         }
 
         // Fallbacks if not found in benefits array (using root-level properties)
-        if (skills.length === 0 && Array.isArray(backgroundDetails.skill_proficiencies) && backgroundDetails.skill_proficiencies.length > 0) {
-            skills = backgroundDetails.skill_proficiencies;
-        } else if (skills.length === 0 && backgroundDetails.skills_text) {
-             skills = [backgroundDetails.skills_text];
+        if (skills_for_display.length === 0 && Array.isArray(backgroundDetails.skill_proficiencies) && backgroundDetails.skill_proficiencies.length > 0) {
+            skills_for_display = backgroundDetails.skill_proficiencies.slice(); // Use .slice() to ensure it's a copy
+        } else if (skills_for_display.length === 0 && typeof backgroundDetails.skills_text === 'string' && backgroundDetails.skills_text.trim()) {
+             skills_for_display = [backgroundDetails.skills_text];
         }
 
         if (tools.length === 0 && Array.isArray(backgroundDetails.tool_proficiencies) && backgroundDetails.tool_proficiencies.length > 0) {
@@ -937,12 +937,20 @@
         // compared to payload_skills_for_session which keeps choices intact for backend.
         // For this part of the code, it seems 'skills' was already populated based on the logic above
         // the payload creation. We should ensure that the 'skills' variable used for display
-        // (which I renamed to display_skills in the payload section for clarity) is used here.
+        // (which I renamed to skills_for_display in the payload section for clarity) is used here.
         // The original code had 'skills' populated from benefits and then fallbacks.
-        // Let's assume 'display_skills' (which was 'skills' before my rename in the payload section)
+        // Let's assume 'skills_for_display' (which was 'skills' before my rename in the payload section)
         // is the correct one for this display logic.
-        if (display_skills.length > 0) { // Changed 'skills' to 'display_skills'
-            detailsHtml += `<p><strong>Skill Proficiencies:</strong> ${display_skills.join('; ')}</p>`;
+        if (skills_for_display.length > 0) {
+            // Further parse skills_for_display for better UI presentation if needed
+            // For example, using parseProficiencyString if skills_for_display contains "Choose..." strings
+            let skillsForUIDisplay = [];
+            skills_for_display.forEach(skillEntry => {
+                skillsForUIDisplay = skillsForUIDisplay.concat(parseProficiencyString(skillEntry));
+            });
+            if (skillsForUIDisplay.length > 0) {
+                detailsHtml += `<p><strong>Skill Proficiencies:</strong> ${[...new Set(skillsForUIDisplay)].join('; ')}</p>`;
+            }
         }
         if (tools.length > 0) {
             detailsHtml += `<p><strong>Tool Proficiencies:</strong> ${tools.join('; ')}</p>`;
