@@ -342,7 +342,7 @@
 
                 const li = document.createElement('li');
                 // Display name and speed from parsed details
-                li.textContent = `${raceDetails.name} (Speed: ${raceDetails.speed})`;
+                li.textContent = `${raceDetails.name} (Speed: ${raceDetails.speed !== undefined ? raceDetails.speed : 'N/A'})`;
                 li.dataset.raceId = race.slug; // Storing slug in dataset.raceId for now
 
                 // Pass both the original race object (containing id, slug, data string)
@@ -363,35 +363,123 @@
         raceSelectionArea.appendChild(ul);
     }
 
+    function extractSpeedFromTraits(traitsArray) {
+        if (!Array.isArray(traitsArray)) {
+            return null;
+        }
+        const speedTrait = traitsArray.find(trait => trait.name === "Speed");
+        if (speedTrait && speedTrait.desc) {
+            const match = speedTrait.desc.match(/(\d+)\s*feet/);
+            if (match && match[1]) {
+                return parseInt(match[1], 10);
+            }
+        }
+        return null;
+    }
+
+    function extractASIFromTraits(traitsArray) {
+        if (!Array.isArray(traitsArray)) {
+            return "N/A";
+        }
+
+        const asiTraits = traitsArray.filter(trait =>
+            trait.name === "Ability Score Increase" || trait.name === "Ability Score Increases"
+        );
+
+        if (asiTraits.length === 0) {
+            return "None specified in traits";
+        }
+
+        let bonuses = [];
+        const statRegex = /(Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+score\s+increases\s+by\s+(\d+)/gi;
+
+        asiTraits.forEach(trait => {
+            if (trait.desc) {
+                // Handle "All your ability scores increase by 1"
+                if (trait.desc.toLowerCase().includes("all your ability scores increase by 1")) {
+                    bonuses.push("All scores +1");
+                    return; // Exit forEach for this trait, as it's a special case
+                }
+
+                // Handle "Two different ability scores of your choice increase by 1"
+                if (trait.desc.toLowerCase().includes("two different ability scores of your choice increase by 1")) {
+                    bonuses.push("Choose two different scores +1");
+                    return;
+                }
+                if (trait.desc.toLowerCase().includes("one ability score of your choice increases by 2, and a different score of your choice increases by 1")) {
+                    bonuses.push("Choose one score +2, and a different score +1");
+                    return;
+                }
+
+
+                let match;
+                while ((match = statRegex.exec(trait.desc)) !== null) {
+                    const stat = match[1].substring(0, 3).toUpperCase(); // STR, DEX, etc.
+                    const bonus = parseInt(match[2], 10);
+                    bonuses.push(`${stat}: +${bonus}`);
+                }
+            }
+        });
+
+        if (bonuses.length > 0) {
+            return bonuses.join(', ');
+        } else {
+            // If regex didn't find specific bonuses, return the description of the first ASI trait found.
+            // This helps display info even if parsing fails for complex descriptions.
+            return asiTraits[0].desc || "Details in trait description";
+        }
+    }
+
+    function extractLanguagesFromTraits(traitsArray) {
+        if (!Array.isArray(traitsArray)) {
+            return "N/A";
+        }
+
+        const languagesTrait = traitsArray.find(trait => trait.name === "Languages");
+
+        if (languagesTrait && languagesTrait.desc) {
+            const desc = languagesTrait.desc;
+            // Attempt to extract languages. This is a simplified approach.
+            // It looks for text after "speak, read, and write " and before a sentence-ending period or further details.
+            // It assumes languages are typically capitalized.
+            let match = desc.match(/speak, read, and write\s+([^.]+)\.?/i);
+
+            if (match && match[1]) {
+                // Further split by "and" or ",", then trim.
+                const langArray = match[1].split(/,?\s+and\s+|\s*,\s*/);
+                const cleanedLangs = langArray.map(lang => lang.trim()).filter(lang => lang.length > 0);
+                if (cleanedLangs.length > 0) {
+                    return cleanedLangs.join(', ');
+                }
+            }
+            // Fallback if the specific phrase isn't matched, but a Languages trait exists.
+            // This might return more than just the language names but is better than nothing.
+            // A more sophisticated NLP approach or more regex rules would be needed for perfect extraction from all phrasings.
+            const knownLanguages = ["Common", "Dwarvish", "Elvish", "Giant", "Gnomish", "Goblin", "Halfling", "Orc", "Abyssal", "Celestial", "Draconic", "Deep Speech", "Infernal", "Primordial", "Sylvan", "Undercommon"];
+            let foundLangs = [];
+            knownLanguages.forEach(lang => {
+                if (new RegExp(`\\b${lang}\\b`, 'i').test(desc)) {
+                    foundLangs.push(lang);
+                }
+            });
+            if (foundLangs.length > 0) {
+                return foundLangs.join(', ');
+            }
+
+            return "Details in trait description (parsing complex)"; // Fallback if parsing is too complex
+        }
+        return "None specified in traits";
+    }
+
     function handleRaceSelection(raceSlug, raceDetails) {
         selectedRaceSlug = raceSlug;
+        const speed = extractSpeedFromTraits(raceDetails.traits);
+        const asiDisplay = extractASIFromTraits(raceDetails.traits);
+        const languagesDisplay = extractLanguagesFromTraits(raceDetails.traits);
 
         let detailsHtml = `<h4>${raceDetails.name}</h4>`;
-        detailsHtml += `<p><strong>Speed:</strong> ${raceDetails.speed}</p>`;
-
-        // Ability Score Increases
-        if (raceDetails.ability_score_increases) {
-            let asiDisplay = 'None';
-            try {
-                const asiData = (typeof raceDetails.ability_score_increases === 'string') ?
-                                JSON.parse(raceDetails.ability_score_increases) :
-                                raceDetails.ability_score_increases;
-
-                if (typeof asiData === 'object' && asiData !== null) {
-                    const bonuses = Object.entries(asiData)
-                                        .map(([stat, bonus]) => `${stat.toUpperCase()}: +${bonus}`)
-                                        .join(', ');
-                    if (bonuses) asiDisplay = bonuses;
-                } else {
-                    console.warn("Parsed ASI data is not an object:", asiData);
-                    asiDisplay = typeof raceDetails.ability_score_increases === 'string' ? raceDetails.ability_score_increases : JSON.stringify(asiData);
-                }
-            } catch (e) {
-                console.error('Error parsing ability_score_increases:', raceDetails.ability_score_increases, e);
-                asiDisplay = raceDetails.ability_score_increases; // Show raw string on error
-            }
-            detailsHtml += `<p><strong>Ability Score Increases:</strong> ${asiDisplay}</p>`;
-        }
+        detailsHtml += `<p><strong>Speed:</strong> ${speed !== null ? speed + ' feet' : 'N/A'}</p>`;
+        detailsHtml += `<p><strong>Ability Score Increases:</strong> ${asiDisplay}</p>`;
 
         // Size
         if (raceDetails.size) {
@@ -399,27 +487,7 @@
         }
 
         // Languages
-        if (raceDetails.languages) {
-            let langDisplay = 'None';
-            try {
-                const langData = (typeof raceDetails.languages === 'string') ?
-                                 JSON.parse(raceDetails.languages) :
-                                 raceDetails.languages;
-
-                if (Array.isArray(langData) && langData.length > 0) {
-                    langDisplay = langData.join(', ');
-                } else if (Array.isArray(langData) && langData.length === 0) {
-                    langDisplay = 'None known';
-                } else {
-                     console.warn("Parsed language data is not an array or is empty:", langData);
-                     langDisplay = typeof raceDetails.languages === 'string' ? raceDetails.languages : JSON.stringify(langData);
-                }
-            } catch (e) {
-                console.error('Error parsing languages:', raceDetails.languages, e);
-                langDisplay = raceDetails.languages; // Show raw string on error
-            }
-            detailsHtml += `<p><strong>Languages:</strong> ${langDisplay}</p>`;
-        }
+        detailsHtml += `<p><strong>Languages:</strong> ${languagesDisplay}</p>`;
 
         // Traits
         if (raceDetails.traits) {
@@ -431,7 +499,7 @@
 
                 // Assuming traitsData is an array of strings (names)
                 if (Array.isArray(traitsData) && traitsData.length > 0) {
-                    traitsDisplay = traitsData.join(', ');
+                    traitsDisplay = traitsData.map(trait => (typeof trait === 'object' && trait !== null && trait.name) ? trait.name : trait).join(', ');
                 } else if (Array.isArray(traitsData) && traitsData.length === 0) {
                     traitsDisplay = 'No specific traits listed';
                 } else {
