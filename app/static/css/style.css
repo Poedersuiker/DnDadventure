@@ -1285,3 +1285,122 @@ footer {
     /* background-color, border, padding, min-height already defined above */
     margin-top: 0; /* Remove margin-top if not needed due to gap */
 }
+
+/* Styles for Character Creation Wizard - Step 3: Ability Scores */
+
+.ability-section {
+    margin-bottom: 20px;
+    padding: 15px;
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+}
+
+.ability-section h3 {
+    margin-top: 0;
+    color: #333;
+}
+
+#roll-dice-button {
+    padding: 10px 15px;
+    font-size: 1em;
+}
+
+#dice-roll-pool-container h3 {
+    margin-bottom: 10px;
+}
+
+.dice-pool {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px; /* Space between dice roll buttons */
+    margin-bottom: 10px;
+}
+
+.dice-roll-option {
+    padding: 8px 12px;
+    border: 1px solid #007bff;
+    background-color: #ffffff;
+    color: #007bff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1em;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.dice-roll-option:hover {
+    background-color: #007bff;
+    color: #ffffff;
+}
+
+.dice-roll-option.disabled-roll {
+    background-color: #e9ecef;
+    color: #6c757d;
+    border-color: #ced4da;
+    cursor: not-allowed;
+    text-decoration: line-through;
+}
+
+.tips-section, .bonuses-section {
+    background-color: #eef7ff; /* Light blue background for tips/bonuses */
+    border-left: 5px solid #007bff;
+}
+
+.tips-section h4, .bonuses-section h4 {
+    margin-top: 0;
+    color: #0056b3;
+}
+
+#ability-scores-table-container h3 {
+    margin-bottom: 10px;
+}
+
+#ability-scores-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+#ability-scores-table th,
+#ability-scores-table td {
+    border: 1px solid #ccc;
+    padding: 10px;
+    text-align: center; /* Center align numbers */
+}
+
+#ability-scores-table th {
+    background-color: #f0f0f0;
+    font-weight: bold;
+}
+
+/* First column (Ability Name) left aligned and clickable styling */
+#ability-scores-table td:first-child {
+    text-align: left;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#ability-scores-table td:first-child:hover {
+    background-color: #e9ecef;
+}
+
+#ability-scores-tbody tr.active-ability-for-assignment {
+    background-color: #cfe2ff; /* Light blue for active assignment row */
+}
+
+#ability-scores-tbody tr.active-ability-for-assignment td:first-child {
+    background-color: #b8d6fb; /* Slightly darker for the name cell in active row */
+}
+
+#dice-pool-instructions,
+#table-instructions {
+    font-size: 0.9em;
+    color: #555;
+    margin-top: 5px;
+}
+
+/* Ensure wizard-step maintains its general styling */
+#step-3.wizard-step {
+    /* any specific overrides for step-3 if necessary, but general .wizard-step styles should apply */
+}
