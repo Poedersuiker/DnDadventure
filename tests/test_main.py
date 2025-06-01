@@ -769,26 +769,20 @@ class TestCharacterCreationWizard(unittest.TestCase):
 
             current_session_data = session.get('new_character_data')
             self.assertIsNotNone(current_session_data)
+            self.assertIsNotNone(current_session_data)
             self.assertEqual(current_session_data, {}) # Should be initialized as empty dict
 
-            # Check for initial PHB description (Step 1: Race Selection)
-            # This is the exact HTML expected from phbPlaceholders[1]
-            expected_phb_step1_html = """<h3>Player's Handbook Description: Choosing a Race</h3>
-            <p><em>(Placeholder: Detailed text from the PHB about selecting a character race, covering racial traits, subraces, and how race impacts a character, should be inserted here.)</em></p>
-            <p>Briefly, your character's race determines their starting languages, and often provides unique traits and ability score increases.</p>"""
-            # Normalize whitespace in expected and actual HTML to avoid trivial mismatches
-            normalized_expected_html = " ".join(expected_phb_step1_html.split())
+            # Check for initial PHB description (Step 0: Introduction)
+            self.assertIn(b"<h3>Character Creation Steps (PHB Chapter 1)</h3>", response.data)
+            self.assertIn(b"Your first step in playing an adventurer", response.data)
 
-            # Extract content of #phb-description. This might require a more robust HTML parser for complex cases,
-            # but for simple placeholder text, string searching or regex can work.
-            # For now, we assume the JS populates it directly and the structure is simple.
-            # A more direct test would be to check the phbPlaceholders object in the script tag,
-            # which is what test_phb_descriptions_data_is_available_in_template will do.
-            # This part of the test verifies what is *initially rendered* by the `showStep(1)` call.
+            # Check button states for Step 0
+            self.assertIn(b'<button id="prev-button" style="display: none;">Previous</button>', response.data)
+            self.assertIn(b'<button id="next-button">Start Character Creation</button>', response.data)
 
-            # A simple check:
-            self.assertIn(b"<h3>Player's Handbook Description: Choosing a Race</h3>", response.data)
-            self.assertIn(b"Briefly, your character's race determines their starting languages", response.data)
+            # Check that step-0 content is shown and step-1 is hidden
+            self.assertIn(b'<div id="step-0" class="wizard-step" style="display: block;">', response.data.decode('utf-8').replace('\n', '')) # Normalize to remove newlines for matching
+            self.assertIn(b'<div id="step-1" class="wizard-step" style="display: none;">', response.data)
 
 
     def test_phb_descriptions_data_is_available_in_template(self):
@@ -797,17 +791,32 @@ class TestCharacterCreationWizard(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             html_content = response.data.decode('utf-8')
 
-            # Check if the phbPlaceholders object exists and contains key parts of descriptions
+            # Check if the phbPlaceholders object exists
             self.assertIn("const phbPlaceholders = {", html_content)
+
+            # Verify content for specific steps using unique phrases from the new detailed text
+            # Step 0: Introduction
+            self.assertIn("Your first step in playing an adventurer", html_content)
+            self.assertIn("Beyond 1st Level:", html_content)
             # Step 1: Race
-            self.assertIn("Player's Handbook Description: Choosing a Race", html_content)
-            self.assertIn("Briefly, your character's race determines their starting languages", html_content)
+            self.assertIn("<h3>1. Choose a Race (PHB Chapter 2)</h3>", html_content)
+            self.assertIn("Your choice of race affects many different aspects", html_content)
             # Step 2: Class
-            self.assertIn("Player's Handbook Description: Choosing a Class", html_content)
-            self.assertIn("Your class is the primary definition of what your character can do.", html_content)
-            # Step 9: Review
-            self.assertIn("Player's Handbook Description: Final Details", html_content)
-            self.assertIn("This is your chance to bring all the pieces together", html_content)
+            self.assertIn("<h3>2. Choose a Class (PHB Chapter 3)</h3>", html_content)
+            self.assertIn("Your class gives you a variety of special features", html_content)
+            # Step 3: Ability Scores
+            self.assertIn("<h3>3. Determine Ability Scores", html_content) # Partial to avoid issues with HTML in title
+            self.assertIn("Much of what your character does in the game depends on his or her six abilities", html_content)
+            self.assertIn("Standard Array:</strong> Use the scores 15, 14, 13, 12, 10, 8", html_content)
+            # Step 4: Background (Describe Character)
+            self.assertIn("<h3>4. Describe Your Character (PHB Chapter 4)</h3>", html_content)
+            self.assertIn("Your character's background describes where you came from", html_content)
+            # Step 7: Equipment
+            self.assertIn("<h3>7. Choose Equipment (PHB Chapter 5)</h3>", html_content)
+            self.assertIn("Your class and background determine your character’s starting equipment.", html_content)
+            # Step 9: Review (Final Details)
+            self.assertIn("<h3>9. Review & Finalize (PHB Chapter 4 \\\"Personality and Background\\\")</h3>", html_content)
+            self.assertIn("At this stage, you bring all the pieces of your character together", html_content)
 
 
     def test_get_step_data_race(self):
