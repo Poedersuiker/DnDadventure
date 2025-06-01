@@ -278,22 +278,22 @@
                 return; // Prevent moving to next step
             }
             try {
+                let payload_data = { // Moved declaration here
+                    race_slug: selectedRaceSlug
+                };
+
+                if (effectiveRaceDetailsForSession) {
+                    payload_data.effective_race_details = effectiveRaceDetailsForSession;
+                }
+
                 const response = await fetch('/creation_wizard/update_session', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    let payload_data = {
-                        race_slug: selectedRaceSlug // Slug of the selected item (parent or subrace)
-                    };
-
-                    if (effectiveRaceDetailsForSession) {
-                        payload_data.effective_race_details = effectiveRaceDetailsForSession;
-                    }
-
                     body: JSON.stringify({
                         step_key: 'race',
-                        payload: payload_data
+                        payload: payload_data // Use the declared variable
                     }),
                 });
                 if (!response.ok) {
