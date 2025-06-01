@@ -339,10 +339,24 @@
         races.forEach(race => { // race is an object like { id: db_id, slug: "...", data: "JSON_string_here" }
             try {
                 const raceDetails = race.data;
+                let speed = null; // Default speed to null
 
                 const li = document.createElement('li');
-                // Display name and speed from parsed details
-                li.textContent = `${raceDetails.name} (Speed: ${raceDetails.speed !== undefined ? raceDetails.speed : 'N/A'})`;
+
+                if (raceDetails && raceDetails.name) { // Ensure raceDetails and name exist for display
+                    if (raceDetails.traits) { // Check if traits array exists
+                        speed = extractSpeedFromTraits(raceDetails.traits);
+                    }
+                    li.textContent = `${raceDetails.name} (Speed: ${speed !== null ? speed : 'N/A'})`;
+                } else {
+                    // Fallback if raceDetails or raceDetails.name is missing
+                    // This case should ideally not happen if API data is consistent
+                    console.error("Race details or name missing for race:", race);
+                    li.textContent = `Unnamed Race (ID: ${race.slug || 'Unknown'}) (Speed: N/A)`;
+                    // Add a class to indicate an error or incomplete data if desired
+                    li.style.color = 'red';
+                }
+
                 li.dataset.raceId = race.slug; // Storing slug in dataset.raceId for now
 
                 // Pass both the original race object (containing id, slug, data string)
@@ -352,10 +366,10 @@
                 ul.appendChild(li);
 
             } catch (e) {
-                console.error('Error parsing race data for UI:', race.data, e);
+                console.error('Error processing race data for UI:', race.data, e); // Changed error message slightly for context
                 // Optionally, create an error list item or skip this race
                 const li = document.createElement('li');
-                li.textContent = `Error displaying race: ${race.slug || 'Unknown'}`;
+                li.textContent = `Error displaying race: ${race.slug || 'Unknown'} (Processing Error)`;
                 li.style.color = 'red';
                 ul.appendChild(li);
             }
@@ -367,7 +381,7 @@
         if (!Array.isArray(traitsArray)) {
             return null;
         }
-        const speedTrait = traitsArray.find(trait => trait.name === "Speed");
+        const speedTrait = traitsArray.find(trait => trait.name && trait.name.toLowerCase() === "speed");
         if (speedTrait && speedTrait.desc) {
             const match = speedTrait.desc.match(/(\d+)\s*feet/);
             if (match && match[1]) {
