@@ -369,17 +369,25 @@ def parse_skill_proficiencies(prof_string_list, num_to_choose_str=None, options_
 
             if choice_match:
                 num_word = choice_match.group(1)
-                options_str = choice_match.group(2)
-                options = [opt.strip().title() for opt in options_str.split(',') if opt.strip()]
+                options_str = choice_match.group(2) # e.g., "arcana, history, and investigation"
 
-                # Map words to numbers, default to 1 if not found (though regex limits it)
-                num_map = {"one": 1, "two": 2, "three": 3, "four": 4}
-                num_to_pick = num_map.get(num_word, 1)
+                raw_options_list = options_str.split(',')
+                cleaned_options = []
+                for opt_part in raw_options_list:
+                    # Remove "and " prefix from individual parts if present
+                    processed_opt_part = re.sub(r"^and\s+", "", opt_part.strip(), flags=re.IGNORECASE)
+                    if processed_opt_part: # Ensure option part is not empty
+                        cleaned_options.append(processed_opt_part.title())
+
+                options = [opt for opt in cleaned_options if opt] # Final filter for any empty strings
+
+                num_map = {"one": 1, "two": 2, "three": 3, "four": 4} # Consider "any" if it occurs
+                num_to_pick = num_map.get(num_word.lower(), 1) # Use .lower() for num_word matching
 
                 if options:
                     choice_groups.append({
-                        "id": f"choice_group_{choice_group_idx}",
-                        "description": f"Choose {num_word.title()} from: {', '.join(options)}", # Original phrasing for display
+                        "id": f"bg_choice_group_{choice_group_idx}", # Explicitly prefix with bg_
+                        "description": f"Choose {num_word.title()} from: {', '.join(options)}",
                         "options": options,
                         "num_to_pick": num_to_pick
                     })
@@ -389,7 +397,7 @@ def parse_skill_proficiencies(prof_string_list, num_to_choose_str=None, options_
                 option2 = or_choice_match.group(2).strip().title()
                 options = [option1, option2]
                 choice_groups.append({
-                    "id": f"choice_group_{choice_group_idx}",
+                    "id": f"bg_choice_group_{choice_group_idx}", # Explicitly prefix with bg_
                     "description": f"Choose one: {option1} or {option2}",
                     "options": options,
                     "num_to_pick": 1
@@ -471,17 +479,31 @@ def creation_wizard_step_data(step_name):
         data['num_class_skills_to_choose'] = class_num_to_choose
 
         if class_options_raw and isinstance(class_options_raw, str) and class_num_to_choose > 0:
-            # Extract the part after "Choose X from "
             options_text_segment = class_options_raw
-            prefix_match = re.match(r"choose \w+ from\s+", options_text_segment, re.IGNORECASE) # Use \w+ for one, two, etc.
+
+            # Remove "Choose X from " prefix if it exists
+            # Using a more general regex to catch variations like "Choose any two from" etc.
+            prefix_match = re.match(r"choose (any )?\w+ from\s+", options_text_segment, re.IGNORECASE)
             if prefix_match:
                 options_text_segment = options_text_segment[len(prefix_match.group(0)):].strip()
 
-            class_skill_opts = [opt.strip().title() for opt in options_text_segment.split(',') if opt.strip()]
-            data['class_skill_options'] = class_skill_opts
-        elif isinstance(class_options_raw, list) and class_num_to_choose > 0: # If already a list
+            # Split by comma, then further process each part to remove "and " and handle potential empty strings
+            raw_options = options_text_segment.split(',')
+            cleaned_skill_options = []
+            for opt in raw_options:
+                # Remove "and " prefix from individual options if present (e.g., ", and Survival")
+                processed_opt = re.sub(r"^and\s+", "", opt.strip(), flags=re.IGNORECASE)
+                if processed_opt: # Ensure option is not empty after stripping
+                    cleaned_skill_options.append(processed_opt.title())
+
+            data['class_skill_options'] = [s for s in cleaned_skill_options if s] # Ensure no empty strings in the final list
+
+        elif isinstance(class_options_raw, list) and class_num_to_choose > 0: # If already a list (less likely from API but good fallback)
              data['class_skill_options'] = [str(opt).strip().title() for opt in class_options_raw if str(opt).strip()]
 
+        # Ensure that if num_class_skills_to_choose is 0, class_skill_options is also empty
+        if data['num_class_skills_to_choose'] == 0:
+            data['class_skill_options'] = []
 
         # 3. Background Skills
         #    session['new_character_data']['background_skill_proficiencies']

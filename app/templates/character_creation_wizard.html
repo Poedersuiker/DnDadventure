@@ -2026,55 +2026,97 @@
     }
 
     function renderBackgroundSkills() {
-        backgroundSkillsSelection.innerHTML = '<h4>Background Skill Proficiencies</h4>';
-        let hasContent = false;
-        if (characterSkillsData.backgroundFixed.length > 0) {
-            hasContent = true;
-            const fixedUl = document.createElement('ul');
-            fixedUl.innerHTML = '<p><strong>Fixed:</strong></p>'; // Added a paragraph for clarity
-            characterSkillsData.backgroundFixed.forEach(skill => {
-                const li = document.createElement('li');
-                li.textContent = skill;
-                fixedUl.appendChild(li);
-            });
-            backgroundSkillsSelection.appendChild(fixedUl);
-        }
+           backgroundSkillsSelection.innerHTML = '<h4>Background Skill Proficiencies</h4>';
+           let hasContent = false;
 
-        if (characterSkillsData.backgroundChoices.length > 0) {
-            hasContent = true;
-            const choiceForm = document.createElement('form');
-            choiceForm.id = 'background-skills-form';
-            characterSkillsData.backgroundChoices.forEach((choiceGroup, index) => {
-                const p = document.createElement('p');
-                p.textContent = choiceGroup.description;
-                choiceForm.appendChild(p);
+           // Display Fixed Background Skills
+           if (characterSkillsData.backgroundFixed && characterSkillsData.backgroundFixed.length > 0) {
+               hasContent = true;
+               const fixedDiv = document.createElement('div'); // Changed from ul for better structure before choices
+               fixedDiv.innerHTML = '<p><strong>Granted Proficiencies:</strong></p>';
+               const fixedUl = document.createElement('ul');
+               characterSkillsData.backgroundFixed.forEach(skill => {
+                   const li = document.createElement('li');
+                   li.textContent = skill;
+                   fixedUl.appendChild(li);
+               });
+               fixedDiv.appendChild(fixedUl);
+               backgroundSkillsSelection.appendChild(fixedDiv);
+           }
 
-                const select = document.createElement('select');
-                select.name = `background_skill_choice_${index}`;
-                select.dataset.choiceId = choiceGroup.id;
-                select.addEventListener('change', handleBackgroundSkillSelectionChange);
+           // Display Choice-Based Background Skills
+           if (characterSkillsData.backgroundChoices && characterSkillsData.backgroundChoices.length > 0) {
+               hasContent = true;
+               const choicesDiv = document.createElement('div');
+               choicesDiv.innerHTML = '<p><strong>Skill Choices:</strong></p>';
 
-                const defaultOption = document.createElement('option');
-                defaultOption.value = "";
-                defaultOption.textContent = "-- Select an Option --";
-                select.appendChild(defaultOption);
+               const choiceForm = document.createElement('form'); // Keep the form if styling relies on it or for future grouping
+               choiceForm.id = 'background-skills-choices-form'; // More specific ID
 
-                choiceGroup.options.forEach(option => {
-                    const optElement = document.createElement('option');
-                    optElement.value = option;
-                    optElement.textContent = option;
-                    select.appendChild(optElement);
-                });
-                choiceForm.appendChild(select);
-                choiceForm.appendChild(document.createElement('br'));
-            });
-            backgroundSkillsSelection.appendChild(choiceForm);
-        }
+               characterSkillsData.backgroundChoices.forEach((choiceGroup) => {
+                   const groupContainer = document.createElement('div');
+                   groupContainer.className = 'background-choice-group';
 
-        if (!hasContent) {
-            backgroundSkillsSelection.innerHTML += '<p>None.</p>';
-        }
-    }
+                   const p = document.createElement('p');
+                   p.textContent = choiceGroup.description; // e.g., "Choose one: Insight or Persuasion"
+                   groupContainer.appendChild(p);
+
+                   if (choiceGroup.num_to_pick === 1 && choiceGroup.options.length > 0) {
+                       const select = document.createElement('select');
+                       // Use choiceGroup.id directly for the select element's name or a dataset attribute
+                       // to link it back to the choice group in the event handler.
+                       select.name = `background_skill_choice_${choiceGroup.id}`; // Unique name for the select
+                       select.dataset.choiceGroupId = choiceGroup.id; // Store the original choice group ID
+
+                       const defaultOption = document.createElement('option');
+                       defaultOption.value = "";
+                       defaultOption.textContent = "-- Select an Option --";
+                       select.appendChild(defaultOption);
+
+                       choiceGroup.options.forEach(option => {
+                           const optElement = document.createElement('option');
+                           optElement.value = option;
+                           optElement.textContent = option;
+                           select.appendChild(optElement);
+                       });
+                       select.addEventListener('change', handleBackgroundSkillSelectionChange); // Existing handler
+                       groupContainer.appendChild(select);
+                   } else if (choiceGroup.num_to_pick > 1 && choiceGroup.options.length > 0) {
+                       // Handle multiple choices from a single group (e.g., "Choose two from X, Y, Z")
+                       // This would require checkboxes and logic similar to class skills,
+                       // but specific to this choiceGroup.id.
+                       // For now, log a warning if this case is encountered, as it's less common for backgrounds.
+                       console.warn(`Background choice group '${choiceGroup.id}' requires picking ${choiceGroup.num_to_pick} skills, but UI currently only supports 1 via dropdown. Options: ${choiceGroup.options.join(', ')}`);
+                       const warningP = document.createElement('p');
+                       warningP.textContent = `Note: Advanced selection for '${choiceGroup.description}' (pick ${choiceGroup.num_to_pick}) is not fully supported in this UI view. Please ensure selections are noted manually if needed.`;
+                       warningP.style.color = 'orange';
+                       groupContainer.appendChild(warningP);
+                       // Still list options for visibility, though not selectable via this simple dropdown
+                        const infoUl = document.createElement('ul');
+                        choiceGroup.options.forEach(opt => {
+                            const li = document.createElement('li');
+                            li.textContent = opt + " (manual selection needed if pick > 1)";
+                            infoUl.appendChild(li);
+                        });
+                        groupContainer.appendChild(infoUl);
+
+                   } else {
+                        // No options or num_to_pick is 0 or invalid
+                        const noOptionsP = document.createElement('p');
+                        noOptionsP.textContent = 'No selectable options for this choice.';
+                        noOptionsP.style.fontStyle = 'italic';
+                        groupContainer.appendChild(noOptionsP);
+                   }
+                   choiceForm.appendChild(groupContainer);
+               });
+               choicesDiv.appendChild(choiceForm);
+               backgroundSkillsSelection.appendChild(choicesDiv);
+           }
+
+           if (!hasContent) {
+               backgroundSkillsSelection.innerHTML += '<p>This background provides no specific skill proficiencies or choices.</p>';
+           }
+       }
 
     function handleClassSkillSelectionChange(event) {
         const checkbox = event.target;
@@ -2093,18 +2135,23 @@
     }
 
     function handleBackgroundSkillSelectionChange(event) {
-        const selectElement = event.target;
-        const choiceId = selectElement.dataset.choiceId;
-        const selectedValue = selectElement.value;
+           const selectElement = event.target;
+           const choiceGroupId = selectElement.dataset.choiceGroupId; // Corrected dataset key
+           const selectedValue = selectElement.value;
 
-        if (selectedValue) {
-            chosenBackgroundSkillChoices[choiceId] = selectedValue;
-        } else {
-            delete chosenBackgroundSkillChoices[choiceId];
-        }
-        updateSelectedSkillsSummary();
-        console.log("Chosen background skills:", chosenBackgroundSkillChoices);
-    }
+           if (!choiceGroupId) { // Should not happen if dataset attribute is set
+               console.error("Error: choiceGroupId not found on select element.", selectElement);
+               return;
+           }
+
+           if (selectedValue) {
+               chosenBackgroundSkillChoices[choiceGroupId] = selectedValue;
+           } else {
+               delete chosenBackgroundSkillChoices[choiceGroupId];
+           }
+           updateSelectedSkillsSummary();
+           console.log("Chosen background skills:", chosenBackgroundSkillChoices);
+       }
 
     function updateSelectedSkillsSummary() {
         selectedSkillsList.innerHTML = '';
