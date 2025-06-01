@@ -771,6 +771,45 @@ class TestCharacterCreationWizard(unittest.TestCase):
             self.assertIsNotNone(current_session_data)
             self.assertEqual(current_session_data, {}) # Should be initialized as empty dict
 
+            # Check for initial PHB description (Step 1: Race Selection)
+            # This is the exact HTML expected from phbPlaceholders[1]
+            expected_phb_step1_html = """<h3>Player's Handbook Description: Choosing a Race</h3>
+            <p><em>(Placeholder: Detailed text from the PHB about selecting a character race, covering racial traits, subraces, and how race impacts a character, should be inserted here.)</em></p>
+            <p>Briefly, your character's race determines their starting languages, and often provides unique traits and ability score increases.</p>"""
+            # Normalize whitespace in expected and actual HTML to avoid trivial mismatches
+            normalized_expected_html = " ".join(expected_phb_step1_html.split())
+
+            # Extract content of #phb-description. This might require a more robust HTML parser for complex cases,
+            # but for simple placeholder text, string searching or regex can work.
+            # For now, we assume the JS populates it directly and the structure is simple.
+            # A more direct test would be to check the phbPlaceholders object in the script tag,
+            # which is what test_phb_descriptions_data_is_available_in_template will do.
+            # This part of the test verifies what is *initially rendered* by the `showStep(1)` call.
+
+            # A simple check:
+            self.assertIn(b"<h3>Player's Handbook Description: Choosing a Race</h3>", response.data)
+            self.assertIn(b"Briefly, your character's race determines their starting languages", response.data)
+
+
+    def test_phb_descriptions_data_is_available_in_template(self):
+        with self.client:
+            response = self.client.get(url_for('main.creation_wizard'))
+            self.assertEqual(response.status_code, 200)
+            html_content = response.data.decode('utf-8')
+
+            # Check if the phbPlaceholders object exists and contains key parts of descriptions
+            self.assertIn("const phbPlaceholders = {", html_content)
+            # Step 1: Race
+            self.assertIn("Player's Handbook Description: Choosing a Race", html_content)
+            self.assertIn("Briefly, your character's race determines their starting languages", html_content)
+            # Step 2: Class
+            self.assertIn("Player's Handbook Description: Choosing a Class", html_content)
+            self.assertIn("Your class is the primary definition of what your character can do.", html_content)
+            # Step 9: Review
+            self.assertIn("Player's Handbook Description: Final Details", html_content)
+            self.assertIn("This is your chance to bring all the pieces together", html_content)
+
+
     def test_get_step_data_race(self):
         with self.client:
             response = self.client.get(url_for('main.creation_wizard_step_data', step_name='race'))

@@ -77,6 +77,36 @@
     const nextButton = document.getElementById('next-button');
     const stepIndicators = document.querySelectorAll('.step-indicator');
 
+    const phbPlaceholders = {
+        1: `<h3>Player's Handbook Description: Choosing a Race</h3>
+            <p><em>(Placeholder: Detailed text from the PHB about selecting a character race, covering racial traits, subraces, and how race impacts a character, should be inserted here.)</em></p>
+            <p>Briefly, your character's race determines their starting languages, and often provides unique traits and ability score increases.</p>`,
+        2: `<h3>Player's Handbook Description: Choosing a Class</h3>
+            <p><em>(Placeholder: Detailed text from the PHB about selecting a character class, covering class features, hit dice, proficiencies, and spellcasting if applicable, should be inserted here.)</em></p>
+            <p>Your class is the primary definition of what your character can do.</p>`,
+        3: `<h3>Player's Handbook Description: Determining Ability Scores</h3>
+            <p><em>(Placeholder: Detailed text from the PHB about ability scores, how they are generated (standard array, point buy, rolling), and what each ability score represents (Strength, Dexterity, Constitution, Intelligence, Wisdom, Charisma), should be inserted here.)</em></p>
+            <p>Ability scores define your character's raw talents and capabilities.</p>`,
+        4: `<h3>Player's Handbook Description: Describing Your Character (Backgrounds)</h3>
+            <p><em>(Placeholder: Detailed text from the PHB about character backgrounds, including personality traits, ideals, bonds, flaws, and the mechanical benefits like skill/tool proficiencies and starting equipment, should be inserted here.)</em></p>
+            <p>Your background reveals where you came from and your place in the world.</p>`,
+        5: `<h3>Player's Handbook Description: Skills and Proficiencies</h3>
+            <p><em>(Placeholder: Detailed text from the PHB explaining skills, how they relate to ability scores, and how proficiencies (skills, tools, languages, weapons, armor, saving throws) work, should be inserted here.)</em></p>
+            <p>Proficiencies represent what your character is particularly good at.</p>`,
+        6: `<h3>Player's Handbook Description: Hit Points and Combat</h3>
+            <p><em>(Placeholder: Detailed text from the PHB about hit points, hit dice, armor class, and other combat-related statistics, should be inserted here.)</em></p>
+            <p>These numbers determine your character's survivability and effectiveness in combat.</p>`,
+        7: `<h3>Player's Handbook Description: Starting Equipment</h3>
+            <p><em>(Placeholder: Detailed text from the PHB about how characters get their starting equipment, either from their class and background or by purchasing it with starting gold, should be inserted here.)</em></p>
+            <p>Gear up for adventure!</p>`,
+        8: `<h3>Player's Handbook Description: Spellcasting</h3>
+            <p><em>(Placeholder: Detailed text from the PHB for spellcasting classes, explaining cantrips, spell slots, preparing spells (if applicable), and learning new spells, should be inserted here.)</em></p>
+            <p>For spellcasters, magic is a key part of their toolkit. If your class does not grant spells at this stage, this section might be skipped or provide general information.</p>`,
+        9: `<h3>Player's Handbook Description: Final Details</h3>
+            <p><em>(Placeholder: Detailed text from the PHB about finalizing character details, such as alignment, name, appearance, and other roleplaying cues, should be inserted here.)</em></p>
+            <p>This is your chance to bring all the pieces together and add finishing touches to your character.</p>`
+    };
+
     function showStep(stepNumber) {
         // Hide all steps
         document.querySelectorAll('.wizard-step').forEach(step => {
@@ -87,7 +117,12 @@
         document.getElementById(`step-${stepNumber}`).style.display = 'block';
 
         // Update PHB description placeholder
-        document.getElementById('phb-description').innerHTML = `<p>Description for step ${stepNumber} will go here.</p>`;
+        const phbDescContainer = document.getElementById('phb-description');
+        if (phbPlaceholders[stepNumber]) {
+            phbDescContainer.innerHTML = phbPlaceholders[stepNumber];
+        } else {
+            phbDescContainer.innerHTML = `<p>Description for step ${stepNumber} will go here.</p>`; // Fallback
+        }
 
         // Update button visibility and text
         if (stepNumber === 1) {
