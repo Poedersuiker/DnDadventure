@@ -572,17 +572,18 @@ def creation_wizard_update_session():
 
         current_app.logger.info(f"Session updated for ability scores. Final simple scores: {simple_final_scores}")
 
-    elif step_key == 'background' and 'background_name' in step_payload:
-        # This part remains the same as it was correct
-        bg_name = step_payload['background_name']
-        if bg_name in sample_backgrounds_data:
-            bg_data = sample_backgrounds_data[bg_name]
-            session['new_character_data']['background_skill_proficiencies'] = bg_data.get('skill_proficiencies', [])
-            session['new_character_data']['background_tool_proficiencies'] = bg_data.get('tool_proficiencies', [])
-            session['new_character_data']['background_languages_fixed'] = bg_data.get('languages', []) # Store fixed languages
-            session['new_character_data']['background_equipment_string'] = bg_data.get('equipment', '')
-        else:
-            return jsonify(status="error", message="Invalid Background Name"), 400
+    elif step_key == 'background' and 'background_slug' in step_payload:
+        # Frontend now sends all necessary details, so we directly use them.
+        session['new_character_data']['background_slug'] = step_payload.get('background_slug')
+        session['new_character_data']['background_name'] = step_payload.get('background_name')
+        session['new_character_data']['background_skill_proficiencies'] = step_payload.get('background_skill_proficiencies', [])
+        session['new_character_data']['background_tool_proficiencies'] = step_payload.get('background_tool_proficiencies', [])
+        session['new_character_data']['background_languages_fixed'] = step_payload.get('background_languages_fixed', [])
+        session['new_character_data']['background_equipment_string'] = step_payload.get('background_equipment_string', '')
+        session['new_character_data']['background_feature_name'] = step_payload.get('feature_name', '')
+        session['new_character_data']['background_feature_desc'] = step_payload.get('feature_desc', '')
+
+        current_app.logger.info(f"Session updated for background selection: {step_payload.get('background_name')} (Slug: {step_payload.get('background_slug')})")
 
     elif step_key == "skills": # When skills are chosen
         # Payload should include 'class_skill_proficiencies' and 'chosen_tool_proficiencies_from_bg' etc.

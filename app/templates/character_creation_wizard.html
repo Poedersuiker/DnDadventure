@@ -193,8 +193,8 @@
     ];
 
     // Global variables for Background Selection (Step 4)
-    let allBackgroundsData = null;
-    let selectedBackgroundName = null;
+    let allBackgroundsData = null; // Will store array of {slug, data} objects
+    let selectedBackgroundSlug = null; // Changed from selectedBackgroundName
     const backgroundSelectionArea = document.getElementById('background-selection-area');
     const backgroundDetailsArea = document.getElementById('background-details-area');
 
@@ -359,10 +359,10 @@
                 populateBackgroundSelectionUI(allBackgroundsData);
             }
             backgroundDetailsArea.innerHTML = '<p>Select a background to see details here.</p>';
-            selectedBackgroundName = null;
+            selectedBackgroundSlug = null; // Changed from selectedBackgroundName
             const currentlySelectedBackground = backgroundSelectionArea.querySelector('.selected-background');
             if (currentlySelectedBackground) {
-                currentlySelectedBackground.classList.remove('selected-background');
+                currentlySelectedBackground.classList.remove('selected-background'); // This will be handled by dataset attribute now
             }
         }
 
@@ -555,18 +555,30 @@
                 return;
             }
         } else if (currentStep === 4) {
-            if (!selectedBackgroundName) {
+            if (!selectedBackgroundSlug) { // Changed from selectedBackgroundName
                 alert('Please select a background before proceeding.');
                 return;
             }
             try {
-                const backgroundData = allBackgroundsData[selectedBackgroundName];
+                // Find the selected background object from allBackgroundsData
+                const selectedBackgroundObj = allBackgroundsData.find(bg => bg.slug === selectedBackgroundSlug);
+                if (!selectedBackgroundObj) {
+                    alert('Selected background data not found. Please try again.');
+                    return;
+                }
+                const backgroundDetails = selectedBackgroundObj.data; // This is the object with name, skills, etc.
+
                 const payload = {
-                    background_name: selectedBackgroundName,
-                    background_skill_proficiencies: backgroundData.skill_proficiencies || [],
-                    background_tool_proficiencies: backgroundData.tool_proficiencies || [],
-                    background_languages_fixed: backgroundData.languages || [],
-                    background_equipment_string: backgroundData.equipment || ""
+                    background_slug: selectedBackgroundSlug, // Send the slug
+                    background_name: backgroundDetails.name, // Send the name for convenience on backend
+                    background_skill_proficiencies: backgroundDetails.skill_proficiencies || [],
+                    background_tool_proficiencies: backgroundDetails.tool_proficiencies || [],
+                    // Assuming 'languages' from API are fixed, not choices. If choices, this needs more complex handling.
+                    background_languages_fixed: backgroundDetails.languages || [],
+                    background_equipment_string: backgroundDetails.equipment || "",
+                    // Optionally send feature details if backend needs them directly
+                    feature_name: backgroundDetails.feature_name || "",
+                    feature_desc: backgroundDetails.feature_desc || ""
                 };
                 const response = await fetch('/creation_wizard/update_session', {
                     method: 'POST',
@@ -603,71 +615,74 @@
     // --- BACKGROUND SELECTION (STEP 4) FUNCTIONS ---
     async function fetchBackgrounds() {
         try {
-            const response = await fetch('/creation_wizard/step_data/background');
+            const response = await fetch('/api/v2/backgrounds/?limit=100'); // Updated URL
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            const result = await response.json();
-            if (result.backgrounds) { // Server nests data under 'backgrounds'
-                allBackgroundsData = result.backgrounds;
+            const apiResult = await response.json(); // Changed variable name
+            if (apiResult.results && apiResult.results.length > 0) { // Check for results array
+                allBackgroundsData = apiResult.results; // Assign results array
                 populateBackgroundSelectionUI(allBackgroundsData);
             } else {
-                backgroundSelectionArea.innerHTML = '<p>No backgrounds found or error in data format.</p>';
-                allBackgroundsData = {}; // Ensure it's an object
+                backgroundSelectionArea.innerHTML = '<p>No backgrounds found or error fetching backgrounds from API.</p>';
+                allBackgroundsData = []; // Ensure it's an array
             }
         } catch (error) {
-            console.error('Error fetching backgrounds:', error);
-            backgroundSelectionArea.innerHTML = '<p>Error fetching backgrounds. Please try again later.</p>';
-            allBackgroundsData = {}; // Ensure it's an object
+            console.error('Error fetching backgrounds from API:', error);
+            backgroundSelectionArea.innerHTML = '<p>Error fetching backgrounds from API. Please try again later.</p>';
+            allBackgroundsData = []; // Ensure it's an array
         }
     }
 
-    function populateBackgroundSelectionUI(backgroundsData) {
+    function populateBackgroundSelectionUI(backgroundsDataArray) { // Parameter is now an array
         backgroundSelectionArea.innerHTML = ''; // Clear loading message
         const ul = document.createElement('ul');
-        ul.className = 'background-list'; // Similar to class-list for styling consistency
+        ul.className = 'background-list';
 
-        Object.keys(backgroundsData).forEach(backgroundName => {
+        backgroundsDataArray.forEach(backgroundObj => { // Iterate array
             const li = document.createElement('li');
-            li.textContent = backgroundName;
-            li.dataset.backgroundName = backgroundName;
-            li.addEventListener('click', (event) => { // Added event argument
-                handleBackgroundSelection(backgroundName, backgroundsData[backgroundName], event); // Pass event
+            li.textContent = backgroundObj.data.name; // Display name from data object
+            li.dataset.backgroundSlug = backgroundObj.slug; // Use slug for dataset
+            li.addEventListener('click', (event) => {
+                handleBackgroundSelection(backgroundObj.slug, backgroundObj.data, event); // Pass slug and data object
             });
             ul.appendChild(li);
         });
         backgroundSelectionArea.appendChild(ul);
     }
 
-    function handleBackgroundSelection(backgroundName, backgroundDetails, event) { // Added event argument
-        selectedBackgroundName = backgroundName;
+    function handleBackgroundSelection(backgroundSlug, backgroundDetails, event) { // slug instead of name
+        selectedBackgroundSlug = backgroundSlug; // Store slug
 
-        let detailsHtml = `<h4>${backgroundName}</h4>`;
+        let detailsHtml = `<h4>${backgroundDetails.name}</h4>`; // Use name from details
+        if (backgroundDetails.desc) { // Add description if available
+             detailsHtml += `<p><em>${backgroundDetails.desc.split('\n\n')[0]}</em></p>`; // Show first paragraph of desc
+        }
         detailsHtml += `<p><strong>Skill Proficiencies:</strong> ${backgroundDetails.skill_proficiencies && backgroundDetails.skill_proficiencies.length > 0 ? backgroundDetails.skill_proficiencies.join(', ') : 'None'}</p>`;
         detailsHtml += `<p><strong>Tool Proficiencies:</strong> ${backgroundDetails.tool_proficiencies && backgroundDetails.tool_proficiencies.length > 0 ? backgroundDetails.tool_proficiencies.join(', ') : 'None'}</p>`;
-        detailsHtml += `<p><strong>Languages:</strong> ${backgroundDetails.languages && backgroundDetails.languages.length > 0 ? backgroundDetails.languages.join(', ') : 'None'}</p>`;
+        detailsHtml += `<p><strong>Languages:</strong> ${backgroundDetails.languages && backgroundDetails.languages.length > 0 ? backgroundDetails.languages.join(', ') : 'None'}</p>`; // Assuming languages is an array of strings
         detailsHtml += `<p><strong>Equipment:</strong> ${backgroundDetails.equipment || 'None'}</p>`;
-        // Assuming 'feature_name' and 'feature_desc' are part of backgroundDetails
+
         if (backgroundDetails.feature_name) {
              detailsHtml += `<p><strong>Feature: ${backgroundDetails.feature_name}</strong></p>`;
              if (backgroundDetails.feature_desc) {
                  detailsHtml += `<p>${backgroundDetails.feature_desc}</p>`;
              }
         }
-        // You might want to add suggested characteristics if available in backgroundDetails
-        // e.g., personality_traits, ideals, bonds, flaws
+        // Placeholder for suggested characteristics - these might be more complex structures
+        // e.g., backgroundDetails.personality_traits (could be an array or object)
+        // For now, keeping it simple.
 
         backgroundDetailsArea.innerHTML = detailsHtml;
 
-        // Visually highlight the selected background
         const allBackgroundElements = backgroundSelectionArea.querySelectorAll('li');
         allBackgroundElements.forEach(el => el.classList.remove('selected-background'));
 
-        // Use event.currentTarget if available and correct, otherwise query by dataset
         if (event && event.currentTarget) {
             event.currentTarget.classList.add('selected-background');
         } else {
-            const selectedElement = backgroundSelectionArea.querySelector(`li[data-background-name='${backgroundName}']`);
+            // Fallback if event.currentTarget is not available (should be, but good to have)
+            const selectedElement = backgroundSelectionArea.querySelector(`li[data-background-slug='${backgroundSlug}']`);
             if (selectedElement) {
                 selectedElement.classList.add('selected-background');
             }
