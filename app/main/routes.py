@@ -391,31 +391,73 @@ def creation_wizard_update_session():
     # Merge new payload into the session data for the character
     # Example: if session['new_character_data'] = {'race_id': 1}, and payload is {'class_id': 2}
     # it becomes {'race_id': 1, 'class_id': 2}
-    session['new_character_data'].update(step_payload)
+    # session['new_character_data'].update(step_payload) # This will be handled more selectively
 
     # Perform server-side logic based on the step and payload
-    if step_key == 'race' and 'race_slug' in step_payload: # Check for 'race_slug'
-        race_slug_from_payload = step_payload['race_slug']
-        # Normalize slug: replace hyphens with spaces and convert to title case for matching against Race.name
-        # e.g., "half-elf" -> "Half Elf", "dwarf" -> "Dwarf"
-        race_name_candidate = race_slug_from_payload.replace('-', ' ').title()
+    if step_key == 'race': # Broader check, specific slug/details check inside
+        # payload_data = step_payload # The payload from JS is step_payload.payload # Corrected: step_payload *is* the payload
 
-        current_app.logger.info(f"Attempting to find race by name candidate: '{race_name_candidate}' from slug '{race_slug_from_payload}'")
+        race_slug_to_lookup = step_payload.get('race_slug')
+        effective_details = step_payload.get('effective_race_details')
+
+        if not race_slug_to_lookup:
+            current_app.logger.warning("race_slug missing from payload for 'race' step.")
+            return jsonify(status="error", message="Race slug is missing."), 400
+
+        # Always look up the race by slug to get its database ID and for fallback
+        # This assumes slugs in DB match names after hyphen-to-space and title case,
+        # which is how they were populated by populate_races.py from Open5e slugs.
+        race_name_candidate = race_slug_to_lookup.replace('-', ' ').title()
         race = Race.query.filter_by(name=race_name_candidate).first()
 
-        if race:
-            race_dict = race.to_dict() # race.to_dict() provides parsed languages, skills etc.
-            session['new_character_data']['race_id'] = race.id # Store the actual DB ID
-            session['new_character_data']['race_name'] = race_dict.get('name') # Should match race.name
+        if not race: # This means the slug sent from frontend didn't match any race name
+            current_app.logger.warning(f"Race not found for name candidate: '{race_name_candidate}' (from slug: '{race_slug_to_lookup}')")
+            return jsonify(status="error", message=f"Invalid Race Slug: {race_slug_to_lookup}"), 400
+
+        # Store the fundamental race_id and the original slug from the selected race/subrace
+        session['new_character_data']['race_id'] = race.id
+        session['new_character_data']['selected_race_slug'] = race_slug_to_lookup
+
+        if effective_details:
+            current_app.logger.info(f"Using effective_race_details for race: {effective_details.get('name')}")
+            session['new_character_data']['race_name'] = effective_details.get('name')
+            session['new_character_data']['speed'] = effective_details.get('speed')
+            session['new_character_data']['languages_from_race'] = effective_details.get('languages', [])
+            session['new_character_data']['ability_score_increases_details'] = effective_details.get('asi')
+            session['new_character_data']['race_trait_names'] = effective_details.get('traits', [])
+            session['new_character_data']['is_subrace'] = effective_details.get('is_subrace', False)
+            if effective_details.get('is_subrace'):
+                session['new_character_data']['parent_race_slug'] = effective_details.get('parent_slug')
+
+            # Fallback for skill proficiencies for now, as it's not in effective_details
+            race_model_dict = race.to_dict()
+            session['new_character_data']['race_skill_proficiencies'] = race_model_dict.get('skill_proficiencies', [])
+            # Also ensure other fields that might be expected directly from race_dict are present if not in effective_details
+            session['new_character_data'].setdefault('race_document__slug', race_model_dict.get('document__slug'))
+
+
+        else:
+            # Fallback to old logic if effective_race_details is not provided
+            current_app.logger.info(f"Using race.to_dict() for race: {race.name} as no effective_details provided.")
+            race_dict = race.to_dict()
+            session['new_character_data']['race_name'] = race_dict.get('name')
             session['new_character_data']['speed'] = race_dict.get('speed')
             session['new_character_data']['languages_from_race'] = race_dict.get('languages', [])
             session['new_character_data']['race_skill_proficiencies'] = race_dict.get('skill_proficiencies', [])
-            # The 'race_slug' itself from payload is also implicitly added by the general .update(step_payload) later if desired,
-            # but explicitly adding 'race_id' is crucial.
-            current_app.logger.info(f"Race '{race.name}' (ID: {race.id}) found and session updated.")
-        else:
-            current_app.logger.warning(f"Race not found for name candidate: '{race_name_candidate}' (from slug: '{race_slug_from_payload}')")
-            return jsonify(status="error", message=f"Invalid Race Slug: {race_slug_from_payload}"), 400
+            session['new_character_data']['ability_score_increases_details'] = race_dict.get('ability_score_increases')
+            session['new_character_data']['is_subrace'] = race_dict.get('is_subrace', False)
+            session['new_character_data']['race_trait_names'] = [t.get('name') for t in race_dict.get('traits', []) if t.get('name')]
+            session['new_character_data'].setdefault('race_document__slug', race_dict.get('document__slug'))
+
+
+        current_app.logger.info(f"Session updated for race. Race ID: {session['new_character_data']['race_id']}, Name: {session['new_character_data']['race_name']}")
+
+    # If not 'race' step, or if 'race' step didn't have specific payload fields like 'race_slug',
+    # we might still want the generic update for other step types.
+    # However, for 'race', we've handled it. For other steps, the generic update is fine.
+    if step_key != 'race':
+        session['new_character_data'].update(step_payload)
+
 
     elif step_key == 'class' and 'class_id' in step_payload:
         s_class = Class.query.get(step_payload['class_id'])
