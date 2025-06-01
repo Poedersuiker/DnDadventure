@@ -85,7 +85,7 @@
     const stepIndicators = document.querySelectorAll('.step-indicator');
 
     const phbPlaceholders = {
-        0: `<h3>Character Creation Steps (PHB Chapter 1)</h3>
+        0: `<h3>Character Creation Steps</h3>
             <p>Your first step in playing an adventurer in the Dungeons & Dragons game is to imagine and create a character of your own. Your character is a combination of game statistics, roleplaying hooks, and your imagination. You choose a race (such as human or halfling) and a class (such as fighter or wizard). You also invent the personality, appearance, and backstory of your character.</p>
             <p>The process involves these main steps:<br><br>
             <strong>1. Choose a Race:</strong> Every character belongs to a race, one of the many intelligent humanoid species in the D&D world. The most common player character races are dwarves, elves, halflings, and humans. Your character’s race grants particular racial traits, such as special senses, or proficiency with certain weapons or tools.<br><br>
@@ -94,15 +94,13 @@
             <strong>4. Describe Your Character:</strong> Once you know the basic game aspects of your character, it’s time to flesh out his or her history and personality. This includes your character's name, alignment, ideals, bonds, flaws, and background. A background describes your original occupation and provides benefits such as skill/tool proficiencies and starting equipment.<br><br>
             <strong>5. Choose Equipment:</strong> Your class and background determine your character’s starting equipment, including weapons, armor, and other adventuring gear. Alternatively, you can start with a number of gold pieces based on your class and spend them on items from the lists in the Player's Handbook.<br><br>
             <strong>Beyond 1st Level:</strong> As your character goes on adventures and overcomes challenges, he or she gains experience, represented by experience points. A character who reaches a specified experience point total advances in capability. This advancement is called gaining a level.</p>`,
-        1: `<h3>1. Choose a Race (PHB Chapter 2)</h3>
+        1: `<h3>1. Choose a Race</h3>
             <p>Your choice of race affects many different aspects of your character. It establishes fundamental qualities that exist throughout your character’s adventuring career.</p>
-            <p><strong>Racial Traits:</strong> The description of each race includes racial traits that are common to members of that race. These can include: Ability Score Increase, Age, Alignment tendencies, Size, Speed, Languages, and Subraces.</p>
-            <p><em>(Placeholder: Detailed PHB text on specific races like Dwarf, Elf, Halfling, Human, Dragonborn, Gnome, Half-Elf, Half-Orc, Tiefling, including their unique traits, ability score increases, and subraces, should be inserted here.)</em></p>`,
-        2: `<h3>2. Choose a Class (PHB Chapter 3)</h3>
+            <p><strong>Racial Traits:</strong> The description of each race includes racial traits that are common to members of that race. These can include: Ability Score Increase, Age, Alignment tendencies, Size, Speed, Languages, and Subraces.</p>`,
+        2: `<h3>2. Choose a Class</h3>
             <p>Your class gives you a variety of special features, such as a fighter’s mastery of weapons and armor, or a wizard’s spells. At low levels, your class gives you only two or three features, but as you advance in level you gain more, and your existing features often improve.</p>
-            <p>Each class entry in the Player's Handbook includes information on: Hit Dice, Hit Points at 1st Level, Hit Points at Higher Levels, Proficiencies (Armor, Weapons, Tools, Saving Throws, Skills), Equipment, and class-specific features (e.g., Spellcasting, Channel Divinity, Martial Archetype).</p>
-            <p><em>(Placeholder: Detailed PHB text on specific classes, their features, proficiencies, and how they advance, should be inserted here.)</em></p>`,
-        3: `<h3>3. Determine Ability Scores (PHB Chapter 1, "Step-by-Step Characters")</h3>
+            <p>Each class entry in the Player's Handbook includes information on: Hit Dice, Hit Points at 1st Level, Hit Points at Higher Levels, Proficiencies (Armor, Weapons, Tools, Saving Throws, Skills), Equipment, and class-specific features (e.g., Spellcasting, Channel Divinity, Martial Archetype).</p>`,
+        3: `<h3>3. Determine Ability Scores</h3>
             <p>Six abilities provide a quick description of every creature’s physical and mental characteristics:
             <br> - <strong>Strength (STR):</strong> Natural athleticism, bodily power.
             <br> - <strong>Dexterity (DEX):</strong> Physical agility, reflexes, balance, poise.
@@ -117,7 +115,7 @@
             <p><strong>Ability Modifiers:</strong> Each ability score has a modifier, derived from the score and ranging from -5 (for an ability score of 1) to +10 (for a score of 30). The formula is (Score - 10) / 2, rounded down.
             <br>Example Modifiers: Score 1 (-5), 2-3 (-4), 4-5 (-3), 6-7 (-2), 8-9 (-1), 10-11 (+0), 12-13 (+1), 14-15 (+2), 16-17 (+3), 18-19 (+4), 20-21 (+5).</p>
             <p>After assigning scores, apply any racial ability score increases.</p>`,
-        4: `<h3>4. Describe Your Character (PHB Chapter 4)</h3>
+        4: `<h3>4. Describe Your Character</h3>
             <p>Your character's background describes where you came from, your original occupation, and your place in the D&D world. Your DM might offer additional backgrounds beyond those in the PHB.</p>
             <p>A background usually provides:
             <br> - Skill Proficiencies
@@ -126,9 +124,8 @@
             <br> - Starting Equipment
             <br> - A special background feature</p>
             <p>It also offers suggestions for personality traits, ideals, bonds, and flaws. These are roleplaying cues that help you bring your character to life.</p>
-            <p>Other details to consider: Name, Sex, Height and Weight, Alignment, Personal Characteristics (appearance, mannerisms).</p>
-            <p><em>(Placeholder: Detailed PHB text on specific backgrounds like Acolyte, Criminal, Folk Hero, Noble, Sage, Soldier, etc., and guidance on alignment and personal details, should be inserted here.)</em></p>`,
-        5: `<h3>5. Skills and Proficiencies (PHB Chapter 7 for Skills, various chapters for others)</h3>
+            <p>Other details to consider: Name, Sex, Height and Weight, Alignment, Personal Characteristics (appearance, mannerisms).</p>`,
+        5: `<h3>5. Skills and Proficiencies</h3>
             <p><strong>Skills:</strong> Each ability covers a broad range of capabilities, including skills that a character or a monster can be proficient in. A skill represents a specific aspect of an ability score, and a character's proficiency in a skill demonstrates a focus on that aspect. Your character gains skill proficiencies from their class, background, and sometimes race.</p>
             <p><strong>Proficiency Bonus:</strong> Characters have a proficiency bonus determined by level. This bonus is used for:
             <br> - Attack rolls using weapons you’re proficient with
@@ -141,23 +138,22 @@
             <br> - <strong>Armor and Weapons:</strong> Your race, class, and feats can grant you proficiency with certain types of armor or weapons.
             <br> - <strong>Tools:</strong> Proficiency with a tool allows you to add your proficiency bonus to ability checks you make using that tool.
             <br> - <strong>Languages:</strong> Your race determines languages you know, and your background might grant more.</p>`,
-        6: `<h3>6. Hit Points and Combat Stats (PHB Chapter 1 "Step-by-Step" & Chapter 9 "Combat")</h3>
+        6: `<h3>6. Hit Points and Combat Stats</h3>
             <p><strong>Hit Points (HP):</strong> Your character’s hit points define how tough your character is in combat and other dangerous situations. Your hit points are determined by your Hit Dice (from your class).
             <br> - <strong>At 1st Level:</strong> You start with hit points equal to the highest roll of your Hit Die, plus your Constitution modifier.
             <br> - <strong>Hit Dice:</strong> Represent your character's general toughness and ability to recover from wounds. You have a number of Hit Dice equal to your level. You can spend Hit Dice during a short rest to regain hit points.</p>
             <p><strong>Armor Class (AC):</strong> Your Armor Class represents how well your character avoids being wounded in battle. It's typically 10 + your Dexterity modifier, plus any bonuses from armor, shields, or other magical effects.</p>
             <p><strong>Speed:</strong> Your race determines your base walking speed.</p>
             <p><strong>Initiative:</strong> At the beginning of every combat, you roll for initiative (a Dexterity check) to determine the order of turns.</p>`,
-        7: `<h3>7. Choose Equipment (PHB Chapter 5)</h3>
+        7: `<h3>7. Choose Equipment</h3>
             <p>Your class and background determine your character’s starting equipment. The PHB provides packages of starting equipment for each class. Alternatively, you can choose to start with a number of gold pieces (gp) based on your class and spend it on items from the equipment lists.</p>
             <p>Consider:
             <br> - Weapons and Armor
             <br> - Adventuring Gear (backpack, bedroll, rope, torches, rations, etc.)
             <br> - Tools (thieves' tools, artisan's tools, musical instruments)
             <br> - Holy Symbols or Spellcasting Focuses
-            <br> - Coins and Wealth</p>
-            <p><em>(Placeholder: Detailed lists of equipment, armor, weapons, tools, and their properties (cost, weight, damage, etc.) from the PHB should be referenced here.)</em></p>`,
-        8: `<h3>8. Spellcasting (PHB Chapter 10 & Class Chapters)</h3>
+            <br> - Coins and Wealth</p>`,
+        8: `<h3>8. Spellcasting</h3>
             <p>For many classes, magic is a key part of their power. If your class grants spellcasting, you'll need to understand:
             <br> - <strong>Cantrips:</strong> Simple spells you can cast at will without using a spell slot.
             <br> - <strong>Spell Slots:</strong> Casting a spell requires using a slot of the spell's level or higher. You regain spent spell slots after finishing a long rest (or sometimes short rest for Warlocks).
@@ -165,7 +161,7 @@
             <br> - <strong>Spellcasting Ability:</strong> Each spellcasting class has a specific ability score that powers their magic (e.g., Intelligence for Wizards, Wisdom for Clerics, Charisma for Sorcerers). This affects your spell attack bonus and spell save DC.
             <br> - <strong>Components:</strong> Spells can have Verbal (V), Somatic (S), and Material (M) components. Material components might be consumed or might be a reusable focus.</p>
             <p>If your class does not grant spells at 1st level, this step may provide general information or be skipped for your current choices.</p>`,
-        9: `<h3>9. Review & Finalize (PHB Chapter 4 "Personality and Background")</h3>
+        9: `<h3>9. Review & Finalize</h3>
             <p>At this stage, you bring all the pieces of your character together and add the finishing touches.</p>
             <p>Consider the following:
             <br> - <strong>Character Name:</strong> What is your adventurer called?
