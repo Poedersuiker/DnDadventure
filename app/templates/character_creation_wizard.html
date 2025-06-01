@@ -422,8 +422,10 @@
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             const apiResult = await response.json();
+            // console.log("Raw API Result for Classes:", apiResult);
             if (apiResult.results && apiResult.results.length > 0) {
-                allClassesData = apiResult.results.map(cls => ({ slug: cls.slug, data: cls })); // Store slug and data directly
+                allClassesData = apiResult.results; // CRUCIAL CHANGE: API already returns items as {slug, data}
+                // console.log("Processed allClassesData:", allClassesData);
                 populateClassSelectionUI(allClassesData);
             } else {
                 classSelectionArea.innerHTML = '<p>No classes found or error fetching classes from API.</p>';
@@ -441,12 +443,12 @@
         const ul = document.createElement('ul');
         ul.className = 'class-list'; // Similar styling to race-list
 
-        classesData.forEach(classObj => {
+        classesData.forEach(classObj => { // classObj is { slug: "...", data: { actual_class_object } }
             const li = document.createElement('li');
-            li.textContent = classObj.data.name;
-            li.dataset.classSlug = classObj.slug; // Store slug in data attribute
+            li.textContent = classObj.data.name; // Correctly access name from data property
+            li.dataset.classSlug = classObj.slug;
             li.addEventListener('click', () => {
-                handleClassSelection(classObj.slug, classObj.data);
+                handleClassSelection(classObj.slug, classObj.data); // Pass data property to handleClassSelection
             });
             ul.appendChild(li);
         });
@@ -486,7 +488,7 @@
         if (selectedElement) {
             selectedElement.classList.add('selected-class');
         }
-        console.log("Selected Class:", selectedClassSlug, selectedClassData);
+        // console.log("Selected Class in handleClassSelection:", classSlug, classData);
     }
 
     async function fetchRaces() {
