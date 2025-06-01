@@ -106,6 +106,12 @@ def populate_races_data():
                 # Remove duplicates if any skill was listed as fixed and also an option (unlikely but good practice)
                 final_skill_profs = list(set(all_skill_profs))
 
+                # Extract parent_slug for sub-races
+                parent_slug = None
+                if 'parent_race' in race_data and race_data['parent_race'] and 'url' in race_data['parent_race']:
+                    parent_race_url = race_data['parent_race']['url']
+                    if parent_race_url:
+                        parent_slug = parent_race_url.split('/')[-1]
 
                 new_race = Race(
                     name=race_data['name'], # API 'name' should match model 'name'
@@ -117,6 +123,7 @@ def populate_races_data():
                     size_description=race_data.get('size_description'),
                     languages=json.dumps(languages_list),
                     traits=json.dumps(traits_list),
+                    parent_slug=parent_slug, # Add parent_slug
                     skill_proficiencies=json.dumps(final_skill_profs) # Combined fixed and choosable skills
                 )
                 db.session.add(new_race)
