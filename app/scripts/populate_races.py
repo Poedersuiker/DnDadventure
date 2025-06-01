@@ -111,7 +111,9 @@ def populate_races_data():
                 if 'parent_race' in race_data and race_data['parent_race'] and 'url' in race_data['parent_race']:
                     parent_race_url = race_data['parent_race']['url']
                     if parent_race_url:
-                        parent_slug = parent_race_url.split('/')[-1]
+                        # Add this line to remove a trailing slash if it exists
+                        cleaned_url = parent_race_url.rstrip('/')
+                        parent_slug = cleaned_url.split('/')[-1]
 
                 new_race = Race(
                     name=race_data['name'], # API 'name' should match model 'name'
