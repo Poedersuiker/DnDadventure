@@ -1219,6 +1219,14 @@ footer {
     border-color: #5D4037; /* Darker brown border for selected */
 }
 
+/* Ensure text in background details respects newlines and wraps */
+#wizard-container #background-details-area p,
+#wizard-container #background-details-area div { /* Targeting div for 'Other Benefits' */
+    white-space: pre-wrap;
+    word-wrap: break-word; /* For older browser compatibility, works like overflow-wrap */
+    overflow-wrap: break-word; /* Standard property for breaking long words */
+}
+
 #wizard-container #race-details-area {
    background-color: #fdf5e6; /* Very light parchment for details area */
    border: 1px solid #D1C7B7; /* Light border */
