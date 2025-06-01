@@ -1219,6 +1219,14 @@ footer {
     border-color: #5D4037; /* Darker brown border for selected */
 }
 
+/* Ensure text in background details respects newlines and wraps */
+#wizard-container #background-details-area p,
+#wizard-container #background-details-area div { /* Targeting div for 'Other Benefits' */
+    white-space: pre-wrap;
+    word-wrap: break-word; /* For older browser compatibility, works like overflow-wrap */
+    overflow-wrap: break-word; /* Standard property for breaking long words */
+}
+
 #wizard-container #race-details-area {
    background-color: #fdf5e6; /* Very light parchment for details area */
    border: 1px solid #D1C7B7; /* Light border */
@@ -1403,4 +1411,48 @@ footer {
 /* Ensure wizard-step maintains its general styling */
 #step-3.wizard-step {
     /* any specific overrides for step-3 if necessary, but general .wizard-step styles should apply */
+}
+
+/* Background Selection specific layout */
+#wizard-container #background-selection-container {
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+}
+#wizard-container #background-selection-area {
+    flex: 1;
+}
+#wizard-container #background-details-area {
+    flex: 2; /* Make details area wider */
+    background-color: #fdf5e6; /* Very light parchment for details area */
+    border: 1px solid #D1C7B7; /* Light border */
+    padding: 10px;
+    min-height: 250px; /* Consistent with class details */
+    margin-top: 0; /* Remove margin-top if not needed due to gap */
+}
+
+/* Styles for Background selection lists and details */
+#wizard-container .background-list {
+    list-style-type: none;
+    padding: 0;
+}
+
+#wizard-container .background-list li {
+    padding: 8px;
+    border: 1px solid #A0522D; /* Sienna border */
+    margin-bottom: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s, color 0.3s;
+    border-radius: 2px;
+    background-color: #fff9e6; /* Light parchment background */
+}
+
+#wizard-container .background-list li:hover {
+    background-color: #f5e8c3; /* Slightly darker parchment on hover */
+}
+
+#wizard-container .background-list li.selected-background {
+    background-color: #A0522D; /* Sienna for selected */
+    color: white;
+    border-color: #5D4037; /* Darker brown border for selected */
 }

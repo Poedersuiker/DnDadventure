@@ -113,7 +113,17 @@
         </div>
         <div id="step-4" class="wizard-step" style="display: none;">
             <h2>Step 4: Background Selection</h2>
-            <p>Background selection content will go here.</p>
+            <h3>Choose Your Background</h3>
+            <div id="background-selection-container" style="display: flex; flex-direction: row; gap: 20px;">
+                <div id="background-selection-area" style="flex: 1;">
+                    <p>Loading backgrounds...</p>
+                    <!-- Background list will be populated here by JavaScript -->
+                </div>
+                <div id="background-details-area" style="flex: 2; padding: 10px; border: 1px solid #eee; background-color: #f9f9f9; margin-top: 0;">
+                    <p>Select a background to see details here.</p>
+                    <!-- Selected background details will be shown here by JavaScript -->
+                </div>
+            </div>
         </div>
         <div id="step-5" class="wizard-step" style="display: none;">
             <h2>Step 5: Skills & Proficiencies</h2>
@@ -181,6 +191,12 @@
         { name: 'Wisdom', abbr: 'WIS' },
         { name: 'Charisma', abbr: 'CHA' }
     ];
+
+    // Global variables for Background Selection (Step 4)
+    let allBackgroundsData = null; // Will store array of {slug, data} objects
+    let selectedBackgroundSlug = null; // Changed from selectedBackgroundName
+    const backgroundSelectionArea = document.getElementById('background-selection-area');
+    const backgroundDetailsArea = document.getElementById('background-details-area');
 
     const prevButton = document.getElementById('prev-button'); // This ID is now in wizard-top-controls
     const nextButton = document.getElementById('next-button'); // This ID is now in wizard-top-controls
@@ -336,6 +352,18 @@
             }
         } else if (stepNumber === 3) {
             initializeAbilityScoresStep();
+        } else if (stepNumber === 4) {
+            if (!allBackgroundsData) {
+                fetchBackgrounds();
+            } else {
+                populateBackgroundSelectionUI(allBackgroundsData);
+            }
+            backgroundDetailsArea.innerHTML = '<p>Select a background to see details here.</p>';
+            selectedBackgroundSlug = null; // Changed from selectedBackgroundName
+            const currentlySelectedBackground = backgroundSelectionArea.querySelector('.selected-background');
+            if (currentlySelectedBackground) {
+                currentlySelectedBackground.classList.remove('selected-background'); // This will be handled by dataset attribute now
+            }
         }
 
 
@@ -526,6 +554,118 @@
                 alert(`Error saving ability scores: ${error.message}. Please try again.`);
                 return;
             }
+        } else if (currentStep === 4) {
+            if (!selectedBackgroundSlug) { // Changed from selectedBackgroundName
+                alert('Please select a background before proceeding.');
+                return;
+            }
+            try {
+                const selectedBackgroundObj = allBackgroundsData.find(bg => bg.slug === selectedBackgroundSlug);
+                if (!selectedBackgroundObj || !selectedBackgroundObj.data) {
+                    alert('Could not find details for selected background. Please try selecting again.');
+                    return;
+                }
+                const backgroundDetails = selectedBackgroundObj.data;
+
+                let payload_skills = [];
+                let payload_tools = [];
+                let payload_languages = [];
+                let payload_equipment = "";
+                let payload_featureName = "";
+                let payload_featureDesc = "";
+                let payload_mainDesc = (backgroundDetails.desc && backgroundDetails.desc !== "[No description provided]") ? backgroundDetails.desc : "";
+
+                if (Array.isArray(backgroundDetails.benefits)) {
+                    backgroundDetails.benefits.forEach(benefit => {
+                        const benefitName = benefit.name || "";
+                        const benefitDesc = benefit.desc || "";
+                        const benefitType = benefit.type || "";
+
+                        if (benefitType === "skill_proficiency") {
+                            payload_skills.push(...parseProficiencyString(benefitDesc || benefitName));
+                        } else if (benefitType === "tool_proficiency") {
+                            payload_tools.push(...parseProficiencyString(benefitDesc || benefitName));
+                        } else if (benefitType === "language" || benefitName.toLowerCase().includes("language")) {
+                            payload_languages.push(...parseProficiencyString(benefitDesc || benefitName));
+                        } else if (benefitType === "equipment") {
+                            if (payload_equipment) payload_equipment += "; "; // Append if already exists
+                            payload_equipment += benefitDesc;
+                        } else if (benefitType === "feature" || benefitName.toLowerCase().includes("feature")) {
+                            if (!payload_featureName) { // Take the first one
+                                payload_featureName = benefitName;
+                                payload_featureDesc = benefitDesc;
+                            }
+                        }
+                    });
+                }
+
+                // Fallback to root properties if not adequately populated from benefits
+                if (payload_skills.length === 0 && Array.isArray(backgroundDetails.skill_proficiencies)) {
+                    payload_skills = backgroundDetails.skill_proficiencies.flatMap(s => parseProficiencyString(s));
+                } else if (payload_skills.length === 0 && typeof backgroundDetails.skills_text === 'string') {
+                    payload_skills = parseProficiencyString(backgroundDetails.skills_text);
+                }
+
+
+                if (payload_tools.length === 0 && Array.isArray(backgroundDetails.tool_proficiencies)) {
+                    payload_tools = backgroundDetails.tool_proficiencies.flatMap(t => parseProficiencyString(t));
+                } else if (payload_tools.length === 0 && typeof backgroundDetails.tools_text === 'string') {
+                    payload_tools = parseProficiencyString(backgroundDetails.tools_text);
+                }
+
+                if (payload_languages.length === 0) {
+                    if (Array.isArray(backgroundDetails.languages)) {
+                        payload_languages = backgroundDetails.languages.flatMap(l => parseProficiencyString(l));
+                    } else if (typeof backgroundDetails.languages === 'string' && backgroundDetails.languages) {
+                        payload_languages = parseProficiencyString(backgroundDetails.languages);
+                    } else if (typeof backgroundDetails.languages_text === 'string' && backgroundDetails.languages_text) {
+                        payload_languages = parseProficiencyString(backgroundDetails.languages_text);
+                    }
+                }
+
+                if (!payload_equipment && (backgroundDetails.equipment || backgroundDetails.equipment_text)) {
+                    payload_equipment = backgroundDetails.equipment || backgroundDetails.equipment_text;
+                }
+                if (!payload_featureName && (backgroundDetails.feature || backgroundDetails.feature_name)) {
+                    payload_featureName = backgroundDetails.feature || backgroundDetails.feature_name;
+                }
+                if (!payload_featureDesc && backgroundDetails.feature_desc) {
+                    payload_featureDesc = backgroundDetails.feature_desc;
+                }
+
+                const payload = {
+                    background_slug: selectedBackgroundSlug,
+                    background_name: backgroundDetails.name || 'Unknown Background',
+                    desc: payload_mainDesc,
+                    background_skill_proficiencies: [...new Set(payload_skills)],
+                    background_tool_proficiencies: [...new Set(payload_tools)],
+                    background_languages_fixed: [...new Set(payload_languages)],
+                    background_equipment_string: payload_equipment,
+                    feature_name: payload_featureName,
+                    feature_desc: payload_featureDesc
+                };
+
+                const response = await fetch('/creation_wizard/update_session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ step_key: 'background', payload: payload })
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                }
+                const result = await response.json();
+                if (result.status !== 'success') {
+                    throw new Error(result.message || 'Failed to update session with background selection.');
+                }
+                console.log('Session updated with background:', result.current_character_data);
+                currentStep++;
+                showStep(currentStep);
+            } catch (error) {
+                console.error('Error updating session with background:', error);
+                alert(`Error saving background selection: ${error.message}. Please try again.`);
+                return;
+            }
         } else if (currentStep < totalSteps) { // Original logic for other steps
             currentStep++;
             showStep(currentStep);
@@ -536,6 +676,203 @@
             // finalizeCharacter(); // Assuming a new function for final submission
         }
     });
+
+    // --- BACKGROUND SELECTION (STEP 4) FUNCTIONS ---
+    async function fetchBackgrounds() {
+        try {
+            const response = await fetch('/api/v2/backgrounds/?limit=100'); // Updated URL
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const apiResult = await response.json(); // Changed variable name
+            if (apiResult.results && apiResult.results.length > 0) { // Check for results array
+                allBackgroundsData = apiResult.results; // Assign results array
+                populateBackgroundSelectionUI(allBackgroundsData);
+            } else {
+                backgroundSelectionArea.innerHTML = '<p>No backgrounds found or error fetching backgrounds from API.</p>';
+                allBackgroundsData = []; // Ensure it's an array
+            }
+        } catch (error) {
+            console.error('Error fetching backgrounds from API:', error);
+            backgroundSelectionArea.innerHTML = '<p>Error fetching backgrounds from API. Please try again later.</p>';
+            allBackgroundsData = []; // Ensure it's an array
+        }
+    }
+
+    function populateBackgroundSelectionUI(backgroundsDataArray) { // Parameter is now an array
+        backgroundSelectionArea.innerHTML = ''; // Clear loading message
+        const ul = document.createElement('ul');
+        ul.className = 'background-list';
+
+        backgroundsDataArray.forEach(backgroundObj => { // Iterate array
+            const li = document.createElement('li');
+            li.textContent = backgroundObj.data.name; // Display name from data object
+            li.dataset.backgroundSlug = backgroundObj.slug; // Use slug for dataset
+            li.addEventListener('click', (event) => {
+                handleBackgroundSelection(backgroundObj.slug, backgroundObj.data, event); // Pass slug and data object
+            });
+            ul.appendChild(li);
+        });
+        backgroundSelectionArea.appendChild(ul);
+    }
+
+    function handleBackgroundSelection(backgroundSlug, backgroundDetails, event) {
+        selectedBackgroundSlug = backgroundSlug;
+
+        let displayName = backgroundDetails.name || 'Unknown Background';
+        let mainDesc = (backgroundDetails.desc && backgroundDetails.desc !== "[No description provided]") ? backgroundDetails.desc : "";
+
+        let skills = [];
+        let tools = [];
+        let languages = [];
+        let equipment = "";
+        let featureName = "";
+        let featureDescription = "";
+        let otherBenefits = [];
+
+        if (Array.isArray(backgroundDetails.benefits)) {
+            backgroundDetails.benefits.forEach(benefit => {
+                const benefitName = benefit.name || "";
+                const benefitDesc = benefit.desc || "";
+                const benefitType = benefit.type || "";
+
+                if (benefitType === "skill_proficiency") {
+                    skills.push(benefitDesc || benefitName);
+                } else if (benefitType === "tool_proficiency") {
+                    tools.push(benefitDesc || benefitName);
+                } else if (benefitType === "language" || benefitName.toLowerCase().includes("language")) {
+                    languages.push(benefitDesc || benefitName);
+                } else if (benefitType === "equipment") {
+                    equipment = benefitDesc; // Assuming one primary equipment string from benefits
+                } else if (benefitType === "feature" || benefitName.toLowerCase().includes("feature")) {
+                    if (!featureName) { // Take the first one as the primary feature
+                        featureName = benefitName;
+                        featureDescription = benefitDesc;
+                    } else {
+                        otherBenefits.push(`<strong>${benefitName}:</strong> ${benefitDesc}`);
+                    }
+                } else if (benefitType === "ability_score") {
+                     otherBenefits.push(`<strong>${benefitName}:</strong> ${benefitDesc}`);
+                } else if (benefitType.includes("advancement") || benefitType.includes("connection") || benefitType.includes("memento")) {
+                     otherBenefits.push(`<h5>${benefitName}</h5><p>${benefitDesc}</p>`);
+                } else {
+                    if (benefitName && benefitDesc) {
+                        otherBenefits.push(`<strong>${benefitName}:</strong> ${benefitDesc}`);
+                    } else if (benefitName) {
+                        otherBenefits.push(benefitName);
+                    } else if (benefitDesc) {
+                        otherBenefits.push(benefitDesc);
+                    }
+                }
+            });
+        }
+
+        // Fallbacks if not found in benefits array (using root-level properties)
+        if (skills.length === 0 && Array.isArray(backgroundDetails.skill_proficiencies) && backgroundDetails.skill_proficiencies.length > 0) {
+            skills = backgroundDetails.skill_proficiencies;
+        } else if (skills.length === 0 && backgroundDetails.skills_text) {
+             skills = [backgroundDetails.skills_text];
+        }
+
+        if (tools.length === 0 && Array.isArray(backgroundDetails.tool_proficiencies) && backgroundDetails.tool_proficiencies.length > 0) {
+            tools = backgroundDetails.tool_proficiencies;
+        } else if (tools.length === 0 && backgroundDetails.tools_text) {
+            tools = [backgroundDetails.tools_text];
+        }
+
+        if (languages.length === 0) {
+            if (Array.isArray(backgroundDetails.languages) && backgroundDetails.languages.length > 0) {
+                languages = backgroundDetails.languages;
+            } else if (typeof backgroundDetails.languages === 'string' && backgroundDetails.languages) {
+                languages = [backgroundDetails.languages];
+            } else if (backgroundDetails.languages_text) {
+                 languages = [backgroundDetails.languages_text];
+            }
+        }
+
+        if (!equipment && (backgroundDetails.equipment || backgroundDetails.equipment_text)) {
+            equipment = backgroundDetails.equipment || backgroundDetails.equipment_text;
+        }
+
+        if (!featureName && (backgroundDetails.feature || backgroundDetails.feature_name)) {
+            featureName = backgroundDetails.feature || backgroundDetails.feature_name;
+        }
+        if (!featureDescription && backgroundDetails.feature_desc) {
+            featureDescription = backgroundDetails.feature_desc;
+        }
+
+
+        let detailsHtml = `<h4>${displayName}</h4>`;
+        if (mainDesc) {
+            detailsHtml += `<p><em>${mainDesc}</em></p>`;
+        }
+        if (skills.length > 0) {
+            detailsHtml += `<p><strong>Skill Proficiencies:</strong> ${skills.join('; ')}</p>`;
+        }
+        if (tools.length > 0) {
+            detailsHtml += `<p><strong>Tool Proficiencies:</strong> ${tools.join('; ')}</p>`;
+        }
+        if (languages.length > 0) {
+            detailsHtml += `<p><strong>Languages:</strong> ${languages.join('; ')}</p>`;
+        }
+        if (equipment) {
+            detailsHtml += `<p><strong>Equipment:</strong> ${equipment}</p>`;
+        }
+        if (featureName) {
+            detailsHtml += `<h5>${featureName}</h5><p>${featureDescription || 'No description.'}</p>`;
+        }
+        if (otherBenefits.length > 0) {
+            // Added a simple separator style directly, but a CSS class would be better.
+            detailsHtml += `<br><h5>Other Benefits/Details</h5><div>${otherBenefits.join('<hr style="border:0; border-top:1px dashed #ccc; margin:5px 0;">')}</div>`;
+        }
+
+        backgroundDetailsArea.innerHTML = detailsHtml;
+
+        const allBackgroundElements = backgroundSelectionArea.querySelectorAll('li');
+        allBackgroundElements.forEach(el => el.classList.remove('selected-background'));
+
+        if (event && event.currentTarget) {
+            event.currentTarget.classList.add('selected-background');
+        } else {
+            // Fallback if event.currentTarget is not available (should be, but good to have)
+            const selectedElement = backgroundSelectionArea.querySelector(`li[data-background-slug='${backgroundSlug}']`);
+            if (selectedElement) {
+                selectedElement.classList.add('selected-background');
+            }
+        }
+    }
+    // --- END OF BACKGROUND SELECTION (STEP 4) FUNCTIONS ---
+
+    // Helper function to parse proficiency strings (e.g., "Skill: Stealth, Deception")
+    function parseProficiencyString(profString) {
+        if (!profString || typeof profString !== 'string') return [];
+
+        // Remove common prefixes like "Skills:", "Tools:", "Languages:"
+        let cleanedString = profString.toLowerCase()
+            .replace(/^(skills|tools|languages|proficiencies|skill proficiency|tool proficiency|language proficiency|proficiency with an?|proficiency in an?|proficiency in)\s*:\s*/i, '');
+
+        // Standardize delimiters: "and either", "or", "and" become commas
+        cleanedString = cleanedString.replace(/\s+and\s+either\s+/g, ',')
+                                   .replace(/\s+or\s+/g, ',')
+                                   .replace(/\s+and\s+/g, ',');
+
+        let items = cleanedString.split(',')
+            .map(s => s.trim())
+            .filter(s => s.length > 0)
+            // Capitalize first letter of each word for consistency
+            .map(s => s.split(' ')
+                       .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+                       .join(' '));
+
+        // Handle specific cases like "Two of your choice" or "One type of artisan's tools" - these are choice strings.
+        // For now, the function will return them as is if they don't contain commas after cleaning.
+        // The backend/session update logic should be aware of these choice strings.
+        // If the goal is to *only* extract discrete items, more filtering would be needed here.
+        // For this subtask, we'll keep them if they are the sole item after splitting.
+
+        return [...new Set(items)]; // Remove duplicates
+    }
+
 
     async function fetchClasses() {
         try {
