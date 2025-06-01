@@ -394,17 +394,28 @@ def creation_wizard_update_session():
     session['new_character_data'].update(step_payload)
 
     # Perform server-side logic based on the step and payload
-    if step_key == 'race' and 'race_id' in step_payload:
-        race = Race.query.get(step_payload['race_id'])
+    if step_key == 'race' and 'race_slug' in step_payload: # Check for 'race_slug'
+        race_slug_from_payload = step_payload['race_slug']
+        # Normalize slug: replace hyphens with spaces and convert to title case for matching against Race.name
+        # e.g., "half-elf" -> "Half Elf", "dwarf" -> "Dwarf"
+        race_name_candidate = race_slug_from_payload.replace('-', ' ').title()
+
+        current_app.logger.info(f"Attempting to find race by name candidate: '{race_name_candidate}' from slug '{race_slug_from_payload}'")
+        race = Race.query.filter_by(name=race_name_candidate).first()
+
         if race:
-            race_dict = race.to_dict()
-            session['new_character_data']['race_name'] = race_dict.get('name')
+            race_dict = race.to_dict() # race.to_dict() provides parsed languages, skills etc.
+            session['new_character_data']['race_id'] = race.id # Store the actual DB ID
+            session['new_character_data']['race_name'] = race_dict.get('name') # Should match race.name
             session['new_character_data']['speed'] = race_dict.get('speed')
             session['new_character_data']['languages_from_race'] = race_dict.get('languages', [])
-            session['new_character_data']['race_skill_proficiencies'] = race_dict.get('skill_proficiencies', []) # Store race skills
-            # Racial bonuses are typically applied client-side in stats step or by stats step_data
+            session['new_character_data']['race_skill_proficiencies'] = race_dict.get('skill_proficiencies', [])
+            # The 'race_slug' itself from payload is also implicitly added by the general .update(step_payload) later if desired,
+            # but explicitly adding 'race_id' is crucial.
+            current_app.logger.info(f"Race '{race.name}' (ID: {race.id}) found and session updated.")
         else:
-            return jsonify(status="error", message="Invalid Race ID"), 400
+            current_app.logger.warning(f"Race not found for name candidate: '{race_name_candidate}' (from slug: '{race_slug_from_payload}')")
+            return jsonify(status="error", message=f"Invalid Race Slug: {race_slug_from_payload}"), 400
 
     elif step_key == 'class' and 'class_id' in step_payload:
         s_class = Class.query.get(step_payload['class_id'])

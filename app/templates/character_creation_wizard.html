@@ -88,7 +88,7 @@
     let currentStep = 0; // Start at Step 0 (Introduction)
     const totalSteps = 9; // Last actual step number for choices
 
-    let selectedRaceId = null;
+    let selectedRaceSlug = null;
     let allRacesData = []; // To store all fetched race data
     const raceSelectionArea = document.getElementById('race-selection-area');
     const raceDetailsArea = document.getElementById('race-details-area');
@@ -217,7 +217,7 @@
             }
             // Clear details area and selection if returning to this step
             raceDetailsArea.innerHTML = '<p>Select a race to see details here.</p>';
-            selectedRaceId = null;
+            selectedRaceSlug = null;
             // Potentially clear visual selection from race list if any
             const currentlySelected = raceSelectionArea.querySelector('.selected-race');
             if (currentlySelected) {
@@ -267,7 +267,7 @@
 
     nextButton.addEventListener('click', async () => {
         if (currentStep === 1) {
-            if (!selectedRaceId) {
+            if (!selectedRaceSlug) {
                 alert('Please select a race before proceeding.');
                 return; // Prevent moving to next step
             }
@@ -279,7 +279,7 @@
                     },
                     body: JSON.stringify({
                         step_key: 'race',
-                        payload: { race_id: selectedRaceId }
+                        payload: { race_slug: selectedRaceSlug }
                     }),
                 });
                 if (!response.ok) {
@@ -312,71 +312,171 @@
 
     async function fetchRaces() {
         try {
-            const response = await fetch('/creation_wizard/step_data/race');
+            // Fetching with a large limit to get all races, avoiding pagination for simplicity.
+            const response = await fetch('/api/v2/races/?limit=100');
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            const data = await response.json();
-            if (data.races && data.races.length > 0) {
-                allRacesData = data.races;
+            const data = await response.json(); // This is the API response {count, results, ...}
+            if (data.results && data.results.length > 0) {
+                allRacesData = data.results; // allRacesData now holds items like {id, slug, data}
                 populateRaceSelectionUI(allRacesData);
             } else {
-                raceSelectionArea.innerHTML = '<p>No races found or error fetching races.</p>';
+                raceSelectionArea.innerHTML = '<p>No races found or error fetching races from API.</p>';
+                allRacesData = []; // Clear any old data
             }
         } catch (error) {
-            console.error('Error fetching races:', error);
-            raceSelectionArea.innerHTML = '<p>Error fetching races. Please try again later.</p>';
+            console.error('Error fetching races from API:', error);
+            raceSelectionArea.innerHTML = '<p>Error fetching races from API. Please try again later.</p>';
+            allRacesData = []; // Clear any old data
         }
     }
 
-    function populateRaceSelectionUI(races) {
+    function populateRaceSelectionUI(races) { // races are from api_data.results
         raceSelectionArea.innerHTML = ''; // Clear loading message
         const ul = document.createElement('ul');
-        ul.className = 'race-list'; // Add a class for styling
-        races.forEach(race => {
-            const li = document.createElement('li');
-            li.textContent = `${race.name} (Speed: ${race.speed})`; // Basic display
-            li.dataset.raceId = race.id;
-            li.addEventListener('click', () => handleRaceSelection(race));
-            ul.appendChild(li);
+        ul.className = 'race-list';
+        races.forEach(race => { // race is an object like { id: db_id, slug: "...", data: "JSON_string_here" }
+            try {
+                const raceDetails = JSON.parse(race.data); // Parse the JSON string in race.data
+
+                const li = document.createElement('li');
+                // Display name and speed from parsed details
+                li.textContent = `${raceDetails.name} (Speed: ${raceDetails.speed})`;
+                li.dataset.raceId = race.slug; // Storing slug in dataset.raceId for now
+
+                // Pass both the original race object (containing id, slug, data string)
+                // and the parsed details to handleRaceSelection.
+                // Or, more cleanly, pass the essential parts: race.id and the parsed raceDetails.
+                li.addEventListener('click', () => handleRaceSelection(race.slug, raceDetails));
+                ul.appendChild(li);
+
+            } catch (e) {
+                console.error('Error parsing race data for UI:', race.data, e);
+                // Optionally, create an error list item or skip this race
+                const li = document.createElement('li');
+                li.textContent = `Error displaying race: ${race.slug || 'Unknown'}`;
+                li.style.color = 'red';
+                ul.appendChild(li);
+            }
         });
         raceSelectionArea.appendChild(ul);
     }
 
-    function handleRaceSelection(race) {
-        selectedRaceId = race.id;
+    function handleRaceSelection(raceSlug, raceDetails) {
+        selectedRaceSlug = raceSlug;
 
-        // Update details area
-        let detailsHtml = `<h4>${race.name}</h4>`;
-        detailsHtml += `<p><strong>Speed:</strong> ${race.speed}</p>`;
-        if (race.ability_score_increases) {
-            detailsHtml += '<p><strong>Ability Score Increases:</strong> ';
-            const bonuses = Object.entries(race.ability_score_increases)
-                                .map(([stat, bonus]) => `${stat}: +${bonus}`)
-                                .join(', ');
-            detailsHtml += bonuses ? bonuses : 'None';
-            detailsHtml += '</p>';
+        let detailsHtml = `<h4>${raceDetails.name}</h4>`;
+        detailsHtml += `<p><strong>Speed:</strong> ${raceDetails.speed}</p>`;
+
+        // Ability Score Increases
+        if (raceDetails.ability_score_increases) {
+            let asiDisplay = 'None';
+            try {
+                const asiData = (typeof raceDetails.ability_score_increases === 'string') ?
+                                JSON.parse(raceDetails.ability_score_increases) :
+                                raceDetails.ability_score_increases;
+
+                if (typeof asiData === 'object' && asiData !== null) {
+                    const bonuses = Object.entries(asiData)
+                                        .map(([stat, bonus]) => `${stat.toUpperCase()}: +${bonus}`)
+                                        .join(', ');
+                    if (bonuses) asiDisplay = bonuses;
+                } else {
+                    console.warn("Parsed ASI data is not an object:", asiData);
+                    asiDisplay = typeof raceDetails.ability_score_increases === 'string' ? raceDetails.ability_score_increases : JSON.stringify(asiData);
+                }
+            } catch (e) {
+                console.error('Error parsing ability_score_increases:', raceDetails.ability_score_increases, e);
+                asiDisplay = raceDetails.ability_score_increases; // Show raw string on error
+            }
+            detailsHtml += `<p><strong>Ability Score Increases:</strong> ${asiDisplay}</p>`;
         }
-        if (race.size) {
-            detailsHtml += `<p><strong>Size:</strong> ${race.size}</p>`;
+
+        // Size
+        if (raceDetails.size) {
+            detailsHtml += `<p><strong>Size:</strong> ${raceDetails.size}</p>`;
         }
-        if (race.languages && race.languages.length > 0) {
-            detailsHtml += `<p><strong>Languages:</strong> ${race.languages.join(', ')}</p>`;
+
+        // Languages
+        if (raceDetails.languages) {
+            let langDisplay = 'None';
+            try {
+                const langData = (typeof raceDetails.languages === 'string') ?
+                                 JSON.parse(raceDetails.languages) :
+                                 raceDetails.languages;
+
+                if (Array.isArray(langData) && langData.length > 0) {
+                    langDisplay = langData.join(', ');
+                } else if (Array.isArray(langData) && langData.length === 0) {
+                    langDisplay = 'None known';
+                } else {
+                     console.warn("Parsed language data is not an array or is empty:", langData);
+                     langDisplay = typeof raceDetails.languages === 'string' ? raceDetails.languages : JSON.stringify(langData);
+                }
+            } catch (e) {
+                console.error('Error parsing languages:', raceDetails.languages, e);
+                langDisplay = raceDetails.languages; // Show raw string on error
+            }
+            detailsHtml += `<p><strong>Languages:</strong> ${langDisplay}</p>`;
         }
-        if (race.traits && race.traits.length > 0) {
-            detailsHtml += `<p><strong>Traits:</strong> ${race.traits.join(', ')}</p>`;
+
+        // Traits
+        if (raceDetails.traits) {
+            let traitsDisplay = 'None';
+            try {
+                const traitsData = (typeof raceDetails.traits === 'string') ?
+                                   JSON.parse(raceDetails.traits) :
+                                   raceDetails.traits;
+
+                // Assuming traitsData is an array of strings (names)
+                if (Array.isArray(traitsData) && traitsData.length > 0) {
+                    traitsDisplay = traitsData.join(', ');
+                } else if (Array.isArray(traitsData) && traitsData.length === 0) {
+                    traitsDisplay = 'No specific traits listed';
+                } else {
+                    console.warn("Parsed traits data is not an array or is empty:", traitsData);
+                    traitsDisplay = typeof raceDetails.traits === 'string' ? raceDetails.traits : JSON.stringify(traitsData);
+                }
+            } catch (e) {
+                console.error('Error parsing traits:', raceDetails.traits, e);
+                traitsDisplay = raceDetails.traits; // Show raw string on error
+            }
+            detailsHtml += `<p><strong>Traits:</strong> ${traitsDisplay}</p>`;
         }
-        // Add more details as desired e.g. age_description, alignment_description, skill_proficiencies
+
+        // Skill Proficiencies (example of parsing, may not be displayed directly here)
+        let parsedSkillProficiencies = [];
+        if (raceDetails.skill_proficiencies) {
+            try {
+                const skillsData = (typeof raceDetails.skill_proficiencies === 'string') ?
+                                   JSON.parse(raceDetails.skill_proficiencies) :
+                                   raceDetails.skill_proficiencies;
+                if (Array.isArray(skillsData)) {
+                    parsedSkillProficiencies = skillsData;
+                } else {
+                    console.warn("Parsed skill proficiencies data is not an array:", skillsData);
+                }
+                // Example: detailsHtml += `<p><strong>Skill Proficiencies:</strong> ${parsedSkillProficiencies.join(', ') || 'None'}</p>`;
+            } catch (e) {
+                console.error('Error parsing skill_proficiencies:', raceDetails.skill_proficiencies, e);
+            }
+        }
+        // Storing parsedSkillProficiencies in a global variable or on the selected race object if needed elsewhere
+        // For now, just logging it if needed for debugging.
+        // console.log("Parsed Skill Proficiencies:", parsedSkillProficiencies);
+
+
         raceDetailsArea.innerHTML = detailsHtml;
 
         // Visual selection indication
         const allRaceElements = raceSelectionArea.querySelectorAll('li');
         allRaceElements.forEach(el => el.classList.remove('selected-race'));
-        const selectedElement = raceSelectionArea.querySelector(`li[data-race-id='${race.id}']`);
+        const selectedElement = raceSelectionArea.querySelector(`li[data-race-id='${selectedRaceSlug}']`);
         if (selectedElement) {
             selectedElement.classList.add('selected-race');
         }
-        console.log("Selected Race ID:", selectedRaceId); // For debugging
+        console.log("Selected Race Slug (in handleRaceSelection):", selectedRaceSlug, "Details:", raceDetails);
     }
 
     // Initialize first step
