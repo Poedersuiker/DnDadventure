@@ -561,34 +561,88 @@
             }
             try {
                 const selectedBackgroundObj = allBackgroundsData.find(bg => bg.slug === selectedBackgroundSlug);
-                if (!selectedBackgroundObj || !selectedBackgroundObj.data) { // Check .data as well
+                if (!selectedBackgroundObj || !selectedBackgroundObj.data) {
                     alert('Could not find details for selected background. Please try selecting again.');
                     return;
                 }
                 const backgroundDetails = selectedBackgroundObj.data;
 
-                // Refined payload construction
-                let languagesForPayload = [];
-                if (Array.isArray(backgroundDetails.languages)) {
-                    languagesForPayload = backgroundDetails.languages;
-                } else if (typeof backgroundDetails.languages === 'string' && backgroundDetails.languages) {
-                    languagesForPayload = [backgroundDetails.languages];
-                } else if (typeof backgroundDetails.languages_text === 'string' && backgroundDetails.languages_text) {
-                    // Clean up common prefixes if necessary, though backend might also do this.
-                    languagesForPayload = [backgroundDetails.languages_text.replace(/^Languages:\s*/i, "").trim()];
+                let payload_skills = [];
+                let payload_tools = [];
+                let payload_languages = [];
+                let payload_equipment = "";
+                let payload_featureName = "";
+                let payload_featureDesc = "";
+                let payload_mainDesc = (backgroundDetails.desc && backgroundDetails.desc !== "[No description provided]") ? backgroundDetails.desc : "";
+
+                if (Array.isArray(backgroundDetails.benefits)) {
+                    backgroundDetails.benefits.forEach(benefit => {
+                        const benefitName = benefit.name || "";
+                        const benefitDesc = benefit.desc || "";
+                        const benefitType = benefit.type || "";
+
+                        if (benefitType === "skill_proficiency") {
+                            payload_skills.push(...parseProficiencyString(benefitDesc || benefitName));
+                        } else if (benefitType === "tool_proficiency") {
+                            payload_tools.push(...parseProficiencyString(benefitDesc || benefitName));
+                        } else if (benefitType === "language" || benefitName.toLowerCase().includes("language")) {
+                            payload_languages.push(...parseProficiencyString(benefitDesc || benefitName));
+                        } else if (benefitType === "equipment") {
+                            if (payload_equipment) payload_equipment += "; "; // Append if already exists
+                            payload_equipment += benefitDesc;
+                        } else if (benefitType === "feature" || benefitName.toLowerCase().includes("feature")) {
+                            if (!payload_featureName) { // Take the first one
+                                payload_featureName = benefitName;
+                                payload_featureDesc = benefitDesc;
+                            }
+                        }
+                    });
                 }
 
+                // Fallback to root properties if not adequately populated from benefits
+                if (payload_skills.length === 0 && Array.isArray(backgroundDetails.skill_proficiencies)) {
+                    payload_skills = backgroundDetails.skill_proficiencies.flatMap(s => parseProficiencyString(s));
+                } else if (payload_skills.length === 0 && typeof backgroundDetails.skills_text === 'string') {
+                    payload_skills = parseProficiencyString(backgroundDetails.skills_text);
+                }
+
+
+                if (payload_tools.length === 0 && Array.isArray(backgroundDetails.tool_proficiencies)) {
+                    payload_tools = backgroundDetails.tool_proficiencies.flatMap(t => parseProficiencyString(t));
+                } else if (payload_tools.length === 0 && typeof backgroundDetails.tools_text === 'string') {
+                    payload_tools = parseProficiencyString(backgroundDetails.tools_text);
+                }
+
+                if (payload_languages.length === 0) {
+                    if (Array.isArray(backgroundDetails.languages)) {
+                        payload_languages = backgroundDetails.languages.flatMap(l => parseProficiencyString(l));
+                    } else if (typeof backgroundDetails.languages === 'string' && backgroundDetails.languages) {
+                        payload_languages = parseProficiencyString(backgroundDetails.languages);
+                    } else if (typeof backgroundDetails.languages_text === 'string' && backgroundDetails.languages_text) {
+                        payload_languages = parseProficiencyString(backgroundDetails.languages_text);
+                    }
+                }
+
+                if (!payload_equipment && (backgroundDetails.equipment || backgroundDetails.equipment_text)) {
+                    payload_equipment = backgroundDetails.equipment || backgroundDetails.equipment_text;
+                }
+                if (!payload_featureName && (backgroundDetails.feature || backgroundDetails.feature_name)) {
+                    payload_featureName = backgroundDetails.feature || backgroundDetails.feature_name;
+                }
+                if (!payload_featureDesc && backgroundDetails.feature_desc) {
+                    payload_featureDesc = backgroundDetails.feature_desc;
+                }
 
                 const payload = {
                     background_slug: selectedBackgroundSlug,
                     background_name: backgroundDetails.name || 'Unknown Background',
-                    desc: backgroundDetails.desc || "",
-                    background_skill_proficiencies: Array.isArray(backgroundDetails.skill_proficiencies) ? backgroundDetails.skill_proficiencies : [],
-                    background_tool_proficiencies: Array.isArray(backgroundDetails.tool_proficiencies) ? backgroundDetails.tool_proficiencies : [],
-                    background_languages_fixed: languagesForPayload,
-                    background_equipment_string: backgroundDetails.equipment || backgroundDetails.equipment_text || "",
-                    feature_name: backgroundDetails.feature || backgroundDetails.feature_name || "", // Prioritize 'feature' if it's the name
-                    feature_desc: backgroundDetails.feature_desc || ""
+                    desc: payload_mainDesc,
+                    background_skill_proficiencies: [...new Set(payload_skills)],
+                    background_tool_proficiencies: [...new Set(payload_tools)],
+                    background_languages_fixed: [...new Set(payload_languages)],
+                    background_equipment_string: payload_equipment,
+                    feature_name: payload_featureName,
+                    feature_desc: payload_featureDesc
                 };
 
                 const response = await fetch('/creation_wizard/update_session', {
@@ -662,51 +716,115 @@
         backgroundSelectionArea.appendChild(ul);
     }
 
-    function handleBackgroundSelection(backgroundSlug, backgroundDetails, event) { // slug instead of name
-        selectedBackgroundSlug = backgroundSlug; // Store slug
+    function handleBackgroundSelection(backgroundSlug, backgroundDetails, event) {
+        selectedBackgroundSlug = backgroundSlug;
 
-        let detailsHtml = `<h4>${backgroundDetails.name || 'Unknown Background'}</h4>`;
+        let displayName = backgroundDetails.name || 'Unknown Background';
+        let mainDesc = (backgroundDetails.desc && backgroundDetails.desc !== "[No description provided]") ? backgroundDetails.desc : "";
 
-        // Main Description
-        detailsHtml += `<p><em>${backgroundDetails.desc || 'No description available.'}</em></p>`;
+        let skills = [];
+        let tools = [];
+        let languages = [];
+        let equipment = "";
+        let featureName = "";
+        let featureDescription = "";
+        let otherBenefits = [];
 
-        // Skill Proficiencies
-        let skillsDisplay = 'None';
-        if (Array.isArray(backgroundDetails.skill_proficiencies) && backgroundDetails.skill_proficiencies.length > 0) {
-            skillsDisplay = backgroundDetails.skill_proficiencies.join(', ');
-        } else if (backgroundDetails.skills_text) {
-            skillsDisplay = backgroundDetails.skills_text;
-        } else if (backgroundDetails.proficiencies_text) { // Fallback to a general proficiencies text
-            skillsDisplay = backgroundDetails.proficiencies_text;
+        if (Array.isArray(backgroundDetails.benefits)) {
+            backgroundDetails.benefits.forEach(benefit => {
+                const benefitName = benefit.name || "";
+                const benefitDesc = benefit.desc || "";
+                const benefitType = benefit.type || "";
+
+                if (benefitType === "skill_proficiency") {
+                    skills.push(benefitDesc || benefitName);
+                } else if (benefitType === "tool_proficiency") {
+                    tools.push(benefitDesc || benefitName);
+                } else if (benefitType === "language" || benefitName.toLowerCase().includes("language")) {
+                    languages.push(benefitDesc || benefitName);
+                } else if (benefitType === "equipment") {
+                    equipment = benefitDesc; // Assuming one primary equipment string from benefits
+                } else if (benefitType === "feature" || benefitName.toLowerCase().includes("feature")) {
+                    if (!featureName) { // Take the first one as the primary feature
+                        featureName = benefitName;
+                        featureDescription = benefitDesc;
+                    } else {
+                        otherBenefits.push(`<strong>${benefitName}:</strong> ${benefitDesc}`);
+                    }
+                } else if (benefitType === "ability_score") {
+                     otherBenefits.push(`<strong>${benefitName}:</strong> ${benefitDesc}`);
+                } else if (benefitType.includes("advancement") || benefitType.includes("connection") || benefitType.includes("memento")) {
+                     otherBenefits.push(`<h5>${benefitName}</h5><p>${benefitDesc}</p>`);
+                } else {
+                    if (benefitName && benefitDesc) {
+                        otherBenefits.push(`<strong>${benefitName}:</strong> ${benefitDesc}`);
+                    } else if (benefitName) {
+                        otherBenefits.push(benefitName);
+                    } else if (benefitDesc) {
+                        otherBenefits.push(benefitDesc);
+                    }
+                }
+            });
         }
-        detailsHtml += `<p><strong>Skill Proficiencies:</strong> ${skillsDisplay}</p>`;
 
-        // Tool Proficiencies
-        let toolsDisplay = 'None';
-        if (Array.isArray(backgroundDetails.tool_proficiencies) && backgroundDetails.tool_proficiencies.length > 0) {
-            toolsDisplay = backgroundDetails.tool_proficiencies.join(', ');
-        } else if (backgroundDetails.tools_text) {
-            toolsDisplay = backgroundDetails.tools_text;
+        // Fallbacks if not found in benefits array (using root-level properties)
+        if (skills.length === 0 && Array.isArray(backgroundDetails.skill_proficiencies) && backgroundDetails.skill_proficiencies.length > 0) {
+            skills = backgroundDetails.skill_proficiencies;
+        } else if (skills.length === 0 && backgroundDetails.skills_text) {
+             skills = [backgroundDetails.skills_text];
         }
-        detailsHtml += `<p><strong>Tool Proficiencies:</strong> ${toolsDisplay}</p>`;
 
-        // Languages
-        let languagesDisplay = 'None';
-        if (Array.isArray(backgroundDetails.languages) && backgroundDetails.languages.length > 0) {
-            languagesDisplay = backgroundDetails.languages.join(', ');
-        } else if (typeof backgroundDetails.languages === 'string' && backgroundDetails.languages) {
-            languagesDisplay = backgroundDetails.languages; // Handles "Two of your choice"
-        } else if (backgroundDetails.languages_text) {
-            languagesDisplay = backgroundDetails.languages_text;
+        if (tools.length === 0 && Array.isArray(backgroundDetails.tool_proficiencies) && backgroundDetails.tool_proficiencies.length > 0) {
+            tools = backgroundDetails.tool_proficiencies;
+        } else if (tools.length === 0 && backgroundDetails.tools_text) {
+            tools = [backgroundDetails.tools_text];
         }
-        detailsHtml += `<p><strong>Languages:</strong> ${languagesDisplay}</p>`;
 
-        // Equipment
-        detailsHtml += `<p><strong>Equipment:</strong> ${backgroundDetails.equipment || backgroundDetails.equipment_text || 'None'}</p>`;
+        if (languages.length === 0) {
+            if (Array.isArray(backgroundDetails.languages) && backgroundDetails.languages.length > 0) {
+                languages = backgroundDetails.languages;
+            } else if (typeof backgroundDetails.languages === 'string' && backgroundDetails.languages) {
+                languages = [backgroundDetails.languages];
+            } else if (backgroundDetails.languages_text) {
+                 languages = [backgroundDetails.languages_text];
+            }
+        }
 
-        // Feature Name and Description
-        detailsHtml += `<h5>${backgroundDetails.feature || backgroundDetails.feature_name || 'Feature'}</h5>`; // Use feature_name as fallback for feature
-        detailsHtml += `<p>${backgroundDetails.feature_desc || 'No feature description available.'}</p>`;
+        if (!equipment && (backgroundDetails.equipment || backgroundDetails.equipment_text)) {
+            equipment = backgroundDetails.equipment || backgroundDetails.equipment_text;
+        }
+
+        if (!featureName && (backgroundDetails.feature || backgroundDetails.feature_name)) {
+            featureName = backgroundDetails.feature || backgroundDetails.feature_name;
+        }
+        if (!featureDescription && backgroundDetails.feature_desc) {
+            featureDescription = backgroundDetails.feature_desc;
+        }
+
+
+        let detailsHtml = `<h4>${displayName}</h4>`;
+        if (mainDesc) {
+            detailsHtml += `<p><em>${mainDesc}</em></p>`;
+        }
+        if (skills.length > 0) {
+            detailsHtml += `<p><strong>Skill Proficiencies:</strong> ${skills.join('; ')}</p>`;
+        }
+        if (tools.length > 0) {
+            detailsHtml += `<p><strong>Tool Proficiencies:</strong> ${tools.join('; ')}</p>`;
+        }
+        if (languages.length > 0) {
+            detailsHtml += `<p><strong>Languages:</strong> ${languages.join('; ')}</p>`;
+        }
+        if (equipment) {
+            detailsHtml += `<p><strong>Equipment:</strong> ${equipment}</p>`;
+        }
+        if (featureName) {
+            detailsHtml += `<h5>${featureName}</h5><p>${featureDescription || 'No description.'}</p>`;
+        }
+        if (otherBenefits.length > 0) {
+            // Added a simple separator style directly, but a CSS class would be better.
+            detailsHtml += `<br><h5>Other Benefits/Details</h5><div>${otherBenefits.join('<hr style="border:0; border-top:1px dashed #ccc; margin:5px 0;">')}</div>`;
+        }
 
         backgroundDetailsArea.innerHTML = detailsHtml;
 
@@ -724,6 +842,37 @@
         }
     }
     // --- END OF BACKGROUND SELECTION (STEP 4) FUNCTIONS ---
+
+    // Helper function to parse proficiency strings (e.g., "Skill: Stealth, Deception")
+    function parseProficiencyString(profString) {
+        if (!profString || typeof profString !== 'string') return [];
+
+        // Remove common prefixes like "Skills:", "Tools:", "Languages:"
+        let cleanedString = profString.toLowerCase()
+            .replace(/^(skills|tools|languages|proficiencies|skill proficiency|tool proficiency|language proficiency|proficiency with an?|proficiency in an?|proficiency in)\s*:\s*/i, '');
+
+        // Standardize delimiters: "and either", "or", "and" become commas
+        cleanedString = cleanedString.replace(/\s+and\s+either\s+/g, ',')
+                                   .replace(/\s+or\s+/g, ',')
+                                   .replace(/\s+and\s+/g, ',');
+
+        let items = cleanedString.split(',')
+            .map(s => s.trim())
+            .filter(s => s.length > 0)
+            // Capitalize first letter of each word for consistency
+            .map(s => s.split(' ')
+                       .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+                       .join(' '));
+
+        // Handle specific cases like "Two of your choice" or "One type of artisan's tools" - these are choice strings.
+        // For now, the function will return them as is if they don't contain commas after cleaning.
+        // The backend/session update logic should be aware of these choice strings.
+        // If the goal is to *only* extract discrete items, more filtering would be needed here.
+        // For this subtask, we'll keep them if they are the sole item after splitting.
+
+        return [...new Set(items)]; // Remove duplicates
+    }
+
 
     async function fetchClasses() {
         try {
