@@ -317,98 +317,105 @@ def parse_starting_equipment(starting_equipment_data_json):
                 choice_groups.append({"id": f"choice_{i}", "desc": item_or_choice.get('desc', f"Choose {item_or_choice['choose']}"), "choose": item_or_choice['choose'], "options": options_list})
     return fixed_items, choice_groups
 
-def parse_skill_proficiencies(prof_string_list, num_to_choose_str=None, options_string_raw=None):
+def parse_skill_proficiencies(prof_string_list, num_to_choose_str=None, options_string_raw=None): # options_string_raw and num_to_choose_str are not used for background parsing.
     fixed_skills = set()
-    choice_groups = [] # To hold groups of choices, e.g., {id: "bg_choice_0", description: "Choose one:", options: ["Insight", "Persuasion"]}
+    choice_groups = []
+    choice_group_idx = 0
 
-    # Process class skill choices if options_string_raw and num_to_choose_str are provided
-    if options_string_raw and num_to_choose_str is not None:
-        try:
-            num_choices = int(num_to_choose_str)
-            if num_choices > 0:
-                # Example options_string_raw: "Choose two from Animal Handling, Athletics, Intimidation, Nature, Perception, and Survival"
-                # Or just "Animal Handling, Athletics, Intimidation, Nature, Perception, Survival"
-                actual_options_text = options_string_raw
-                # Remove "Choose X from" prefix if it exists
-                prefix_match = re.match(r"choose (\w+) from\s+", actual_options_text, re.IGNORECASE)
-                if prefix_match:
-                    actual_options_text = actual_options_text[len(prefix_match.group(0)):].strip()
+    # Extract just the skill names from ALL_SKILLS_LIST for "choose any" scenarios
+    all_skill_names = [skill_tuple[0] for skill_tuple in ALL_SKILLS_LIST]
 
-                options = [opt.strip() for opt in actual_options_text.split(',') if opt.strip()]
-                if options: # Only add if there are actual options parsed
-                    # For class skills, there's usually one large group of choices
-                    # We don't create a choice group here, this is handled by returning options and num_choices directly
-                    # This function is becoming more general, so let's just focus on parsing prof_string_list for now
-                    # The class-specific parsing will be handled directly in the route.
-                    pass # Class options will be returned directly, not as a choice_group from this helper
-        except ValueError:
-            current_app.logger.warning(f"Invalid num_to_choose_str: {num_to_choose_str}")
+    if not isinstance(prof_string_list, list):
+        current_app.logger.warning(f"prof_string_list is not a list: {prof_string_list}")
+        return [], []
 
+    for prof_item_str in prof_string_list:
+        if not isinstance(prof_item_str, str):
+            current_app.logger.warning(f"Skipping non-string item in prof_string_list: {prof_item_str}")
+            continue
 
-    # Process background/race style proficiency strings from prof_string_list
-    # This list can contain:
-    # - "Skill Name" (fixed)
-    # - "Choose one from Skill A, Skill B" (choice)
-    # - "Skill A, Skill B" (multiple fixed, if not handled by class specific logic first)
+        original_prof_item_str = prof_item_str # Keep original for descriptions if needed
+        prof_item_str = prof_item_str.strip()
 
-    if isinstance(prof_string_list, list):
-        choice_group_idx = 0
-        for item_idx, prof_item_str in enumerate(prof_string_list):
-            if not isinstance(prof_item_str, str):
-                current_app.logger.warning(f"Skipping non-string item in prof_string_list: {prof_item_str}")
-                continue
+        # Handle "N of your choice" first
+        # e.g., "Two of your choice", "any one skill of your choice"
+        general_choice_match = re.match(r"(one|two|three|four|any one|any two|any three|any four) (skill )?of your choice", prof_item_str, re.IGNORECASE)
+        if general_choice_match:
+            num_word = general_choice_match.group(1).lower()
+            num_map = {"one": 1, "two": 2, "three": 3, "four": 4,
+                       "any one": 1, "any two": 2, "any three": 3, "any four": 4}
+            num_to_pick = num_map.get(num_word, 1)
 
-            prof_item_str_lower = prof_item_str.lower()
+            choice_groups.append({
+                "id": f"bg_choice_group_{choice_group_idx}",
+                "description": original_prof_item_str, # Use original phrasing
+                "options": all_skill_names, # Offer all skills
+                "num_to_pick": num_to_pick
+            })
+            choice_group_idx += 1
+            continue # Move to next proficiency item string
 
-            # Regex to find "Choose X from Y, Z, ..."
-            # It captures "one", "two", etc. and the list of skills.
-            choice_match = re.match(r"choose (one|two|three|four) from (.+)", prof_item_str_lower, re.IGNORECASE)
-            # Regex for "Skill A or Skill B"
-            or_choice_match = re.match(r"(.+) or (.+)", prof_item_str_lower, re.IGNORECASE)
+        # More complex parsing for combined fixed and choice skills
+        # Example: "Culture, History, and either Animal Handling or Persuasion."
+        # Example: "Religion, and either Insight or Persuasion."
+        # Example: "Stealth, and your choice of one other skill" (this is covered by general_choice_match if phrased as "your choice of one other skill")
 
+        # Split the string by " and " or ", and " to separate major components
+        # Use a regex that can handle ", and " as well as just " and "
+        # Positive lookbehind for comma might be tricky; let's split by " and " and then clean up.
+        parts = re.split(r",?\s+and\s+", prof_item_str, flags=re.IGNORECASE)
 
-            if choice_match:
-                num_word = choice_match.group(1)
-                options_str = choice_match.group(2) # e.g., "arcana, history, and investigation"
+        temp_fixed_skills_for_this_item = []
 
-                raw_options_list = options_str.split(',')
-                cleaned_options = []
-                for opt_part in raw_options_list:
-                    # Remove "and " prefix from individual parts if present
-                    processed_opt_part = re.sub(r"^and\s+", "", opt_part.strip(), flags=re.IGNORECASE)
-                    if processed_opt_part: # Ensure option part is not empty
-                        cleaned_options.append(processed_opt_part.title())
+        for i, part in enumerate(parts):
+            part = part.strip().rstrip(',') # Remove trailing comma if any after split
 
-                options = [opt for opt in cleaned_options if opt] # Final filter for any empty strings
+            # Check for "either X or Y" within this part
+            either_or_match = re.match(r"either (.+) or (.+)", part, re.IGNORECASE)
+            # Check for "choose one from X, Y, Z" within this part
+            choose_one_from_match = re.match(r"choose one from (.+)", part, re.IGNORECASE) # Simplified for now
 
-                num_map = {"one": 1, "two": 2, "three": 3, "four": 4} # Consider "any" if it occurs
-                num_to_pick = num_map.get(num_word.lower(), 1) # Use .lower() for num_word matching
-
-                if options:
-                    choice_groups.append({
-                        "id": f"bg_choice_group_{choice_group_idx}", # Explicitly prefix with bg_
-                        "description": f"Choose {num_word.title()} from: {', '.join(options)}",
-                        "options": options,
-                        "num_to_pick": num_to_pick
-                    })
-                    choice_group_idx += 1
-            elif or_choice_match:
-                option1 = or_choice_match.group(1).strip().title()
-                option2 = or_choice_match.group(2).strip().title()
-                options = [option1, option2]
+            if either_or_match:
+                opt1 = either_or_match.group(1).strip().title()
+                opt2 = either_or_match.group(2).strip().title()
                 choice_groups.append({
-                    "id": f"bg_choice_group_{choice_group_idx}", # Explicitly prefix with bg_
-                    "description": f"Choose one: {option1} or {option2}",
-                    "options": options,
+                    "id": f"bg_choice_group_{choice_group_idx}",
+                    "description": f"Choose one: {opt1} or {opt2}",
+                    "options": [opt1, opt2],
                     "num_to_pick": 1
                 })
                 choice_group_idx += 1
+            elif choose_one_from_match:
+                options_str = choose_one_from_match.group(1)
+                options = [opt.strip().title() for opt in options_str.split(',') if opt.strip()]
+                if options:
+                    choice_groups.append({
+                        "id": f"bg_choice_group_{choice_group_idx}",
+                        "description": f"Choose one from: {', '.join(options)}",
+                        "options": options,
+                        "num_to_pick": 1
+                    })
+                    choice_group_idx += 1
             else:
-                # Assume it's a list of fixed skills, potentially comma-separated
-                # e.g., "Religion", or "Insight, Stealth"
-                fixed_from_item = [skill.strip().title() for skill in prof_item_str.split(',') if skill.strip()]
-                for fs in fixed_from_item:
-                    fixed_skills.add(fs)
+                # This part is likely one or more fixed skills, comma-separated
+                # e.g., "Culture, History" or just "Religion"
+                current_part_fixed_skills = [skill.strip().title() for skill in part.split(',') if skill.strip() and skill.strip().lower() != "either"]
+                temp_fixed_skills_for_this_item.extend(current_part_fixed_skills)
+
+        # Add all identified fixed skills from this prof_item_str to the main set
+        for fs in temp_fixed_skills_for_this_item:
+            # Before adding, ensure it's not part of an option in a choice group already found from this *same* prof_item_str
+            # This is tricky. A simpler approach: if the original string was fully parsed into choice groups, temp_fixed_skills_for_this_item might be empty.
+            # If the item was "Religion", temp_fixed_skills_for_this_item = ["Religion"]
+            # If item was "Religion, and either Insight or Persuasion", parts = ["Religion", "either Insight or Persuasion"]
+            #   - "Religion" -> temp_fixed_skills_for_this_item = ["Religion"]
+            #   - "either Insight or Persuasion" -> choice_group.
+            # This seems to work: fixed skills are collected, choices become groups.
+            fixed_skills.add(fs)
+
+    # Post-processing: Remove any fixed_skills that are identical to an option within a choice group if that choice group offers only that one skill (degenerate choice)
+    # Or if a fixed skill is one of the options in a multi-option choice group, it should remain fixed. This logic is complex and might be an over-optimization.
+    # For now, the above should separate things reasonably well.
 
     return list(fixed_skills), choice_groups
 
