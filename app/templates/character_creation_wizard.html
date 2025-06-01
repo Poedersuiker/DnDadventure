@@ -625,6 +625,7 @@
             finalTraits = selectedRaceDetails.traits || [];
         }
 
+        // ASI Processing
         let finalASIObject = { STR: 0, DEX: 0, CON: 0, INT: 0, WIS: 0, CHA: 0, choices: [], other: [] };
         if (parentRaceDetailsData && parentRaceDetailsData.traits) {
             const parentASI = extractASIFromTraits(parentRaceDetailsData.traits);
@@ -646,6 +647,7 @@
         if (finalASIObject.other) finalASIObject.other = [...new Set(finalASIObject.other)];
         const asiDisplay = formatASIDisplay(finalASIObject);
 
+        // Language Processing
         let allLanguageStrings = [];
         if (parentRaceDetailsData && parentRaceDetailsData.traits) {
             const parentLangTrait = parentRaceDetailsData.traits.find(t => t.name && t.name.toLowerCase() === "languages");
@@ -681,7 +683,7 @@
             traits: finalTraits.map(trait => (typeof trait === 'object' && trait.name) ? trait.name : trait).filter(name => name),
             is_subrace: selectedRaceDetails.is_subrace,
             base_slug: raceSlug,
-            parent_slug: (selectedRaceDetails.is_subrace && parentDataFromList) ? parentDataFromList.slug : null // Use parentDataFromList.slug
+            parent_slug: (selectedRaceDetails.is_subrace && parentRaceFullObject) ? parentRaceFullObject.slug : null // Corrected to use parentRaceFullObject.slug
         };
         // selectedRaceSlug is already set at the top of this function.
 
@@ -694,7 +696,7 @@
         const selectedElement = raceSelectionArea.querySelector(`li[data-race-id='${raceSlug}']`);
         if (selectedElement) selectedElement.classList.add('selected-race');
 
-        console.log("Selected Race Slug (in handleRaceSelection):", raceSlug, "Is Subrace:", selectedRaceDetails.is_subrace);
+        console.log("Selected Race Slug (in handleRaceSelection):", raceSlug, "Is Subrace:", selectedRaceDetails.is_subrace, "Final Traits for display:", finalTraits);
     }
 
     // Initialize first step
