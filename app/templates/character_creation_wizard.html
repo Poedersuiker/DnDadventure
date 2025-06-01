@@ -71,14 +71,6 @@
                 <button id="roll-dice-button" class="button">Roll Dice (4d6, drop lowest, 6 times)</button>
             </div>
 
-            <div id="dice-roll-pool-container" class="ability-section" style="display: none;">
-                <h3>Available Dice Rolls (assign one to each ability)</h3>
-                <div id="dice-roll-pool" class="dice-pool">
-                    <!-- Dice rolls will be populated here by JavaScript -->
-                </div>
-                <p id="dice-pool-instructions">Click an ability name below, then click a roll from this pool to assign it.</p>
-            </div>
-
             <div id="ability-tips" class="ability-section tips-section">
                 <h4>Tips & Recommendations</h4>
                 <!-- Tips from race/class will be populated here -->
@@ -108,7 +100,15 @@
                         <!-- Ability rows will be populated here by JavaScript -->
                     </tbody>
                 </table>
-                <p id="table-instructions">Click an ability name to make it active for assignment from the dice pool.</p>
+                <p id="table-instructions">Click an ability name to make it active, then select a score from the dice pool below.</p>
+            </div>
+
+            <div id="dice-roll-pool-container" class="ability-section" style="display: none;">
+                <h3>Available Dice Rolls (assign one to each ability)</h3>
+                <div id="dice-roll-pool" class="dice-pool">
+                    <!-- Dice rolls will be populated here by JavaScript -->
+                </div>
+                <p id="dice-pool-instructions">Click an ability name above, then click a roll from this pool to assign it.</p>
             </div>
         </div>
         <div id="step-4" class="wizard-step" style="display: none;">
@@ -1168,10 +1168,12 @@
     // --- ABILITY SCORE STEP 3 FUNCTIONS ---
 
     function initializeAbilityScoresStep() {
-        console.log("Initializing Step 3: Ability Scores");
+        console.log("Initializing Step 3: Ability Scores - Standard Array Default");
         assignedScores = {};
-        currentDiceRolls = [];
         selectedAbilityForAssignment = null;
+
+        // Set currentDiceRolls to standard array
+        currentDiceRolls = [15, 14, 13, 12, 10, 8];
 
         const diceRollPoolContainer = document.getElementById('dice-roll-pool-container');
         const diceRollPool = document.getElementById('dice-roll-pool');
@@ -1179,16 +1181,15 @@
         const abilityBonusesSummary = document.getElementById('ability-bonuses-summary');
         const rollDiceButton = document.getElementById('roll-dice-button');
 
-        // Clear previous state
-        diceRollPool.innerHTML = '';
-        diceRollPoolContainer.style.display = 'none';
-        document.querySelectorAll('#ability-scores-tbody tr').forEach(row => {
-            row.classList.remove('active-ability-for-assignment');
-            // Cells: 0:Name, 1:Base, 2:Racial, 3:Class, 4:Total, 5:Modifier
-            if (row.cells[1]) row.cells[1].textContent = '-'; // Base Score
-            if (row.cells[4]) row.cells[4].textContent = '-'; // Total Score
-            if (row.cells[5]) row.cells[5].textContent = '-'; // Modifier
+        // Reset table and display standard array scores
+        ABILITIES.forEach(ability => {
+            updateAbilityRowScores(ability.abbr, null); // Reset base score visually to '-' and recalculate
         });
+        displayDiceRolls(); // This will use currentDiceRolls (standard array)
+        diceRollPoolContainer.style.display = 'block'; // Show the pool with standard array
+
+        // Ensure "Roll Dice" button is enabled
+        rollDiceButton.disabled = false;
 
         // Populate Bonuses Summary
         let bonusesHTML = '<p>Loading bonuses...</p>';
@@ -1310,24 +1311,29 @@
     }
 
     function handleRollDiceButtonClick() {
+        if (!confirm("Warning: This will replace the current scores with new random rolls. Are you sure?")) {
+            return;
+        }
+
         assignedScores = {}; // Reset assignments
         currentDiceRolls = [];
-        // Reset base scores in the table visually and prepare for new assignments
+
+        // Reset base scores in the table visually
         ABILITIES.forEach(ability => {
             updateAbilityRowScores(ability.abbr, null); // Resets base to null, recalculates total/mod
         });
-
 
         for (let i = 0; i < 6; i++) {
             currentDiceRolls.push(roll4d6DropLowest());
         }
         currentDiceRolls.sort((a, b) => b - a); // Sort descending for display
 
-        displayDiceRolls();
-        document.getElementById('dice-roll-pool-container').style.display = 'block';
+        document.getElementById('roll-dice-button').disabled = true; // Disable button after rolling
+
+        displayDiceRolls(); // This will clear old buttons and display new ones
+        document.getElementById('dice-roll-pool-container').style.display = 'block'; // Ensure it's visible
         selectedAbilityForAssignment = null; // Clear any active selection
         document.querySelectorAll('#ability-scores-tbody tr').forEach(row => row.classList.remove('active-ability-for-assignment'));
-
     }
 
     function displayDiceRolls() {
