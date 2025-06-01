@@ -29,7 +29,15 @@
 
         <div id="step-1" class="wizard-step" style="display: none;">
             <h2>Step 1: Race Selection</h2>
-            <p>Race selection content will go here.</p>
+            <h3>Choose Your Race</h3>
+            <div id="race-selection-area">
+                <p>Loading races...</p>
+                <!-- Race options will be populated here by JavaScript -->
+            </div>
+            <div id="race-details-area" style="margin-top: 20px; padding: 10px; border: 1px solid #eee;">
+                <p>Select a race to see details here.</p>
+                <!-- Selected race details will be shown here by JavaScript -->
+            </div>
         </div>
         <div id="step-2" class="wizard-step" style="display: none;">
             <h2>Step 2: Class Selection</h2>
@@ -79,6 +87,11 @@
 <script>
     let currentStep = 0; // Start at Step 0 (Introduction)
     const totalSteps = 9; // Last actual step number for choices
+
+    let selectedRaceId = null;
+    let allRacesData = []; // To store all fetched race data
+    const raceSelectionArea = document.getElementById('race-selection-area');
+    const raceDetailsArea = document.getElementById('race-details-area');
 
     const prevButton = document.getElementById('prev-button');
     const nextButton = document.getElementById('next-button');
@@ -196,6 +209,22 @@
             }
         }
 
+        if (stepNumber === 1) {
+            if (allRacesData.length === 0) { // Fetch only if not already fetched
+                fetchRaces();
+            } else {
+                populateRaceSelectionUI(allRacesData); // Repopulate if already fetched
+            }
+            // Clear details area and selection if returning to this step
+            raceDetailsArea.innerHTML = '<p>Select a race to see details here.</p>';
+            selectedRaceId = null;
+            // Potentially clear visual selection from race list if any
+            const currentlySelected = raceSelectionArea.querySelector('.selected-race');
+            if (currentlySelected) {
+                currentlySelected.classList.remove('selected-race');
+            }
+        }
+
 
         // Update PHB description placeholder
         const phbDescContainer = document.getElementById('phb-description');
@@ -236,17 +265,119 @@
         }
     });
 
-    nextButton.addEventListener('click', () => {
-        if (currentStep < totalSteps) { // currentStep can go from 0 up to 9 (totalSteps)
+    nextButton.addEventListener('click', async () => {
+        if (currentStep === 1) {
+            if (!selectedRaceId) {
+                alert('Please select a race before proceeding.');
+                return; // Prevent moving to next step
+            }
+            try {
+                const response = await fetch('/creation_wizard/update_session', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        step_key: 'race',
+                        payload: { race_id: selectedRaceId }
+                    }),
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                }
+                const result = await response.json();
+                if (result.status !== 'success') {
+                    throw new Error(result.message || 'Failed to update session with race selection.');
+                }
+                console.log('Session updated with race:', result.current_character_data);
+                // Only proceed if successful
+                currentStep++;
+                showStep(currentStep);
+            } catch (error) {
+                console.error('Error updating session with race:', error);
+                alert(`Error saving race selection: ${error.message}. Please try again.`);
+                return; // Prevent moving to next step on error
+            }
+        } else if (currentStep < totalSteps) { // Original logic for other steps
             currentStep++;
             showStep(currentStep);
         } else {
-            // Handle Finish action (e.g., submit form)
+            // Handle Finish action (original logic)
             alert('Character creation finished!');
-            // Potentially redirect or submit data
-            // window.location.href = '{{ url_for("main.index") }}';
+            // This needs to be replaced with the actual finalization call
+            // finalizeCharacter(); // Assuming a new function for final submission
         }
     });
+
+    async function fetchRaces() {
+        try {
+            const response = await fetch('/creation_wizard/step_data/race');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            if (data.races && data.races.length > 0) {
+                allRacesData = data.races;
+                populateRaceSelectionUI(allRacesData);
+            } else {
+                raceSelectionArea.innerHTML = '<p>No races found or error fetching races.</p>';
+            }
+        } catch (error) {
+            console.error('Error fetching races:', error);
+            raceSelectionArea.innerHTML = '<p>Error fetching races. Please try again later.</p>';
+        }
+    }
+
+    function populateRaceSelectionUI(races) {
+        raceSelectionArea.innerHTML = ''; // Clear loading message
+        const ul = document.createElement('ul');
+        ul.className = 'race-list'; // Add a class for styling
+        races.forEach(race => {
+            const li = document.createElement('li');
+            li.textContent = `${race.name} (Speed: ${race.speed})`; // Basic display
+            li.dataset.raceId = race.id;
+            li.addEventListener('click', () => handleRaceSelection(race));
+            ul.appendChild(li);
+        });
+        raceSelectionArea.appendChild(ul);
+    }
+
+    function handleRaceSelection(race) {
+        selectedRaceId = race.id;
+
+        // Update details area
+        let detailsHtml = `<h4>${race.name}</h4>`;
+        detailsHtml += `<p><strong>Speed:</strong> ${race.speed}</p>`;
+        if (race.ability_score_increases) {
+            detailsHtml += '<p><strong>Ability Score Increases:</strong> ';
+            const bonuses = Object.entries(race.ability_score_increases)
+                                .map(([stat, bonus]) => `${stat}: +${bonus}`)
+                                .join(', ');
+            detailsHtml += bonuses ? bonuses : 'None';
+            detailsHtml += '</p>';
+        }
+        if (race.size) {
+            detailsHtml += `<p><strong>Size:</strong> ${race.size}</p>`;
+        }
+        if (race.languages && race.languages.length > 0) {
+            detailsHtml += `<p><strong>Languages:</strong> ${race.languages.join(', ')}</p>`;
+        }
+        if (race.traits && race.traits.length > 0) {
+            detailsHtml += `<p><strong>Traits:</strong> ${race.traits.join(', ')}</p>`;
+        }
+        // Add more details as desired e.g. age_description, alignment_description, skill_proficiencies
+        raceDetailsArea.innerHTML = detailsHtml;
+
+        // Visual selection indication
+        const allRaceElements = raceSelectionArea.querySelectorAll('li');
+        allRaceElements.forEach(el => el.classList.remove('selected-race'));
+        const selectedElement = raceSelectionArea.querySelector(`li[data-race-id='${race.id}']`);
+        if (selectedElement) {
+            selectedElement.classList.add('selected-race');
+        }
+        console.log("Selected Race ID:", selectedRaceId); // For debugging
+    }
 
     // Initialize first step
     showStep(currentStep);
@@ -279,6 +410,28 @@
     }
     .navigation-buttons {
         margin-top: 20px;
+    }
+    .race-list {
+        list-style-type: none;
+        padding: 0;
+    }
+    .race-list li {
+        padding: 8px;
+        border: 1px solid #ddd;
+        margin-bottom: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+    .race-list li:hover {
+        background-color: #f0f0f0;
+    }
+    .race-list li.selected-race {
+        background-color: #007bff;
+        color: white;
+        border-color: #0056b3;
+    }
+    #race-details-area {
+       background-color: #f9f9f9; /* Light background for details section */
     }
 </style>
 {% endblock %}
