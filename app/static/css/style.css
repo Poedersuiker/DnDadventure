@@ -1219,12 +1219,20 @@ footer {
     border-color: #5D4037; /* Darker brown border for selected */
 }
 
-#wizard-container #race-details-area,
+#wizard-container #race-details-area {
+   background-color: #fdf5e6; /* Very light parchment for details area */
+   border: 1px solid #D1C7B7; /* Light border */
+   padding: 10px;
+   margin-top: 10px; /* Add some space above details */
+   min-height: 200px;
+}
+
 #wizard-container #class-details-area {
    background-color: #fdf5e6; /* Very light parchment for details area */
    border: 1px solid #D1C7B7; /* Light border */
    padding: 10px;
    margin-top: 10px; /* Add some space above details */
+   min-height: 250px;
 }
 
 #wizard-container .subrace-list {
@@ -1274,6 +1282,6 @@ footer {
 }
 #wizard-container #class-details-area {
     flex: 2; /* Make details area wider */
-    /* background-color, border, padding already defined above */
+    /* background-color, border, padding, min-height already defined above */
     margin-top: 0; /* Remove margin-top if not needed due to gap */
 }
