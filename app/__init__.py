@@ -128,3 +128,6 @@ app.register_blueprint(main_bp) # Register main blueprint
 # Near other blueprint registrations
 from app.admin import admin_bp
 app.register_blueprint(admin_bp)
+
+from .api.open5e_api import open5e_bp # Import Open5e API blueprint
+app.register_blueprint(open5e_bp, url_prefix='/api') # Register Open5e API blueprint

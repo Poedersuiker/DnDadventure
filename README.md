@@ -65,3 +65,89 @@ For Google OAuth to function correctly when the application is behind a reverse 
 ### Flask-Dance Configuration
 -   **Credentials**: The `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are no longer set directly in `app/auth.py`. Instead, they are loaded from `app.config` (which is populated from `config.py`, `instance/config.py`, or environment variables as described in the "Configuration" section). Ensure these are correctly set in your `instance/config.py` or environment variables.
 -   **`authorized_url`**: This is set to `"/authorized"` within the `make_google_blueprint` configuration in `app/auth.py`. Combined with the blueprint's prefix (`/auth/google`), this forms the path part of the redirect URI (`/auth/google/authorized`) that Google uses. The application will correctly construct the full redirect URL based on the incoming request's host and scheme (thanks to `ProxyFix`).
+
+## Local Open5e API Mirror
+
+This feature provides a local copy of the Open5e API data, served directly by this application. This can be useful for offline development, reducing reliance on the external API, or ensuring consistent data for testing.
+
+### Overview
+The application can host a mirror of the Open5e API. Data is first harvested from the public Open5e API and stored in a local SQLite database. Flask endpoints then serve this data, mimicking the structure of the official API.
+
+### Setup and Data Population
+The primary external Python dependency for fetching data is `requests` (which should be listed in `requirements.txt`).
+
+1.  **Create Database Schema:**
+    Before populating the data, you need to create the necessary database tables. Run the following command from the project root:
+    ```bash
+    python app/scripts/create_db.py
+    ```
+    This will create an `instance/open5e.db` SQLite file with the required table structures.
+
+2.  **Populate the Database:**
+    Once the database schema is created, you can harvest data from the live Open5e API:
+    ```bash
+    python app/scripts/harvest_open5e_data.py
+    ```
+    **Note:** This script fetches a large amount of data (potentially hundreds of megabytes) from the live Open5e API and can take a significant amount of time to complete (e.g., 10-30 minutes or more depending on network speed and API responsiveness). Please be patient. It is also advisable to run it during off-peak hours if you are concerned about API rate limits on the public API.
+
+### Running the API
+The local Open5e API endpoints become available automatically when you run the main Flask application:
+```bash
+python run.py [arguments, e.g., --host 0.0.0.0]
+```
+Refer to the "Running the Application" section for more details on `run.py` arguments.
+
+### Running API Tests
+Specific unit tests for the local Open5e API endpoints can be run as follows:
+```bash
+python -m unittest tests.test_open5e_api
+```
+This command executes the tests defined in `tests/test_open5e_api.py`. Ensure you have populated the database at least once, or that the test setup (which includes minimal data population) can successfully create and access `instance/open5e.db`.
+
+### Available API Endpoints
+All local Open5e API endpoints are available under the `/api` URL prefix. List endpoints support `?page=<number>` and `?limit=<number>` query parameters for pagination (defaulting to `page=1`, `limit=10`).
+
+-   **Manifest:**
+    -   `GET /api/v1/manifest/`
+-   **Monsters:**
+    -   `GET /api/v1/monsters/`
+    -   `GET /api/v1/monsters/<slug>/`
+-   **Spells:**
+    -   `GET /api/v2/spells/`
+    -   `GET /api/v2/spells/<slug>/`
+-   **Spell Lists:**
+    -   `GET /api/v1/spelllist/`
+    -   `GET /api/v1/spelllist/<slug>/`
+-   **Documents:**
+    -   `GET /api/v2/documents/`
+    -   `GET /api/v2/documents/<slug>/`
+-   **Backgrounds:**
+    -   `GET /api/v2/backgrounds/`
+    -   `GET /api/v2/backgrounds/<slug>/`
+-   **Planes:**
+    -   `GET /api/v1/planes/`
+    -   `GET /api/v1/planes/<slug>/`
+-   **Sections:**
+    -   `GET /api/v1/sections/`
+    -   `GET /api/v1/sections/<slug>/`
+-   **Feats:**
+    -   `GET /api/v2/feats/`
+    -   `GET /api/v2/feats/<slug>/`
+-   **Conditions:**
+    -   `GET /api/v2/conditions/`
+    -   `GET /api/v2/conditions/<slug>/`
+-   **Races:**
+    -   `GET /api/v2/races/`
+    -   `GET /api/v2/races/<slug>/`
+-   **Classes:**
+    -   `GET /api/v1/classes/`
+    -   `GET /api/v1/classes/<slug>/`
+-   **Magic Items:**
+    -   `GET /api/v1/magicitems/`
+    -   `GET /api/v1/magicitems/<slug>/`
+-   **Weapons:**
+    -   `GET /api/v2/weapons/`
+    -   `GET /api/v2/weapons/<slug>/`
+-   **Armor:**
+    -   `GET /api/v2/armor/`
+    -   `GET /api/v2/armor/<slug>/`
