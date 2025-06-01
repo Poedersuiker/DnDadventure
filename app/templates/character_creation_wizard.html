@@ -10,8 +10,8 @@
         <!-- New Top Controls Area -->
         <div class="wizard-top-controls">
             <div class="left-buttons">
-                <button id="prev-button" style="display: none;">Previous</button>
-                <button id="cancel-button" onclick="window.location.href='{{ url_for('main.index') }}'">Cancel</button>
+                <button id="prev-button" class="button" style="display: none;">Previous</button>
+                <button id="cancel-button" class="button" onclick="window.location.href='{{ url_for('main.index') }}'">Cancel</button>
             </div>
             <div class="step-indicators">
                 <span class="step-indicator" data-step="0">Intro</span>
@@ -26,7 +26,7 @@
                 <span class="step-indicator" data-step="9">9</span>
             </div>
             <div class="right-button-container">
-                <button id="next-button">Next</button>
+                <button id="next-button" class="button">Next</button>
             </div>
         </div>
         <!-- Redundant step-indicators div removed -->
