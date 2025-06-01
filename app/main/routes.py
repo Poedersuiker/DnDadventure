@@ -99,11 +99,12 @@ def creation_wizard():
         # Aggregate proficiencies
         all_skill_proficiencies = set(char_data.get('background_skill_proficiencies', []))
         all_skill_proficiencies.update(char_data.get('class_skill_proficiencies', []))
-        # all_skill_proficiencies.update(char_data.get('race_skill_proficiencies', [])) # Removed race skills
+        all_skill_proficiencies.update(char_data.get('race_skill_proficiencies_from_traits', [])) # Added race skills from traits
 
         all_tool_proficiencies = set(char_data.get('background_tool_proficiencies', [])) # From BG definition
         all_tool_proficiencies.update(char_data.get('tool_proficiencies_class_fixed', [])) # From class definition
         all_tool_proficiencies.update(char_data.get('chosen_tool_proficiencies_from_bg', [])) # Chosen for BG
+        all_tool_proficiencies.update(char_data.get('race_tool_proficiencies_from_traits', [])) # Added race tool profs from traits
 
         all_language_proficiencies = set(char_data.get('languages_from_race', [])) # From Race
         all_language_proficiencies.update(char_data.get('background_languages_fixed', [])) # Fixed from BG
@@ -132,12 +133,20 @@ def creation_wizard():
         db.session.add(new_char)
         db.session.flush() # Flush to get new_char.id for CharacterLevel and Items/Coinage
 
+        class_armor_prof = set(char_data.get('armor_proficiencies', [])) # Assuming this key holds class armor profs
+        race_armor_prof = set(char_data.get('race_armor_proficiencies_from_traits', []))
+        all_armor_proficiencies = sorted(list(class_armor_prof.union(race_armor_prof)))
+
+        class_weapon_prof = set(char_data.get('weapon_proficiencies', [])) # Assuming this key holds class weapon profs
+        race_weapon_prof = set(char_data.get('race_weapon_proficiencies_from_traits', []))
+        all_weapon_proficiencies = sorted(list(class_weapon_prof.union(race_weapon_prof)))
+
         level_1_proficiencies_snapshot = {
             'skills': sorted(list(all_skill_proficiencies)),
             'tools': sorted(list(all_tool_proficiencies)),
             'languages': sorted(list(all_language_proficiencies)),
-            'armor': sorted(list(char_data.get('armor_proficiencies', []))),
-            'weapons': sorted(list(char_data.get('weapon_proficiencies', []))),
+            'armor': all_armor_proficiencies,
+            'weapons': all_weapon_proficiencies,
             'saving_throws': sorted(list(char_data.get('saving_throw_proficiencies', [])))
         }
 
@@ -169,7 +178,11 @@ def creation_wizard():
             armor_class=char_data.get('armor_class_base'),
             hit_dice_rolled="Max HP at L1", # Or actual roll if that was an option
             proficiencies=json.dumps(level_1_proficiencies_snapshot),
-            features_gained=json.dumps(char_data.get('initial_features', ["Initial class features", "Initial race features"])),
+            features_gained=json.dumps(
+                char_data.get('class_features_list', ["Initial Class Features"]) + \
+                char_data.get('race_trait_names', []) or \
+                ["Basic racial and class features"] # Fallback if both class_features_list and race_trait_names are empty or missing
+            ),
             spells_known_ids=json.dumps(char_data.get('chosen_cantrip_ids', []) + char_data.get('chosen_level_1_spell_ids', [])),
             spells_prepared_ids=json.dumps([]), # Initial state for prepared casters
             spell_slots_snapshot=json.dumps(spell_slots_L1),
@@ -431,18 +444,24 @@ def creation_wizard_update_session():
             session['new_character_data']['speed'] = effective_details.get('speed')
             session['new_character_data']['languages_from_race'] = effective_details.get('languages', [])
             session['new_character_data']['ability_score_increases_details'] = effective_details.get('asi') # This is just data now
-            session['new_character_data']['race_trait_names'] = effective_details.get('traits', [])
+
+            # Updated to use new keys from effective_details for traits and proficiencies
+            session['new_character_data']['race_trait_names'] = effective_details.get('trait_names', [])
+            session['new_character_data']['race_skill_proficiencies_from_traits'] = effective_details.get('skill_proficiencies_from_traits', [])
+            session['new_character_data']['race_tool_proficiencies_from_traits'] = effective_details.get('tool_proficiencies_from_traits', [])
+            session['new_character_data']['race_weapon_proficiencies_from_traits'] = effective_details.get('weapon_proficiencies_from_traits', [])
+            session['new_character_data']['race_armor_proficiencies_from_traits'] = effective_details.get('armor_proficiencies_from_traits', [])
+
             session['new_character_data']['is_subrace'] = effective_details.get('is_subrace', False)
             if effective_details.get('is_subrace'):
                 session['new_character_data']['parent_race_slug'] = effective_details.get('parent_slug')
 
-            # Fallback for skill proficiencies for now, as it's not in effective_details
-            # race_model_dict = race.to_dict() # Removed
-            # session['new_character_data']['race_skill_proficiencies'] = race_model_dict.get('skill_proficiencies', []) # Removed
-            session['new_character_data']['race_skill_proficiencies'] = [] # Default to empty list
-            # Also ensure other fields that might be expected directly from race_dict are present if not in effective_details
-            # session['new_character_data'].setdefault('race_document__slug', race_model_dict.get('document__slug')) # Removed
-            session['new_character_data'].setdefault('race_document__slug', None) # Default to None
+            # The old 'race_skill_proficiencies' placeholder is removed as new specific keys are used.
+            # session['new_character_data']['race_skill_proficiencies'] = [] # This line is now removed.
+
+            # Ensure 'race_document__slug' is still handled (though its origin might change if not from a direct race model object)
+            # For now, assuming it might not be in effective_details, so keep default.
+            session['new_character_data'].setdefault('race_document__slug', None)
 
 
         else:
