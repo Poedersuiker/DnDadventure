@@ -38,12 +38,12 @@ def get_paginated_results(table_name, base_url_path):
     total_count = total_count_row[0] if total_count_row else 0
 
     # Get paginated results
-    query = f"SELECT data FROM {table_name} LIMIT ? OFFSET ?"
+    query = f"SELECT slug, data FROM {table_name} LIMIT ? OFFSET ?"
     cursor.execute(query, (limit, offset))
     rows = cursor.fetchall()
     conn.close()
 
-    results_list = [json.loads(row['data']) for row in rows]
+    results_list = [{'slug': row['slug'], 'data': json.loads(row['data'])} for row in rows]
 
     # Construct next and previous URLs
     next_url = None

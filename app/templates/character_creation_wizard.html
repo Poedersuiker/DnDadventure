@@ -29,7 +29,15 @@
 
         <div id="step-1" class="wizard-step" style="display: none;">
             <h2>Step 1: Race Selection</h2>
-            <p>Race selection content will go here.</p>
+            <h3>Choose Your Race</h3>
+            <div id="race-selection-area">
+                <p>Loading races...</p>
+                <!-- Race options will be populated here by JavaScript -->
+            </div>
+            <div id="race-details-area" style="margin-top: 20px; padding: 10px; border: 1px solid #eee;">
+                <p>Select a race to see details here.</p>
+                <!-- Selected race details will be shown here by JavaScript -->
+            </div>
         </div>
         <div id="step-2" class="wizard-step" style="display: none;">
             <h2>Step 2: Class Selection</h2>
@@ -79,6 +87,13 @@
 <script>
     let currentStep = 0; // Start at Step 0 (Introduction)
     const totalSteps = 9; // Last actual step number for choices
+
+    let selectedRaceSlug = null;
+    let allRacesData = []; // Keep this for the flat list from API
+    let hierarchicalRacesData = []; // For the processed list
+    let effectiveRaceDetailsForSession = null;
+    const raceSelectionArea = document.getElementById('race-selection-area');
+    const raceDetailsArea = document.getElementById('race-details-area');
 
     const prevButton = document.getElementById('prev-button');
     const nextButton = document.getElementById('next-button');
@@ -196,6 +211,26 @@
             }
         }
 
+        if (stepNumber === 1) {
+            if (hierarchicalRacesData.length === 0 && allRacesData.length > 0) { // If flat data exists but not hierarchical, process it.
+                 hierarchicalRacesData = preprocessRaces(allRacesData);
+                 populateRaceSelectionUI(hierarchicalRacesData);
+            } else if (hierarchicalRacesData.length === 0) { // No data at all, fetch it.
+                fetchRaces();
+            } else { // Hierarchical data already exists, just repopulate.
+                populateRaceSelectionUI(hierarchicalRacesData);
+            }
+            // Clear details area and selection if returning to this step
+            raceDetailsArea.innerHTML = '<p>Select a race to see details here.</p>';
+            selectedRaceSlug = null;
+            effectiveRaceDetailsForSession = null; // Reset this too
+            // Potentially clear visual selection from race list if any
+            const currentlySelected = raceSelectionArea.querySelector('.selected-race');
+            if (currentlySelected) {
+                currentlySelected.classList.remove('selected-race');
+            }
+        }
+
 
         // Update PHB description placeholder
         const phbDescContainer = document.getElementById('phb-description');
@@ -236,17 +271,433 @@
         }
     });
 
-    nextButton.addEventListener('click', () => {
-        if (currentStep < totalSteps) { // currentStep can go from 0 up to 9 (totalSteps)
+    nextButton.addEventListener('click', async () => {
+        if (currentStep === 1) {
+            if (!selectedRaceSlug) {
+                alert('Please select a race before proceeding.');
+                return; // Prevent moving to next step
+            }
+            try {
+                let payload_data = { // Moved declaration here
+                    race_slug: selectedRaceSlug
+                };
+
+                if (effectiveRaceDetailsForSession) {
+                    payload_data.effective_race_details = effectiveRaceDetailsForSession;
+                }
+
+                const response = await fetch('/creation_wizard/update_session', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        step_key: 'race',
+                        payload: payload_data // Use the declared variable
+                    }),
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                }
+                const result = await response.json();
+                if (result.status !== 'success') {
+                    throw new Error(result.message || 'Failed to update session with race selection.');
+                }
+                console.log('Session updated with race:', result.current_character_data);
+                // Only proceed if successful
+                currentStep++;
+                showStep(currentStep);
+            } catch (error) {
+                console.error('Error updating session with race:', error);
+                alert(`Error saving race selection: ${error.message}. Please try again.`);
+                return; // Prevent moving to next step on error
+            }
+        } else if (currentStep < totalSteps) { // Original logic for other steps
             currentStep++;
             showStep(currentStep);
         } else {
-            // Handle Finish action (e.g., submit form)
+            // Handle Finish action (original logic)
             alert('Character creation finished!');
-            // Potentially redirect or submit data
-            // window.location.href = '{{ url_for("main.index") }}';
+            // This needs to be replaced with the actual finalization call
+            // finalizeCharacter(); // Assuming a new function for final submission
         }
     });
+
+    async function fetchRaces() {
+        try {
+            const response = await fetch('/api/v2/races/?limit=200'); // Increased limit just in case
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const apiResult = await response.json();
+            if (apiResult.results && apiResult.results.length > 0) {
+                allRacesData = apiResult.results; // Store the flat list
+                hierarchicalRacesData = preprocessRaces(allRacesData); // Process it
+                populateRaceSelectionUI(hierarchicalRacesData); // Pass hierarchical data to UI
+            } else {
+                raceSelectionArea.innerHTML = '<p>No races found or error fetching races from API.</p>';
+                allRacesData = [];
+                hierarchicalRacesData = [];
+            }
+        } catch (error) {
+            console.error('Error fetching races from API:', error);
+            raceSelectionArea.innerHTML = '<p>Error fetching races from API. Please try again later.</p>';
+            allRacesData = [];
+            hierarchicalRacesData = [];
+        }
+    }
+
+    function preprocessRaces(flatRacesList) {
+        const parents = [];
+        const childrenByParentSlug = {}; // To group children before assigning
+
+        // First, separate parents and children, and parse race.data for easier access
+        const processedList = flatRacesList.map(race => ({
+            slug: race.slug, // Keep slug at top level
+            details: race.data, // Keep original parsed data object
+            // Add a placeholder for subraces list for parent races
+            subraces_list: []
+        }));
+
+        processedList.forEach(race => {
+            if (race.details.is_subrace && race.details.subrace_of) {
+                // It's a subrace
+                const parentSlug = race.details.subrace_of; // This is usually just the slug string from API
+                if (!childrenByParentSlug[parentSlug]) {
+                    childrenByParentSlug[parentSlug] = [];
+                }
+                childrenByParentSlug[parentSlug].push(race);
+            } else if (!race.details.is_subrace) {
+                // It's a parent race
+                parents.push(race);
+            }
+        });
+
+        // Now, attach children to their parents
+        parents.forEach(parent => {
+            if (childrenByParentSlug[parent.slug]) {
+                parent.subraces_list = childrenByParentSlug[parent.slug].sort((a, b) => a.details.name.localeCompare(b.details.name)); // Sort subraces by name
+            }
+        });
+
+        // Sort parent races by name
+        return parents.sort((a, b) => a.details.name.localeCompare(b.details.name));
+    }
+
+    function populateRaceSelectionUI(hierarchicalRaces) { // Receives hierarchical data
+        raceSelectionArea.innerHTML = ''; // Clear loading message
+        const mainUl = document.createElement('ul');
+        mainUl.className = 'race-list';
+
+        hierarchicalRaces.forEach(parentRace => {
+            // Parent Race LI
+            const parentRaceLi = document.createElement('li');
+            parentRaceLi.className = 'parent-race'; // Add class for styling parent races
+
+            const parentRaceDetails = parentRace.details;
+            let parentSpeed = null;
+            if (parentRaceDetails && parentRaceDetails.traits) {
+                parentSpeed = extractSpeedFromTraits(parentRaceDetails.traits);
+            }
+            parentRaceLi.textContent = `${parentRaceDetails.name} (Speed: ${parentSpeed !== null ? parentSpeed : 'N/A'})`;
+            parentRaceLi.dataset.raceId = parentRace.slug; // Store slug
+            parentRaceLi.addEventListener('click', (event) => {
+                event.stopPropagation(); // Prevent click from bubbling to parent if parent is also a LI from somewhere else (though not in this structure)
+                handleRaceSelection(parentRace.slug, parentRaceDetails);
+            });
+            mainUl.appendChild(parentRaceLi);
+
+            // Subraces UL
+            if (parentRace.subraces_list && parentRace.subraces_list.length > 0) {
+                const subraceUl = document.createElement('ul');
+                subraceUl.className = 'subrace-list'; // For styling indentation
+
+                parentRace.subraces_list.forEach(subrace => {
+                    const subraceLi = document.createElement('li');
+                    subraceLi.className = 'subrace-item'; // Add class for styling subraces
+
+                    const subraceDetails = subrace.details;
+                    let subraceSpeed = null;
+                    if (subraceDetails && subraceDetails.traits) {
+                        subraceSpeed = extractSpeedFromTraits(subraceDetails.traits);
+                    }
+                    // Display subrace name. Speed might be inherited or overridden,
+                    // for now, just display its own extracted speed. Trait combination is for handleRaceSelection.
+                    subraceLi.textContent = `${subraceDetails.name} (Speed: ${subraceSpeed !== null ? subraceSpeed : 'N/A'})`;
+                    subraceLi.dataset.raceId = subrace.slug; // Store slug
+
+                    subraceLi.addEventListener('click', (event) => {
+                        event.stopPropagation(); // Important to prevent parent LI's click handler
+                        handleRaceSelection(subrace.slug, subraceDetails);
+                    });
+                    subraceUl.appendChild(subraceLi);
+                });
+                parentRaceLi.appendChild(subraceUl); // Append subrace list to parent's LI
+            }
+        });
+        raceSelectionArea.appendChild(mainUl);
+    }
+
+    function extractSpeedFromTraits(traitsArray) {
+        if (!Array.isArray(traitsArray)) {
+            return null;
+        }
+        const speedTrait = traitsArray.find(trait => trait.name && trait.name.toLowerCase() === "speed");
+        if (speedTrait && speedTrait.desc) {
+            const match = speedTrait.desc.match(/(\d+)\s*feet/);
+            if (match && match[1]) {
+                return parseInt(match[1], 10);
+            }
+        }
+        return null;
+    }
+
+    function extractASIFromTraits(traitsArray) {
+        let asiResult = { STR: 0, DEX: 0, CON: 0, INT: 0, WIS: 0, CHA: 0, choices: [], other: [] };
+        if (!Array.isArray(traitsArray)) {
+            return asiResult; // Return empty structure
+        }
+
+        const asiTraits = traitsArray.filter(trait =>
+            trait.name && (trait.name.toLowerCase() === "ability score increase" || trait.name.toLowerCase() === "ability score increases")
+        );
+
+        if (asiTraits.length === 0) {
+            return asiResult;
+        }
+
+        const statRegex = /(Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+score\s+increases?\s+by\s+(\d+)/gi;
+        const allScoresRegex = /all\s+your\s+ability\s+scores\s+increase\s+by\s+(\d+)/i;
+        const chooseTwoPlusOneRegex = /(two|2)\s+different\s+ability\s+scores\s+of\s+your\s+choice\s+increase\s+by\s+1/i;
+        const chooseOnePlusTwoOneRegex = /one\s+ability\s+score\s+of\s+your\s+choice\s+increases\s+by\s+2,\s+and\s+a\s+different\s+score\s+of\s+your\s+choice\s+increases\s+by\s+1/i;
+        const chooseOneRegex = /choice\s+of\s+any\s+one\s+ability\s+score\s+.*?\s*\+\s*(\d+)/i; // e.g. choice of any one ability score (+1)
+        const chooseAnyRegex = /any\s+ability\s+score.*?increases\s+by\s+(\d+)/i; // e.g. any ability score of your choice increases by 2
+
+        asiTraits.forEach(trait => {
+            if (!trait.desc) return;
+            let desc = trait.desc;
+            let matchedSpecificBonus = false;
+
+            // Check for "All scores"
+            let allMatch = desc.match(allScoresRegex);
+            if (allMatch) {
+                const bonus = parseInt(allMatch[1], 10);
+                ["STR", "DEX", "CON", "INT", "WIS", "CHA"].forEach(stat => asiResult[stat] += bonus);
+                matchedSpecificBonus = true;
+                return; // Assume this trait is fully processed
+            }
+
+            // Check for specific stat increases
+            let specificMatch;
+            while ((specificMatch = statRegex.exec(desc)) !== null) {
+                const stat = specificMatch[1].substring(0, 3).toUpperCase();
+                const bonus = parseInt(specificMatch[2], 10);
+                if (asiResult.hasOwnProperty(stat)) {
+                    asiResult[stat] += bonus;
+                }
+                matchedSpecificBonus = true;
+            }
+
+            // Check for choice-based increases if no specific bonuses were parsed from this description
+            // This avoids double counting if a description contains both specific and choice (unlikely but possible)
+            if (chooseTwoPlusOneRegex.test(desc)) {
+                asiResult.choices.push("Choose two different scores +1");
+                matchedSpecificBonus = true;
+            }
+            if (chooseOnePlusTwoOneRegex.test(desc)) {
+                asiResult.choices.push("Choose one score +2, and a different score +1");
+                matchedSpecificBonus = true;
+            }
+
+            let chooseOneMatch = desc.match(chooseOneRegex);
+            if (chooseOneMatch) {
+                asiResult.choices.push(`Choose one score +${chooseOneMatch[1]}`);
+                matchedSpecificBonus = true;
+            }
+
+            let chooseAnyMatch = desc.match(chooseAnyRegex);
+            if (chooseAnyMatch && !chooseOneMatch) { // Avoid double-counting with more specific "choice of any one"
+                asiResult.choices.push(`Choose any score +${chooseAnyMatch[1]}`);
+                matchedSpecificBonus = true;
+            }
+
+
+            if (!matchedSpecificBonus && desc) {
+                // If no specific patterns matched, add the description to 'other' for manual review or direct display
+                asiResult.other.push(desc);
+            }
+        });
+
+        return asiResult;
+    }
+
+    // New helper to parse a single language description string
+    function parseLanguageDescription(descriptionString) {
+        if (!descriptionString) return [];
+
+        let extractedLangs = [];
+        // Attempt to extract languages from "speak, read, and write X, Y, and Z."
+        let specificPhraseMatch = descriptionString.match(/speak, read, and write\s+([^.]+)\.?/i);
+
+        if (specificPhraseMatch && specificPhraseMatch[1]) {
+            const langArray = specificPhraseMatch[1].split(/,?\s+and\s+|\s*,\s*/);
+            extractedLangs = langArray.map(lang => lang.trim()).filter(lang => lang.length > 0 && lang !== "choice of any"); // Filter out generic "choice" phrases too soon
+        }
+
+        // Fallback or additive: check for known languages if specific phrase parsing isn't exhaustive or if it's a general text
+        const knownLanguages = ["Common", "Dwarvish", "Elvish", "Giant", "Gnomish", "Goblin", "Halfling", "Orc", "Abyssal", "Celestial", "Draconic", "Deep Speech", "Infernal", "Primordial", "Sylvan", "Undercommon"];
+        knownLanguages.forEach(lang => {
+            if (new RegExp(`\\b${lang}\\b`, 'i').test(descriptionString) && !extractedLangs.includes(lang)) {
+                extractedLangs.push(lang);
+            }
+        });
+
+        // Handle "choose one/two" type phrases more generically
+        if (descriptionString.toLowerCase().includes("choose one") || descriptionString.toLowerCase().includes("choice of one")) {
+            if (!extractedLangs.some(l => l.toLowerCase().includes("choose one"))) {
+                 extractedLangs.push("Choose one additional language");
+            }
+        }
+        if (descriptionString.toLowerCase().includes("choose two") || descriptionString.toLowerCase().includes("choice of two")) {
+             if (!extractedLangs.some(l => l.toLowerCase().includes("choose two"))) {
+                extractedLangs.push("Choose two additional languages");
+            }
+        }
+
+        return extractedLangs;
+    }
+
+    function formatASIDisplay(asiObject) {
+        if (!asiObject) return "None";
+        let parts = [];
+        ["STR", "DEX", "CON", "INT", "WIS", "CHA"].forEach(stat => {
+            if (asiObject[stat] && asiObject[stat] !== 0) {
+                parts.push(`${stat}: ${asiObject[stat] > 0 ? '+' : ''}${asiObject[stat]}`);
+            }
+        });
+        if (asiObject.choices && asiObject.choices.length > 0) {
+            parts = parts.concat(asiObject.choices);
+        }
+        // Include 'other' descriptions if no specific bonuses or choices were found,
+        // or if you always want to show them. For now, show if parts is empty.
+        if (parts.length === 0 && asiObject.other && asiObject.other.length > 0) {
+            parts = parts.concat(asiObject.other);
+        } else if (asiObject.other && asiObject.other.length > 0) {
+            // Optionally, always add 'other' if it exists, or handle it differently
+            // parts.push("Additional ASI details: " + asiObject.other.join('; '));
+        }
+
+
+        return parts.length > 0 ? parts.join(', ') : "None";
+    }
+
+    function handleRaceSelection(raceSlug, selectedRaceDetails) {
+        selectedRaceSlug = raceSlug; // global variable for the selected slug
+
+        let finalTraits = [];
+        let finalName = selectedRaceDetails.name;
+        let parentRaceDetailsData = null; // To store parent's .data object
+        let parentRaceFullObject = null; // To store the full parent object {slug, details, subraces_list}
+
+        if (selectedRaceDetails.is_subrace && selectedRaceDetails.subrace_of) {
+            const parentSlug = selectedRaceDetails.subrace_of;
+            parentRaceFullObject = allRacesData.find(r => r.slug === parentSlug); // Find full parent object
+            if (parentRaceFullObject) {
+                parentRaceDetailsData = parentRaceFullObject.data;
+                finalName = `${parentRaceDetailsData.name} (${selectedRaceDetails.name})`;
+
+                const parentActualTraits = parentRaceDetailsData.traits || [];
+                const subraceTraits = selectedRaceDetails.traits || [];
+                let combinedTraitsMap = new Map();
+                parentActualTraits.forEach(trait => {
+                    if (trait.name) combinedTraitsMap.set(trait.name, trait);
+                });
+                subraceTraits.forEach(trait => {
+                    if (trait.name) combinedTraitsMap.set(trait.name, trait);
+                });
+                finalTraits = Array.from(combinedTraitsMap.values());
+            } else {
+                console.warn(`Parent race with slug '${parentSlug}' not found for subrace '${raceSlug}'. Using subrace traits only.`);
+                finalTraits = selectedRaceDetails.traits || [];
+            }
+        } else {
+            finalTraits = selectedRaceDetails.traits || [];
+        }
+
+        // ASI Processing
+        let finalASIObject = { STR: 0, DEX: 0, CON: 0, INT: 0, WIS: 0, CHA: 0, choices: [], other: [] };
+        if (parentRaceDetailsData && parentRaceDetailsData.traits) {
+            const parentASI = extractASIFromTraits(parentRaceDetailsData.traits);
+            Object.keys(parentASI).forEach(key => {
+                if (typeof parentASI[key] === 'number') finalASIObject[key] += parentASI[key];
+                else if (Array.isArray(parentASI[key])) finalASIObject[key] = finalASIObject[key].concat(parentASI[key]);
+            });
+        }
+        const selectedRaceASI = extractASIFromTraits(selectedRaceDetails.traits);
+        Object.keys(selectedRaceASI).forEach(key => {
+            if (typeof selectedRaceASI[key] === 'number') finalASIObject[key] += selectedRaceASI[key];
+            else if (Array.isArray(selectedRaceASI[key])) {
+                selectedRaceASI[key].forEach(item => {
+                    if (!finalASIObject[key].includes(item)) finalASIObject[key].push(item);
+                });
+            }
+        });
+        if (finalASIObject.choices) finalASIObject.choices = [...new Set(finalASIObject.choices)];
+        if (finalASIObject.other) finalASIObject.other = [...new Set(finalASIObject.other)];
+        const asiDisplay = formatASIDisplay(finalASIObject);
+
+        // Language Processing
+        let allLanguageStrings = [];
+        if (parentRaceDetailsData && parentRaceDetailsData.traits) {
+            const parentLangTrait = parentRaceDetailsData.traits.find(t => t.name && t.name.toLowerCase() === "languages");
+            if (parentLangTrait && parentLangTrait.desc) allLanguageStrings = allLanguageStrings.concat(parseLanguageDescription(parentLangTrait.desc));
+        }
+        const selectedRaceLangTrait = selectedRaceDetails.traits ? selectedRaceDetails.traits.find(t => t.name && t.name.toLowerCase() === "languages") : null;
+        if (selectedRaceLangTrait && selectedRaceLangTrait.desc) allLanguageStrings = allLanguageStrings.concat(parseLanguageDescription(selectedRaceLangTrait.desc));
+
+        const uniqueLanguages = [...new Set(allLanguageStrings.filter(lang => lang))];
+        const languagesDisplay = uniqueLanguages.length > 0 ? uniqueLanguages.join(', ') : "None specified";
+
+        const speed = extractSpeedFromTraits(finalTraits);
+
+        let detailsHtml = `<h4>${finalName}</h4>`;
+        detailsHtml += `<p><strong>Speed:</strong> ${speed !== null ? speed + ' feet' : 'N/A'}</p>`;
+        detailsHtml += `<p><strong>Ability Score Increases:</strong> ${asiDisplay}</p>`;
+        detailsHtml += `<p><strong>Languages:</strong> ${languagesDisplay}</p>`;
+
+        if (Array.isArray(finalTraits) && finalTraits.length > 0) {
+            const traitNamesDisplay = finalTraits.map(trait => (typeof trait === 'object' && trait.name) ? trait.name : trait).filter(name => name).join(', ');
+            detailsHtml += `<p><strong>Traits:</strong> ${traitNamesDisplay || 'No specific traits listed'}</p>`;
+        } else {
+            detailsHtml += `<p><strong>Traits:</strong> No specific traits listed</p>`;
+        }
+
+        if (selectedRaceDetails.size) detailsHtml += `<p><strong>Size:</strong> ${selectedRaceDetails.size}</p>`;
+
+        effectiveRaceDetailsForSession = {
+            name: finalName,
+            speed: speed,
+            asi: finalASIObject,
+            languages: uniqueLanguages,
+            traits: finalTraits.map(trait => (typeof trait === 'object' && trait.name) ? trait.name : trait).filter(name => name),
+            is_subrace: selectedRaceDetails.is_subrace,
+            base_slug: raceSlug,
+            parent_slug: (selectedRaceDetails.is_subrace && parentRaceFullObject) ? parentRaceFullObject.slug : null // Corrected to use parentRaceFullObject.slug
+        };
+        // selectedRaceSlug is already set at the top of this function.
+
+        console.log("Effective details for session:", effectiveRaceDetailsForSession);
+
+        raceDetailsArea.innerHTML = detailsHtml;
+
+        const allRaceElements = raceSelectionArea.querySelectorAll('li');
+        allRaceElements.forEach(el => el.classList.remove('selected-race'));
+        const selectedElement = raceSelectionArea.querySelector(`li[data-race-id='${raceSlug}']`);
+        if (selectedElement) selectedElement.classList.add('selected-race');
+
+        console.log("Selected Race Slug (in handleRaceSelection):", raceSlug, "Is Subrace:", selectedRaceDetails.is_subrace, "Final Traits for display:", finalTraits);
+    }
 
     // Initialize first step
     showStep(currentStep);
@@ -279,6 +730,41 @@
     }
     .navigation-buttons {
         margin-top: 20px;
+    }
+    .race-list {
+        list-style-type: none;
+        padding: 0;
+    }
+    .race-list li {
+        padding: 8px;
+        border: 1px solid #ddd;
+        margin-bottom: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+    .race-list li:hover {
+        background-color: #f0f0f0;
+    }
+    .race-list li.selected-race {
+        background-color: #007bff;
+        color: white;
+        border-color: #0056b3;
+    }
+    #race-details-area {
+       background-color: #f9f9f9; /* Light background for details section */
+    }
+    .subrace-list {
+        margin-left: 20px; /* Indent subraces */
+        padding-left: 10px;
+        border-left: 1px solid #ccc; /* Optional: visual indicator for nesting */
+    }
+    .parent-race {
+        /* Optional: styles for parent races if needed */
+        font-weight: bold; /* Example: make parent races bold */
+    }
+    .subrace-item {
+        /* Optional: styles for subrace items if needed */
+        font-weight: normal;
     }
 </style>
 {% endblock %}
