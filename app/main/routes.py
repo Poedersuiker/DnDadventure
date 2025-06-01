@@ -188,6 +188,30 @@ def creation_wizard():
             spell_slots_snapshot=json.dumps(spell_slots_L1),
             created_at=datetime.utcnow()
         )
+
+        # HP and AC calculation using final ability scores
+        con_score = ability_scores_final.get('CON', 10)
+        con_mod = (con_score - 10) // 2
+        hit_die_str = char_data.get('hit_die', 'd8') # From class selection step
+        try:
+            hit_die_val = int(hit_die_str[1:])
+        except (ValueError, TypeError, IndexError):
+            current_app.logger.error(f"Invalid hit_die format '{hit_die_str}' during final save. Defaulting to 8.")
+            hit_die_val = 8
+
+        max_hp_at_level_1 = hit_die_val + con_mod
+        new_char_level_1.max_hp = max_hp_at_level_1 # Set calculated max_hp
+        new_char_level_1.hp = max_hp_at_level_1 # Set current hp to max_hp for L1
+
+        dex_score = ability_scores_final.get('DEX', 10)
+        dex_mod = (dex_score - 10) // 2
+        base_ac_calculated = 10 + dex_mod # This doesn't account for armor from equipment yet
+
+        # Allow armor_class_base from session (e.g. if calculated in a later step with armor)
+        # to override this basic calculation. If 'armor_class_base' is not in char_data, use the calculated one.
+        new_char_level_1.armor_class = char_data.get('armor_class_base', base_ac_calculated)
+
+
         db.session.add(new_char_level_1)
 
         # Process Equipment and Coinage from 'final_equipment_objects'
@@ -283,7 +307,12 @@ def creation_wizard_step_data(step_name):
         #         data['racial_bonuses'] = race.to_dict().get('ability_score_increases', {}) # Removed
         #     else: data['racial_bonuses'] = {} # Removed
         # else: data['racial_bonuses'] = {} # Removed
-        data['racial_bonuses'] = {} # Changed: Set directly
+        # data['racial_bonuses'] = {} # Changed: Set directly - This line is now part of the new structure below
+        data = {
+            'standard_array': [15, 14, 13, 12, 10, 8], # Standard array might be an alternative method in future
+            'racial_bonuses': {}, # Client-side handles this primarily from effectiveRaceDetailsForSession
+            'class_ability_suggestions': {} # Placeholder for future server-side class tips
+        }
     elif step_name == 'background':
         data = {'backgrounds': sample_backgrounds_data} # Predefined dict
     elif step_name == 'skills':
@@ -523,6 +552,25 @@ def creation_wizard_update_session():
         session['new_character_data']['skill_proficiencies_option_count'] = skill_proficiencies_option_count
 
         current_app.logger.info(f"Session updated for class selection: {class_name} ({class_slug})")
+
+    elif step_key == 'ability_scores':
+        assigned_scores_raw = step_payload.get('assigned_scores')
+        final_scores_breakdown = step_payload.get('final_ability_scores')
+        racial_asi_details = step_payload.get('racial_asi_details_applied')
+
+        if not final_scores_breakdown or not isinstance(final_scores_breakdown, dict) or \
+           not all(k in final_scores_breakdown for k in ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']):
+            current_app.logger.error(f"Invalid or incomplete final_ability_scores payload: {final_scores_breakdown}")
+            return jsonify(status="error", message="Invalid final ability scores data."), 400
+
+        session['new_character_data']['ability_scores_assigned_raw'] = assigned_scores_raw
+        session['new_character_data']['ability_scores_final_breakdown'] = final_scores_breakdown
+        session['new_character_data']['ability_scores_racial_asi_details'] = racial_asi_details
+
+        simple_final_scores = {k: v.get('total', 10) for k, v in final_scores_breakdown.items()}
+        session['new_character_data']['ability_scores'] = simple_final_scores
+
+        current_app.logger.info(f"Session updated for ability scores. Final simple scores: {simple_final_scores}")
 
     elif step_key == 'background' and 'background_name' in step_payload:
         # This part remains the same as it was correct

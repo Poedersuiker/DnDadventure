@@ -64,8 +64,52 @@
             </div>
         </div>
         <div id="step-3" class="wizard-step" style="display: none;">
-            <h2>Step 3: Ability Scores</h2>
-            <p>Ability scores content will go here.</p>
+            <h2>Step 3: Determine Ability Scores</h2>
+
+            <div id="ability-score-generation-method" class="ability-section">
+                <p>Choose your method for generating ability scores. For now, only dice rolling is implemented as per requirements.</p>
+                <button id="roll-dice-button" class="button">Roll Dice (4d6, drop lowest, 6 times)</button>
+            </div>
+
+            <div id="ability-tips" class="ability-section tips-section">
+                <h4>Tips & Recommendations</h4>
+                <!-- Tips from race/class will be populated here -->
+                <p>Loading tips...</p>
+            </div>
+
+            <div id="ability-bonuses-summary" class="ability-section bonuses-section">
+                <h4>Racial & Class Bonuses Overview</h4>
+                <!-- Racial and class ASI summaries will be populated here -->
+                <p>Loading bonuses...</p>
+            </div>
+
+            <div id="ability-scores-table-container" class="ability-section">
+                <h3>Assign Scores</h3>
+                <table id="ability-scores-table">
+                    <thead>
+                        <tr>
+                            <th>Ability</th>
+                            <th>Base Score</th>
+                            <th>Racial Bonus</th>
+                            <th>Class Bonus</th>
+                            <th>Total Score</th>
+                            <th>Modifier</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ability-scores-tbody">
+                        <!-- Ability rows will be populated here by JavaScript -->
+                    </tbody>
+                </table>
+                <p id="table-instructions">Click an ability name to make it active, then select a score from the dice pool below.</p>
+            </div>
+
+            <div id="dice-roll-pool-container" class="ability-section" style="display: none;">
+                <h3>Available Dice Rolls (assign one to each ability)</h3>
+                <div id="dice-roll-pool" class="dice-pool">
+                    <!-- Dice rolls will be populated here by JavaScript -->
+                </div>
+                <p id="dice-pool-instructions">Click an ability name above, then click a roll from this pool to assign it.</p>
+            </div>
         </div>
         <div id="step-4" class="wizard-step" style="display: none;">
             <h2>Step 4: Background Selection</h2>
@@ -124,6 +168,19 @@
     let selectedClassData = null;
     const classSelectionArea = document.getElementById('class-selection-area');
     const classDetailsArea = document.getElementById('class-details-area');
+
+    // Global variables for Ability Scores (Step 3)
+    let assignedScores = {}; // Stores { STR: 15, DEX: 14, ... }
+    let currentDiceRolls = []; // Stores the 6 rolled scores [15, 14, 13, 12, 10, 8]
+    let selectedAbilityForAssignment = null; // e.g., 'STR'
+    const ABILITIES = [ // Define once
+        { name: 'Strength', abbr: 'STR' },
+        { name: 'Dexterity', abbr: 'DEX' },
+        { name: 'Constitution', abbr: 'CON' },
+        { name: 'Intelligence', abbr: 'INT' },
+        { name: 'Wisdom', abbr: 'WIS' },
+        { name: 'Charisma', abbr: 'CHA' }
+    ];
 
     const prevButton = document.getElementById('prev-button'); // This ID is now in wizard-top-controls
     const nextButton = document.getElementById('next-button'); // This ID is now in wizard-top-controls
@@ -277,6 +334,8 @@
             if (currentlySelectedClass) {
                 currentlySelectedClass.classList.remove('selected-class');
             }
+        } else if (stepNumber === 3) {
+            initializeAbilityScoresStep();
         }
 
 
@@ -366,6 +425,7 @@
                 alert('Please select a class before proceeding.');
                 return;
             }
+            // Proceed to save class data (existing logic)
             try {
                 const payload_data = {
                     class_slug: selectedClassSlug,
@@ -373,17 +433,13 @@
                     hit_die: selectedClassData.hit_die,
                     proficiencies_armor: selectedClassData.prof_armor ? selectedClassData.prof_armor.split(',').map(s => s.trim()).filter(s => s) : [],
                     proficiencies_weapons: selectedClassData.prof_weapons ? selectedClassData.prof_weapons.split(',').map(s => s.trim()).filter(s => s) : [],
-                    proficiencies_tools: selectedClassData.prof_tools ? selectedClassData.prof_tools.split(/,(?![^()]*\))|\sor\s(?![^()]*\))/g).map(s => s.trim()).filter(s => s) : [], // Handles "or" and commas not in parentheses
+                    proficiencies_tools: selectedClassData.prof_tools ? selectedClassData.prof_tools.split(/,(?![^()]*\))|\sor\s(?![^()]*\))/g).map(s => s.trim()).filter(s => s) : [],
                     saving_throw_proficiencies: selectedClassData.prof_saving_throws ? selectedClassData.prof_saving_throws.split(',').map(s => s.trim()).filter(s => s) : [],
                     spellcasting_ability: selectedClassData.spellcasting_ability || "",
-                    // Placeholder: Extracting detailed L1 features is complex.
-                    // For now, send an empty list or a generic description if easily parseable.
-                    class_features_list: [], // Example: selectedClassData.desc.substring(0,100) for a snippet
-                    skill_proficiencies_options: selectedClassData.prof_skills || "", // e.g. "Choose two from Animal Handling, Athletics,..."
-                    skill_proficiencies_option_count: 0 // Placeholder, parse from prof_skills if possible
+                    class_features_list: [],
+                    skill_proficiencies_options: selectedClassData.prof_skills || "",
+                    skill_proficiencies_option_count: 0
                 };
-
-                // Attempt to parse skill_proficiencies_option_count
                 if (selectedClassData.prof_skills) {
                     const match = selectedClassData.prof_skills.toLowerCase().match(/choose (one|two|three|four|five|six)/);
                     if (match) {
@@ -391,17 +447,10 @@
                         payload_data.skill_proficiencies_option_count = countMap[match[1]];
                     }
                 }
-
-
                 const response = await fetch('/creation_wizard/update_session', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        step_key: 'class',
-                        payload: payload_data
-                    }),
+                    headers: { 'Content-Type': 'application/json', },
+                    body: JSON.stringify({ step_key: 'class', payload: payload_data }),
                 });
                 if (!response.ok) {
                     const errorData = await response.json();
@@ -417,6 +466,64 @@
             } catch (error) {
                 console.error('Error updating session with class:', error);
                 alert(`Error saving class selection: ${error.message}. Please try again.`);
+                return;
+            }
+        } else if (currentStep === 3) {
+            // Validate that all 6 abilities have a base score assigned
+            const unassignedAbilities = ABILITIES.filter(ability => assignedScores[ability.abbr] === undefined || assignedScores[ability.abbr] === null);
+            if (unassignedAbilities.length > 0) {
+                alert(`Please assign scores to all abilities. Missing: ${unassignedAbilities.map(a => a.name).join(', ')}.`);
+                return;
+            }
+
+            let finalScoresPayload = {};
+            let racialASIApplied = {}; // For storing the actual numeric bonuses applied
+
+            ABILITIES.forEach(ability => {
+                const row = document.getElementById(`ability-row-${ability.abbr}`);
+                if (!row) return;
+
+                const baseScore = parseInt(row.cells[1].textContent) || 0;
+                const racialBonus = parseInt(row.cells[2].textContent) || 0;
+                const classBonus = parseInt(row.cells[3].textContent) || 0; // Typically 0 for 5e at L1
+
+                finalScoresPayload[ability.abbr] = {
+                    base: baseScore,
+                    racial: racialBonus,
+                    class: classBonus, // Store class bonus even if 0
+                    total: baseScore + racialBonus + classBonus
+                };
+                if (racialBonus !== 0) {
+                    racialASIApplied[ability.abbr] = racialBonus;
+                }
+            });
+
+            const payload = {
+                assigned_scores: assignedScores, // The raw dice rolls assigned
+                final_ability_scores: finalScoresPayload, // Detailed breakdown: base, racial, class, total
+                racial_asi_details_applied: effectiveRaceDetailsForSession ? effectiveRaceDetailsForSession.asi : {}, // Full ASI object from race
+            };
+
+            try {
+                const response = await fetch('/creation_wizard/update_session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ step_key: 'ability_scores', payload: payload })
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                }
+                const result = await response.json();
+                if (result.status !== 'success') {
+                    throw new Error(result.message || 'Failed to update session with ability scores.');
+                }
+                console.log('Session updated with ability scores:', result.current_character_data);
+                currentStep++;
+                showStep(currentStep);
+            } catch (error) {
+                console.error('Error updating session with ability scores:', error);
+                alert(`Error saving ability scores: ${error.message}. Please try again.`);
                 return;
             }
         } else if (currentStep < totalSteps) { // Original logic for other steps
@@ -1054,6 +1161,277 @@
 
         console.log("Selected Race Slug (in handleRaceSelection):", raceSlug, "Is Subrace:", selectedRaceDetails.is_subrace, "Final Traits for display:", finalTraits);
     }
+
+    // Initialize first step
+    showStep(currentStep);
+
+    // --- ABILITY SCORE STEP 3 FUNCTIONS ---
+
+    function initializeAbilityScoresStep() {
+        console.log("Initializing Step 3: Ability Scores - Standard Array Default");
+        assignedScores = {};
+        selectedAbilityForAssignment = null;
+
+        // Set currentDiceRolls to standard array
+        currentDiceRolls = [15, 14, 13, 12, 10, 8];
+
+        const diceRollPoolContainer = document.getElementById('dice-roll-pool-container');
+        const diceRollPool = document.getElementById('dice-roll-pool');
+        const abilityTips = document.getElementById('ability-tips');
+        const abilityBonusesSummary = document.getElementById('ability-bonuses-summary');
+        const rollDiceButton = document.getElementById('roll-dice-button');
+
+        // Reset table and display standard array scores
+        ABILITIES.forEach(ability => {
+            updateAbilityRowScores(ability.abbr, null); // Reset base score visually to '-' and recalculate
+        });
+        displayDiceRolls(); // This will use currentDiceRolls (standard array)
+        diceRollPoolContainer.style.display = 'block'; // Show the pool with standard array
+
+        // Ensure "Roll Dice" button is enabled
+        rollDiceButton.disabled = false;
+
+        // Populate Bonuses Summary
+        let bonusesHTML = '<p>Loading bonuses...</p>';
+        if (effectiveRaceDetailsForSession && effectiveRaceDetailsForSession.asi) {
+            const racialASI = effectiveRaceDetailsForSession.asi;
+            let racialBonusParts = [];
+            for (const key of ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']) {
+                if (racialASI[key] && racialASI[key] !== 0) {
+                    racialBonusParts.push(`${key}: ${racialASI[key] > 0 ? '+' : ''}${racialASI[key]}`);
+                }
+            }
+            if (racialASI.choices && racialASI.choices.length > 0) {
+                racialBonusParts.push(`Choices: ${racialASI.choices.join(', ')}`);
+            }
+            bonusesHTML = `<p><strong>Racial ASI:</strong> ${racialBonusParts.length > 0 ? racialBonusParts.join('; ') : 'None'}</p>`;
+        } else {
+            bonusesHTML = "<p><strong>Racial ASI:</strong> Race not selected or no ASI defined.</p>";
+        }
+        // Placeholder for class bonuses - 5e classes rarely give direct ASI at L1.
+        bonusesHTML += `<p><strong>Class ASI (L1):</strong> Typically none at 1st level.</p>`;
+        abilityBonusesSummary.innerHTML = bonusesHTML;
+
+        // Populate Tips
+        let tipsHTML = `<p><strong>General Tips:</strong><ul>
+                            <li>Assign your highest scores to abilities most important for your class.</li>
+                            <li>Consider your race's ASI when assigning scores.</li>
+                            <li>A score of 10 or 11 is average, with no modifier.</li>
+                        </ul></p>`;
+        if (selectedClassData) {
+            tipsHTML += `<p><strong>Class Specific (${selectedClassData.name}):</strong><ul>`;
+            if (selectedClassData.spellcasting_ability) {
+                tipsHTML += `<li>As a ${selectedClassData.name}, your spellcasting ability is <strong>${selectedClassData.spellcasting_ability}</strong>. A high score here is crucial.</li>`;
+            }
+            if (selectedClassData.prof_saving_throws) {
+                const saves = selectedClassData.prof_saving_throws.split(',').map(s => s.trim());
+                tipsHTML += `<li>You are proficient in <strong>${saves.join(' & ')}</strong> saving throws. Good scores in these abilities are beneficial.</li>`;
+            }
+            // Generic advice based on common class archetypes
+            if (['fighter', 'barbarian', 'paladin'].includes(selectedClassData.slug)) tipsHTML += `<li>Strength or Dexterity (for finesse) and Constitution are often key for martial classes.</li>`;
+            if (['rogue', 'ranger', 'monk'].includes(selectedClassData.slug)) tipsHTML += `<li>Dexterity is usually a primary ability. Wisdom for Rangers/Monks, Intelligence for Arcane Trickster Rogues.</li>`;
+            if (['wizard', 'artificer'].includes(selectedClassData.slug)) tipsHTML += `<li>Intelligence is your most important ability.</li>`;
+            if (['cleric', 'druid'].includes(selectedClassData.slug)) tipsHTML += `<li>Wisdom is your primary spellcasting ability.</li>`;
+            if (['sorcerer', 'bard', 'warlock'].includes(selectedClassData.slug)) tipsHTML += `<li>Charisma is your spellcasting ability and often important for social interactions.</li>`;
+            tipsHTML += `</ul></p>`;
+        } else {
+            tipsHTML += "<p><strong>Class Specific:</strong> Class not selected yet.</p>";
+        }
+        abilityTips.innerHTML = tipsHTML;
+
+        populateAbilityTableStructure(); // Initial population or re-population
+
+        // Event listener for dice rolling (ensure it's only added once or managed)
+        // A simple way is to replace the button with a clone to remove old listeners, then re-add.
+        const newRollDiceButton = rollDiceButton.cloneNode(true);
+        rollDiceButton.parentNode.replaceChild(newRollDiceButton, rollDiceButton);
+        newRollDiceButton.addEventListener('click', handleRollDiceButtonClick);
+
+    }
+
+    function populateAbilityTableStructure() {
+        const abilityScoresTbody = document.getElementById('ability-scores-tbody');
+        abilityScoresTbody.innerHTML = ''; // Clear existing rows
+
+        ABILITIES.forEach(ability => {
+            const tr = document.createElement('tr');
+            tr.id = `ability-row-${ability.abbr}`; // ID for easy access
+            tr.dataset.abilityAbbr = ability.abbr;
+
+            const nameTd = document.createElement('td');
+            nameTd.textContent = `${ability.name} (${ability.abbr})`;
+            nameTd.style.cursor = 'pointer';
+            nameTd.title = `Click to select ${ability.name} for score assignment`;
+            nameTd.addEventListener('click', () => {
+                if (currentDiceRolls.length === 0) {
+                    alert("Please roll dice first to get scores to assign.");
+                    return;
+                }
+                document.querySelectorAll('#ability-scores-tbody tr').forEach(row => row.classList.remove('active-ability-for-assignment'));
+                tr.classList.add('active-ability-for-assignment');
+                selectedAbilityForAssignment = ability.abbr;
+                console.log("Selected for assignment:", selectedAbilityForAssignment);
+            });
+
+            const baseScoreTd = document.createElement('td');
+            baseScoreTd.textContent = '-'; // Placeholder
+
+            const racialBonusTd = document.createElement('td');
+            let racialBonus = 0;
+            if (effectiveRaceDetailsForSession && effectiveRaceDetailsForSession.asi) {
+                racialBonus = effectiveRaceDetailsForSession.asi[ability.abbr] || 0;
+            }
+            racialBonusTd.textContent = racialBonus;
+
+            const classBonusTd = document.createElement('td');
+            classBonusTd.textContent = '0'; // Placeholder, 5e L1 classes rarely give ASI
+
+            const totalScoreTd = document.createElement('td');
+            const modifierTd = document.createElement('td');
+
+            tr.appendChild(nameTd);
+            tr.appendChild(baseScoreTd);
+            tr.appendChild(racialBonusTd);
+            tr.appendChild(classBonusTd);
+            tr.appendChild(totalScoreTd);
+            tr.appendChild(modifierTd);
+            abilityScoresTbody.appendChild(tr);
+
+            updateAbilityRowScores(ability.abbr, null); // Calculate initial total and modifier
+        });
+    }
+
+    function roll4d6DropLowest() {
+        let rolls = [];
+        for (let i = 0; i < 4; i++) {
+            rolls.push(Math.floor(Math.random() * 6) + 1);
+        }
+        rolls.sort((a, b) => b - a); // Sort descending
+        return rolls[0] + rolls[1] + rolls[2]; // Sum of top 3
+    }
+
+    function handleRollDiceButtonClick() {
+        if (!confirm("Warning: This will replace the current scores with new random rolls. Are you sure?")) {
+            return;
+        }
+
+        assignedScores = {}; // Reset assignments
+        currentDiceRolls = [];
+
+        // Reset base scores in the table visually
+        ABILITIES.forEach(ability => {
+            updateAbilityRowScores(ability.abbr, null); // Resets base to null, recalculates total/mod
+        });
+
+        for (let i = 0; i < 6; i++) {
+            currentDiceRolls.push(roll4d6DropLowest());
+        }
+        currentDiceRolls.sort((a, b) => b - a); // Sort descending for display
+
+        document.getElementById('roll-dice-button').disabled = true; // Disable button after rolling
+
+        displayDiceRolls(); // This will clear old buttons and display new ones
+        document.getElementById('dice-roll-pool-container').style.display = 'block'; // Ensure it's visible
+        selectedAbilityForAssignment = null; // Clear any active selection
+        document.querySelectorAll('#ability-scores-tbody tr').forEach(row => row.classList.remove('active-ability-for-assignment'));
+    }
+
+    function displayDiceRolls() {
+        const diceRollPool = document.getElementById('dice-roll-pool');
+        diceRollPool.innerHTML = ''; // Clear previous rolls
+
+        currentDiceRolls.forEach((rollValue, index) => {
+            const rollElement = document.createElement('button'); // Using button for better a11y
+            rollElement.textContent = rollValue;
+            rollElement.className = 'dice-roll-option button-link'; // Added button-link for styling
+            rollElement.dataset.value = rollValue;
+            rollElement.dataset.id = `roll-${index}`; // Unique ID for the element
+
+            rollElement.addEventListener('click', () => {
+                handleDiceRollSelection(rollValue, rollElement);
+            });
+            diceRollPool.appendChild(rollElement);
+        });
+    }
+
+    function handleDiceRollSelection(rollValue, rollElement) {
+        if (!selectedAbilityForAssignment) {
+            alert('Please click an ability name in the table to select it for assignment.');
+            return;
+        }
+        if (rollElement.classList.contains('disabled-roll')) {
+            alert('This roll has already been assigned.');
+            return;
+        }
+
+        // Check if the selected ability already has a score assigned from the current pool
+        // If so, re-enable the previously assigned roll for that ability
+        if (assignedScores[selectedAbilityForAssignment] !== undefined) {
+            const oldRollValue = assignedScores[selectedAbilityForAssignment];
+            // Find the button corresponding to oldRollValue that was disabled for this assignment
+            // This is tricky if multiple dice have the same value. We need a more robust way.
+            // For now, let's assume we find the first matching *enabled* button if we were to re-enable.
+            // Or better: find the one that IS disabled and matches the ability's old score.
+            const dicePoolButtons = document.querySelectorAll('#dice-roll-pool .dice-roll-option');
+            dicePoolButtons.forEach(btn => {
+                if (btn.dataset.value == assignedScores[selectedAbilityForAssignment] && btn.dataset.assignedTo === selectedAbilityForAssignment) {
+                    btn.classList.remove('disabled-roll');
+                    btn.disabled = false;
+                    delete btn.dataset.assignedTo;
+                }
+            });
+        }
+
+        assignedScores[selectedAbilityForAssignment] = rollValue;
+        rollElement.classList.add('disabled-roll');
+        rollElement.disabled = true;
+        rollElement.dataset.assignedTo = selectedAbilityForAssignment; // Mark which ability this roll is for
+
+        updateAbilityRowScores(selectedAbilityForAssignment, rollValue);
+
+        // De-select ability for next assignment
+        const activeRow = document.querySelector(`#ability-scores-tbody tr.active-ability-for-assignment`);
+        if (activeRow) activeRow.classList.remove('active-ability-for-assignment');
+        selectedAbilityForAssignment = null;
+    }
+
+    function updateAbilityRowScores(abilityAbbr, baseScoreToSet) {
+        const row = document.getElementById(`ability-row-${abilityAbbr}`);
+        if (!row) return;
+
+        let baseScore;
+        if (baseScoreToSet !== null && baseScoreToSet !== undefined) {
+            row.cells[1].textContent = baseScoreToSet; // Update Base Score cell
+            baseScore = parseInt(baseScoreToSet);
+        } else {
+            // If baseScoreToSet is null, it means we are resetting or initializing
+            // If there's an assignedScore for this ability, use it, otherwise it's truly unassigned.
+            if (assignedScores[abilityAbbr] !== undefined) {
+                baseScore = parseInt(assignedScores[abilityAbbr]);
+                row.cells[1].textContent = baseScore;
+            } else {
+                row.cells[1].textContent = '-';
+                baseScore = 0; // Treat as 0 for calculation if unassigned
+            }
+        }
+
+        const racialBonus = parseInt(row.cells[2].textContent) || 0;
+        const classBonus = parseInt(row.cells[3].textContent) || 0; // Usually 0
+
+        const totalScore = (baseScore || 0) + racialBonus + classBonus; // Use 0 if baseScore is NaN (from '-')
+
+        if (row.cells[1].textContent === '-') { // If no base score is set visually
+            row.cells[4].textContent = racialBonus + classBonus > 0 ? (racialBonus + classBonus) : '-';
+            row.cells[5].textContent = racialBonus + classBonus > 0 ? Math.floor(((racialBonus + classBonus) - 10) / 2) : '-';
+        } else {
+            row.cells[4].textContent = totalScore;
+            row.cells[5].textContent = Math.floor((totalScore - 10) / 2);
+        }
+    }
+
+
+    // --- END OF ABILITY SCORE STEP 3 FUNCTIONS ---
+
 
     // Initialize first step
     showStep(currentStep);
