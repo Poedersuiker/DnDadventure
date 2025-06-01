@@ -488,30 +488,44 @@ def creation_wizard_update_session():
     # The specific 'race' logic above now mostly populates defaults if race object is not available.
 
     # Let's refine: Apply step_payload generally, then override with specific logic if needed.
-    session['new_character_data'].update(step_payload)
+    session['new_character_data'].update(step_payload) # Apply general update first
 
+    # Specific handling for 'class' step, replacing the old logic
+    if step_key == 'class':
+        class_slug = step_payload.get('class_slug')
+        class_name = step_payload.get('class_name')
+        hit_die = step_payload.get('hit_die')
+        proficiencies_armor = step_payload.get('proficiencies_armor', [])
+        proficiencies_weapons = step_payload.get('proficiencies_weapons', [])
+        # Map proficiencies_tools from payload to tool_proficiencies_class_fixed in session
+        proficiencies_tools_raw = step_payload.get('proficiencies_tools', [])
+        saving_throw_proficiencies = step_payload.get('saving_throw_proficiencies', [])
+        spellcasting_ability = step_payload.get('spellcasting_ability', "")
+        class_features_list = step_payload.get('class_features_list', []) # Placeholder from JS
+        skill_proficiencies_options_raw = step_payload.get('skill_proficiencies_options')
+        skill_proficiencies_option_count = step_payload.get('skill_proficiencies_option_count')
 
-    if step_key == 'class' and 'class_id' in step_payload: # class_id is kept in payload for now
-        # s_class = Class.query.get(step_payload['class_id']) # Removed
-        # if s_class: # Removed
-            # class_dict = s_class.to_dict() # Removed
-            # session['new_character_data']['class_name'] = class_dict.get('name') # Removed
-            # Store proficiencies that are fixed for the class
-            # session['new_character_data']['saving_throw_proficiencies'] = class_dict.get('proficiency_saving_throws', []) # Removed
-            # session['new_character_data']['armor_proficiencies'] = class_dict.get('proficiencies_armor', []) # Removed
-            # session['new_character_data']['weapon_proficiencies'] = class_dict.get('proficiencies_weapons', []) # Removed
-            # session['new_character_data']['tool_proficiencies_class_fixed'] = class_dict.get('proficiencies_tools', []) # Removed
-        # else: # Removed
-            # return jsonify(status="error", message="Invalid Class ID"), 400 # Removed
-        # Defaulting class related fields as Class object is removed
-        session['new_character_data']['class_name'] = step_payload.get('class_name', "Default Class") # Use name from payload if sent
-        session['new_character_data']['saving_throw_proficiencies'] = []
-        session['new_character_data']['armor_proficiencies'] = []
-        session['new_character_data']['weapon_proficiencies'] = []
-        session['new_character_data']['tool_proficiencies_class_fixed'] = []
+        if not class_slug or not class_name:
+            current_app.logger.error(f"Class slug or name missing in payload for 'class' step. Payload: {step_payload}")
+            return jsonify(status="error", message="Class slug or name is missing."), 400
 
+        # Store extracted values into session['new_character_data']
+        session['new_character_data']['class_slug'] = class_slug
+        session['new_character_data']['class_name'] = class_name
+        session['new_character_data']['hit_die'] = hit_die
+        session['new_character_data']['armor_proficiencies'] = proficiencies_armor
+        session['new_character_data']['weapon_proficiencies'] = proficiencies_weapons
+        session['new_character_data']['tool_proficiencies_class_fixed'] = proficiencies_tools_raw
+        session['new_character_data']['saving_throw_proficiencies'] = saving_throw_proficiencies
+        session['new_character_data']['spellcasting_ability'] = spellcasting_ability
+        session['new_character_data']['class_features_list'] = class_features_list
+        session['new_character_data']['skill_proficiencies_options_raw'] = skill_proficiencies_options_raw
+        session['new_character_data']['skill_proficiencies_option_count'] = skill_proficiencies_option_count
+
+        current_app.logger.info(f"Session updated for class selection: {class_name} ({class_slug})")
 
     elif step_key == 'background' and 'background_name' in step_payload:
+        # This part remains the same as it was correct
         bg_name = step_payload['background_name']
         if bg_name in sample_backgrounds_data:
             bg_data = sample_backgrounds_data[bg_name]
