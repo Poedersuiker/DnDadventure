@@ -142,6 +142,7 @@ class Race(db.Model):
     languages = db.Column(db.Text, nullable=False) # JSON list
     traits = db.Column(db.Text, nullable=True) # JSON list of trait names/descriptions
     skill_proficiencies = db.Column(db.Text, nullable=True) # JSON list, optional choices
+    parent_slug = db.Column(db.String(100), nullable=True) # To link sub-races to parent races
 
     def to_dict(self):
         return {
