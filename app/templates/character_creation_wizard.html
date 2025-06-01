@@ -560,26 +560,37 @@
                 return;
             }
             try {
-                // Find the selected background object from allBackgroundsData
                 const selectedBackgroundObj = allBackgroundsData.find(bg => bg.slug === selectedBackgroundSlug);
-                if (!selectedBackgroundObj) {
-                    alert('Selected background data not found. Please try again.');
+                if (!selectedBackgroundObj || !selectedBackgroundObj.data) { // Check .data as well
+                    alert('Could not find details for selected background. Please try selecting again.');
                     return;
                 }
-                const backgroundDetails = selectedBackgroundObj.data; // This is the object with name, skills, etc.
+                const backgroundDetails = selectedBackgroundObj.data;
+
+                // Refined payload construction
+                let languagesForPayload = [];
+                if (Array.isArray(backgroundDetails.languages)) {
+                    languagesForPayload = backgroundDetails.languages;
+                } else if (typeof backgroundDetails.languages === 'string' && backgroundDetails.languages) {
+                    languagesForPayload = [backgroundDetails.languages];
+                } else if (typeof backgroundDetails.languages_text === 'string' && backgroundDetails.languages_text) {
+                    // Clean up common prefixes if necessary, though backend might also do this.
+                    languagesForPayload = [backgroundDetails.languages_text.replace(/^Languages:\s*/i, "").trim()];
+                }
+
 
                 const payload = {
-                    background_slug: selectedBackgroundSlug, // Send the slug
-                    background_name: backgroundDetails.name, // Send the name for convenience on backend
-                    background_skill_proficiencies: backgroundDetails.skill_proficiencies || [],
-                    background_tool_proficiencies: backgroundDetails.tool_proficiencies || [],
-                    // Assuming 'languages' from API are fixed, not choices. If choices, this needs more complex handling.
-                    background_languages_fixed: backgroundDetails.languages || [],
-                    background_equipment_string: backgroundDetails.equipment || "",
-                    // Optionally send feature details if backend needs them directly
-                    feature_name: backgroundDetails.feature_name || "",
+                    background_slug: selectedBackgroundSlug,
+                    background_name: backgroundDetails.name || 'Unknown Background',
+                    desc: backgroundDetails.desc || "",
+                    background_skill_proficiencies: Array.isArray(backgroundDetails.skill_proficiencies) ? backgroundDetails.skill_proficiencies : [],
+                    background_tool_proficiencies: Array.isArray(backgroundDetails.tool_proficiencies) ? backgroundDetails.tool_proficiencies : [],
+                    background_languages_fixed: languagesForPayload,
+                    background_equipment_string: backgroundDetails.equipment || backgroundDetails.equipment_text || "",
+                    feature_name: backgroundDetails.feature || backgroundDetails.feature_name || "", // Prioritize 'feature' if it's the name
                     feature_desc: backgroundDetails.feature_desc || ""
                 };
+
                 const response = await fetch('/creation_wizard/update_session', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -654,24 +665,48 @@
     function handleBackgroundSelection(backgroundSlug, backgroundDetails, event) { // slug instead of name
         selectedBackgroundSlug = backgroundSlug; // Store slug
 
-        let detailsHtml = `<h4>${backgroundDetails.name}</h4>`; // Use name from details
-        if (backgroundDetails.desc) { // Add description if available
-             detailsHtml += `<p><em>${backgroundDetails.desc.split('\n\n')[0]}</em></p>`; // Show first paragraph of desc
-        }
-        detailsHtml += `<p><strong>Skill Proficiencies:</strong> ${backgroundDetails.skill_proficiencies && backgroundDetails.skill_proficiencies.length > 0 ? backgroundDetails.skill_proficiencies.join(', ') : 'None'}</p>`;
-        detailsHtml += `<p><strong>Tool Proficiencies:</strong> ${backgroundDetails.tool_proficiencies && backgroundDetails.tool_proficiencies.length > 0 ? backgroundDetails.tool_proficiencies.join(', ') : 'None'}</p>`;
-        detailsHtml += `<p><strong>Languages:</strong> ${backgroundDetails.languages && backgroundDetails.languages.length > 0 ? backgroundDetails.languages.join(', ') : 'None'}</p>`; // Assuming languages is an array of strings
-        detailsHtml += `<p><strong>Equipment:</strong> ${backgroundDetails.equipment || 'None'}</p>`;
+        let detailsHtml = `<h4>${backgroundDetails.name || 'Unknown Background'}</h4>`;
 
-        if (backgroundDetails.feature_name) {
-             detailsHtml += `<p><strong>Feature: ${backgroundDetails.feature_name}</strong></p>`;
-             if (backgroundDetails.feature_desc) {
-                 detailsHtml += `<p>${backgroundDetails.feature_desc}</p>`;
-             }
+        // Main Description
+        detailsHtml += `<p><em>${backgroundDetails.desc || 'No description available.'}</em></p>`;
+
+        // Skill Proficiencies
+        let skillsDisplay = 'None';
+        if (Array.isArray(backgroundDetails.skill_proficiencies) && backgroundDetails.skill_proficiencies.length > 0) {
+            skillsDisplay = backgroundDetails.skill_proficiencies.join(', ');
+        } else if (backgroundDetails.skills_text) {
+            skillsDisplay = backgroundDetails.skills_text;
+        } else if (backgroundDetails.proficiencies_text) { // Fallback to a general proficiencies text
+            skillsDisplay = backgroundDetails.proficiencies_text;
         }
-        // Placeholder for suggested characteristics - these might be more complex structures
-        // e.g., backgroundDetails.personality_traits (could be an array or object)
-        // For now, keeping it simple.
+        detailsHtml += `<p><strong>Skill Proficiencies:</strong> ${skillsDisplay}</p>`;
+
+        // Tool Proficiencies
+        let toolsDisplay = 'None';
+        if (Array.isArray(backgroundDetails.tool_proficiencies) && backgroundDetails.tool_proficiencies.length > 0) {
+            toolsDisplay = backgroundDetails.tool_proficiencies.join(', ');
+        } else if (backgroundDetails.tools_text) {
+            toolsDisplay = backgroundDetails.tools_text;
+        }
+        detailsHtml += `<p><strong>Tool Proficiencies:</strong> ${toolsDisplay}</p>`;
+
+        // Languages
+        let languagesDisplay = 'None';
+        if (Array.isArray(backgroundDetails.languages) && backgroundDetails.languages.length > 0) {
+            languagesDisplay = backgroundDetails.languages.join(', ');
+        } else if (typeof backgroundDetails.languages === 'string' && backgroundDetails.languages) {
+            languagesDisplay = backgroundDetails.languages; // Handles "Two of your choice"
+        } else if (backgroundDetails.languages_text) {
+            languagesDisplay = backgroundDetails.languages_text;
+        }
+        detailsHtml += `<p><strong>Languages:</strong> ${languagesDisplay}</p>`;
+
+        // Equipment
+        detailsHtml += `<p><strong>Equipment:</strong> ${backgroundDetails.equipment || backgroundDetails.equipment_text || 'None'}</p>`;
+
+        // Feature Name and Description
+        detailsHtml += `<h5>${backgroundDetails.feature || backgroundDetails.feature_name || 'Feature'}</h5>`; // Use feature_name as fallback for feature
+        detailsHtml += `<p>${backgroundDetails.feature_desc || 'No feature description available.'}</p>`;
 
         backgroundDetailsArea.innerHTML = detailsHtml;
 
