@@ -381,7 +381,7 @@ class TestMainRoutes(unittest.TestCase):
         self.assertNotIn("A Pouch Containing 10 Gp", items) # Pouch text should not be an item if it only held coins
 
     def _create_character_with_inventory(self, user_id_offset=0, char_id_offset=0):
-        user = User(id=100 + user_id_offset, email=f"inv_user{user_id_offset}@example.com", google_id=f"inv_user_google_id_{user_id_offset}")
+        user = User(id=100 + user_id_offset, email=f"inv_user{user_id_offset}@example.com", google_id=f"inv_user_google_id_{user_id_offset}") # Ensure unique IDs if called multiple times
         db.session.add(user)
         db.session.commit()
 
@@ -684,8 +684,10 @@ class TestMainRoutes(unittest.TestCase):
             url_for('main.edit_item_in_inventory', character_id=char.id, item_id=item_to_edit.id),
             data="this is not json"
         )
-        self.assertEqual(response.status_code, 400) # Flask typically returns 400 for malformed JSON
-        self.assertIn('No data provided', response.get_json()['message']) # Or similar, depending on Flask's exact error
+        self.assertEqual(response.status_code, 400)
+        # Message might vary slightly depending on Flask/Werkzeug version or if request.json is None vs empty dict
+        self.assertTrue('No data provided' in response.get_json()['message'] or 'not JSON' in response.get_json()['message'])
+
 
         # JSON payload missing required fields (e.g. item_name)
         response = self.client.post(
@@ -698,3 +700,341 @@ class TestMainRoutes(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestCharacterCreationWizard(unittest.TestCase):
+    def setUp(self):
+        self.app_context = app.app_context()
+        self.app_context.push()
+        app.config['TESTING'] = True
+        app.config['WTF_CSRF_ENABLED'] = False
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+        app.config['SERVER_NAME'] = 'localhost'
+        app.config['LOGIN_DISABLED'] = False # Ensure login_required works
+
+        # Save original config values
+        self.original_gemini_api_key = app.config.get('GEMINI_API_KEY')
+        self.original_default_gemini_model = app.config.get('DEFAULT_GEMINI_MODEL')
+
+        # Set test config values
+        app.config['GEMINI_API_KEY'] = "test_api_key_wizard"
+        app.config['DEFAULT_GEMINI_MODEL'] = "test_model_wizard"
+
+        db.create_all()
+        self.client = app.test_client()
+
+        # Base data needed for many tests
+        self.test_user = User(id=1, email="wizard_tester@example.com", google_id="wizard_tester_google_id")
+        db.session.add(self.test_user)
+
+        self.race1 = Race(id=1, name="Human", speed=30, ability_score_increases='{"STR": 1, "DEX": 1, "CON": 1, "INT": 1, "WIS": 1, "CHA": 1}', age_description="Humans mature by their late teens and live less than a century.", alignment_description="Humans tend toward no particular alignment.", size="Medium", size_description="Humans vary widely in height and build, from barely 5 feet to well over 6 feet tall.", languages='["Common", "Elvish"]', traits='[{"name": "Versatility", "description": "Gain proficiency in one skill of your choice."}]', skill_proficiencies='[]')
+        self.race2 = Race(id=2, name="Elf", speed=30, ability_score_increases='{"DEX": 2}', age_description="Elves mature by 100 and live to be 750.", alignment_description="Elves love freedom and self-expression.", size="Medium", size_description="Elves range from under 5 to over 6 feet tall.", languages='["Common", "Elvish"]', traits='[{"name": "Darkvision", "description": "See in dim light."}, {"name": "Fey Ancestry", "description": "Advantage on saves against being charmed."}]', skill_proficiencies='["Perception"]')
+
+        self.class1 = Class(id=1, name="Fighter", hit_die="d10", proficiencies_armor='["Light Armor", "Medium Armor", "Heavy Armor", "Shields"]', proficiencies_weapons='["Simple Weapons", "Martial Weapons"]', proficiencies_tools='[]', proficiency_saving_throws='["STR", "CON"]', skill_proficiencies_option_count=2, skill_proficiencies_options='["Acrobatics", "Animal Handling", "Athletics", "History", "Insight", "Intimidation", "Perception", "Survival"]', starting_equipment='[{"choose": 1, "from": {"options": [{"option_type": "reference", "item": {"index": "chain-mail"}}, {"option_type": "reference", "item": {"index": "leather-armor"}}]}}]', spellcasting_ability=None)
+        self.class2 = Class(id=2, name="Wizard", hit_die="d6", proficiencies_armor='[]', proficiencies_weapons='["Daggers", "Darts", "Slings", "Quarterstaffs", "Light Crossbows"]', proficiencies_tools='[]', proficiency_saving_throws='["INT", "WIS"]', skill_proficiencies_option_count=2, skill_proficiencies_options='["Arcana", "History", "Insight", "Investigation", "Medicine", "Religion"]', starting_equipment='[{"equipment": {"index": "spellbook"}, "quantity":1}]', spellcasting_ability="INT", cantrips_known_by_level='{"1": 3}', spells_known_by_level='{"1": 6}')
+
+        self.spell1 = Spell(id=1, index='fire-bolt', name='Fire Bolt', description='Hurl a mote of fire.', level=0, school='Evocation', classes_that_can_use='["Wizard", "Sorcerer"]')
+        self.spell2 = Spell(id=2, index='magic-missile', name='Magic Missile', description='Create three magical darts.', level=1, school='Evocation', classes_that_can_use='["Wizard", "Sorcerer"]')
+        self.spell3 = Spell(id=3, index='shield', name='Shield', description='An invisible barrier of magical force appears and protects you.', level=1, school='Abjuration', classes_that_can_use='["Wizard"]')
+
+
+        db.session.add_all([self.test_user, self.race1, self.race2, self.class1, self.class2, self.spell1, self.spell2, self.spell3])
+        db.session.commit()
+
+        # Log in the user for tests that require authentication
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = self.test_user.id
+            sess['_fresh'] = True # Mark session as fresh (simulates login)
+
+    def tearDown(self):
+        db.session.remove()
+        db.drop_all()
+        # Restore original config values
+        app.config['GEMINI_API_KEY'] = self.original_gemini_api_key
+        app.config['DEFAULT_GEMINI_MODEL'] = self.original_default_gemini_model
+        self.app_context.pop()
+
+    def test_get_creation_wizard_loads_and_initializes_session(self):
+        with self.client:
+            # Clear session first to ensure it's initialized by the route
+            with self.client.session_transaction() as sess:
+                sess.pop('new_character_data', None)
+
+            response = self.client.get(url_for('main.creation_wizard'))
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(b"Character Creation Wizard", response.data)
+            self.assertIn(b"Step 1: Race Selection", response.data) # Check for first step
+            self.assertIn(b"prev-button", response.data)
+            self.assertIn(b"next-button", response.data)
+
+            current_session_data = session.get('new_character_data')
+            self.assertIsNotNone(current_session_data)
+            self.assertEqual(current_session_data, {}) # Should be initialized as empty dict
+
+    def test_get_step_data_race(self):
+        with self.client:
+            response = self.client.get(url_for('main.creation_wizard_step_data', step_name='race'))
+            self.assertEqual(response.status_code, 200)
+            json_data = response.get_json()
+            self.assertIn('races', json_data)
+            self.assertIsInstance(json_data['races'], list)
+            self.assertTrue(any(r['name'] == 'Human' for r in json_data['races']))
+            self.assertTrue(any(r['name'] == 'Elf' for r in json_data['races']))
+
+    def test_get_step_data_class(self):
+        with self.client:
+            response = self.client.get(url_for('main.creation_wizard_step_data', step_name='class'))
+            self.assertEqual(response.status_code, 200)
+            json_data = response.get_json()
+            self.assertIn('classes', json_data)
+            self.assertIsInstance(json_data['classes'], list)
+            self.assertTrue(any(c['name'] == 'Fighter' for c in json_data['classes']))
+            self.assertTrue(any(c['name'] == 'Wizard' for c in json_data['classes']))
+
+    def test_get_step_data_stats_with_race_in_session(self):
+        with self.client:
+            with self.client.session_transaction() as sess:
+                sess['new_character_data'] = {'race_id': self.race1.id} # Human (+1 to all)
+
+            response = self.client.get(url_for('main.creation_wizard_step_data', step_name='stats'))
+            self.assertEqual(response.status_code, 200)
+            json_data = response.get_json()
+            self.assertIn('standard_array', json_data)
+            self.assertEqual(json_data['standard_array'], [15, 14, 13, 12, 10, 8])
+            self.assertIn('racial_bonuses', json_data)
+            self.assertEqual(json_data['racial_bonuses'].get('STR'), 1)
+
+    def test_get_step_data_background(self):
+        with self.client:
+            response = self.client.get(url_for('main.creation_wizard_step_data', step_name='background'))
+            self.assertEqual(response.status_code, 200)
+            json_data = response.get_json()
+            self.assertIn('backgrounds', json_data)
+            self.assertIn('Acolyte', json_data['backgrounds']) # Check for a sample background
+
+    def test_post_update_session_race_selection(self):
+        with self.client:
+            payload = {'race_id': self.race2.id} # Elf
+            response = self.client.post(
+                url_for('main.creation_wizard_update_session'),
+                json={'step_key': 'race', 'payload': payload}
+            )
+            self.assertEqual(response.status_code, 200)
+            json_response = response.get_json()
+            self.assertEqual(json_response['status'], 'success')
+
+            updated_session_data = session.get('new_character_data')
+            self.assertEqual(updated_session_data['race_id'], self.race2.id)
+            self.assertEqual(updated_session_data['race_name'], 'Elf')
+            self.assertEqual(updated_session_data['speed'], 30)
+            self.assertIn('Elvish', updated_session_data['languages_from_race'])
+            self.assertIn('Perception', updated_session_data['race_skill_proficiencies'])
+
+    def test_post_update_session_ability_scores(self):
+        with self.client:
+            # Simulate prior race selection
+            with self.client.session_transaction() as sess:
+                sess['new_character_data'] = {'race_id': self.race1.id, 'race_name': 'Human'}
+
+            payload = {'ability_scores': {'STR': 15, 'DEX': 14, 'CON': 13, 'INT': 12, 'WIS': 10, 'CHA': 8}}
+            response = self.client.post(
+                url_for('main.creation_wizard_update_session'),
+                json={'step_key': 'ability_scores', 'payload': payload}
+            )
+            self.assertEqual(response.status_code, 200)
+            json_response = response.get_json()
+            self.assertEqual(json_response['status'], 'success')
+
+            updated_session_data = session.get('new_character_data')
+            self.assertEqual(updated_session_data['ability_scores']['STR'], 15)
+
+    def test_get_step_data_skills_with_class_in_session(self):
+        with self.client:
+            with self.client.session_transaction() as sess:
+                # Class2 is Wizard, skill_proficiencies_option_count=2, options='["Arcana", "History", "Insight", "Investigation", "Medicine", "Religion"]'
+                sess['new_character_data'] = {'class_id': self.class2.id}
+
+            response = self.client.get(url_for('main.creation_wizard_step_data', step_name='skills'))
+            self.assertEqual(response.status_code, 200)
+            json_data = response.get_json()
+            self.assertIn('skill_options', json_data)
+            self.assertEqual(json_data['num_to_choose'], 2)
+            self.assertIn('Arcana', json_data['skill_options'])
+            self.assertIn('saving_throws', json_data)
+            self.assertIn('INT', json_data['saving_throws'])
+
+    def test_get_step_data_hp_with_session_data(self):
+        with self.client:
+            with self.client.session_transaction() as sess:
+                sess['new_character_data'] = {
+                    'race_id': self.race1.id, # Human, speed 30
+                    'class_id': self.class2.id, # Wizard, d6 HD
+                    'ability_scores': {'CON': 14, 'DEX': 12} # CON mod +2, DEX mod +1
+                }
+            response = self.client.get(url_for('main.creation_wizard_step_data', step_name='hp'))
+            self.assertEqual(response.status_code, 200)
+            json_data = response.get_json()
+            self.assertEqual(json_data['max_hp'], 6 + 2) # d6 + CON mod
+            self.assertEqual(json_data['ac_base'], 10 + 1) # 10 + DEX mod
+            self.assertEqual(json_data['speed'], 30)
+
+    def test_get_step_data_equipment_with_session_data(self):
+        with self.client:
+            with self.client.session_transaction() as sess:
+                sess['new_character_data'] = {
+                    'class_id': self.class1.id, # Fighter
+                    'background_name': 'Soldier' # From sample_backgrounds_data
+                }
+            response = self.client.get(url_for('main.creation_wizard_step_data', step_name='equipment'))
+            self.assertEqual(response.status_code, 200)
+            json_data = response.get_json()
+            self.assertIn('fixed_items', json_data)
+            self.assertIn('choice_groups', json_data)
+            self.assertIn('background_equipment_string', json_data)
+            self.assertIn('Insignia of rank', json_data['background_equipment_string']) # From Soldier BG
+            # Fighter starting equipment has choices, e.g. chain mail or leather
+            self.assertTrue(any(group['desc'].startswith("Choose 1") for group in json_data['choice_groups']))
+
+
+    def test_get_step_data_spells_for_wizard(self):
+        with self.client:
+            with self.client.session_transaction() as sess:
+                sess['new_character_data'] = {'class_id': self.class2.id} # Wizard
+
+            response = self.client.get(url_for('main.creation_wizard_step_data', step_name='spells'))
+            self.assertEqual(response.status_code, 200)
+            json_data = response.get_json()
+            self.assertEqual(json_data['num_cantrips_to_select'], 3)
+            self.assertEqual(json_data['num_level_1_spells_to_select'], 6)
+            self.assertIn('available_cantrips', json_data)
+            self.assertTrue(any(s['name'] == 'Fire Bolt' for s in json_data['available_cantrips']))
+            self.assertIn('available_level_1_spells', json_data)
+            self.assertTrue(any(s['name'] == 'Magic Missile' for s in json_data['available_level_1_spells']))
+
+    def test_get_step_data_spells_for_non_caster(self):
+        with self.client:
+            with self.client.session_transaction() as sess:
+                sess['new_character_data'] = {'class_id': self.class1.id} # Fighter (no spellcasting_ability)
+
+            response = self.client.get(url_for('main.creation_wizard_step_data', step_name='spells'))
+            self.assertEqual(response.status_code, 200)
+            json_data = response.get_json()
+            self.assertTrue(json_data.get('no_spells_or_class_issue'))
+
+    def test_get_step_data_review_with_session_data(self):
+        with self.client:
+            # Populate session with some data
+            test_data = {
+                'race_id': self.race1.id,
+                'class_id': self.class2.id,
+                'character_name': 'Test Review Char'
+            }
+            with self.client.session_transaction() as sess:
+                sess['new_character_data'] = test_data
+
+            response = self.client.get(url_for('main.creation_wizard_step_data', step_name='review'))
+            self.assertEqual(response.status_code, 200)
+            json_data = response.get_json()
+            self.assertIn('current_character_summary', json_data)
+            self.assertEqual(json_data['current_character_summary']['character_name'], 'Test Review Char')
+            self.assertIn('race_details', json_data)
+            self.assertEqual(json_data['race_details']['name'], self.race1.name)
+            self.assertIn('class_details', json_data)
+            self.assertEqual(json_data['class_details']['name'], self.class2.name)
+
+
+    def _populate_session_for_final_submission(self):
+        # Helper to populate session with enough data to pass final POST validation
+        char_data = {
+            'race_id': self.race1.id, # Human
+            'race_name': self.race1.name,
+            'speed': self.race1.speed,
+            'languages_from_race': json.loads(self.race1.languages or '[]'),
+            'race_skill_proficiencies': json.loads(self.race1.skill_proficiencies or '[]'),
+
+            'class_id': self.class2.id, # Wizard
+            'class_name': self.class2.name,
+            'saving_throw_proficiencies': json.loads(self.class2.proficiency_saving_throws or '[]'),
+            'armor_proficiencies': json.loads(self.class2.proficiencies_armor or '[]'),
+            'weapon_proficiencies': json.loads(self.class2.proficiencies_weapons or '[]'),
+            'tool_proficiencies_class_fixed': json.loads(self.class2.proficiencies_tools or '[]'),
+
+            'ability_scores': {'STR': 10, 'DEX': 12, 'CON': 14, 'INT': 15, 'WIS': 8, 'CHA': 13},
+            'base_ability_scores': {'STR': 9, 'DEX': 11, 'CON': 13, 'INT': 14, 'WIS': 7, 'CHA': 12}, # Assuming +1 from Human
+
+            'background_name': 'Sage',
+            'background_skill_proficiencies': ['Arcana', 'History'], # From Sage
+            'background_tool_proficiencies': [],
+            'background_languages_fixed': ["Elvish", "Dwarvish"], # Sage example has "Two of your choice"
+            'chosen_languages_from_bg': [], # Assuming none chosen beyond fixed for simplicity here
+            'chosen_tool_proficiencies_from_bg': [],
+            'background_equipment_string': "A bottle of black ink, a quill, ... and a pouch containing 10 gp.",
+
+            'class_skill_proficiencies': ['Investigation', 'Medicine'], # Chosen for Wizard
+
+            'max_hp': 6 + 2, # Wizard (d6) + CON mod (14 CON -> +2)
+            'armor_class_base': 10 + 1, # DEX mod (12 DEX -> +1)
+
+            'final_equipment_objects': [
+                {'name': 'Spellbook', 'quantity': 1, 'description': 'Wizard starting equipment'},
+                {'name': 'Dagger', 'quantity': 2, 'description': 'Wizard starting equipment'}
+            ],
+            # 'coinage_gp': 10, # Assuming parsed from background_equipment_string by wizard POST
+
+            'chosen_cantrip_ids': [self.spell1.id], # Fire Bolt
+            'chosen_level_1_spell_ids': [self.spell2.id, self.spell3.id], # Magic Missile, Shield
+
+            'character_name': 'Test Wizard Finale',
+            'alignment': 'Lawful Good',
+            'character_description': 'A test wizard ready for action.',
+            'player_notes': 'Prefers fire spells.'
+        }
+        with self.client.session_transaction() as sess:
+            sess['new_character_data'] = char_data
+        return char_data
+
+    def test_post_final_character_submission(self):
+        with self.client:
+            populated_char_data = self._populate_session_for_final_submission()
+
+            response = self.client.post(url_for('main.creation_wizard')) # No direct payload, reads from session
+
+            self.assertEqual(response.status_code, 200) # Expecting JSON success
+            json_response = response.get_json()
+            self.assertEqual(json_response['status'], 'success')
+            self.assertIn('character_id', json_response)
+            new_char_id = json_response['character_id']
+
+            # Verify database entries
+            new_character = Character.query.get(new_char_id)
+            self.assertIsNotNone(new_character)
+            self.assertEqual(new_character.name, populated_char_data['character_name'])
+            self.assertEqual(new_character.race_id, populated_char_data['race_id'])
+            self.assertEqual(new_character.class_id, populated_char_data['class_id'])
+            self.assertEqual(new_character.alignment, populated_char_data['alignment'])
+
+            new_character_level = CharacterLevel.query.filter_by(character_id=new_char_id, level_number=1).first()
+            self.assertIsNotNone(new_character_level)
+            self.assertEqual(new_character_level.strength, populated_char_data['ability_scores']['STR'])
+            self.assertEqual(new_character_level.max_hp, populated_char_data['max_hp'])
+            self.assertEqual(new_character_level.hp, populated_char_data['max_hp'])
+            self.assertEqual(new_character_level.armor_class, populated_char_data['armor_class_base'])
+
+            # Verify proficiencies (example: one skill from background, one from class, one from race if applicable)
+            level_1_profs = json.loads(new_character_level.proficiencies)
+            self.assertIn('Arcana', level_1_profs['skills']) # From Sage BG
+            self.assertIn('Investigation', level_1_profs['skills']) # From Wizard class choice
+            # Human in this setup doesn't grant fixed skill, but if it did, it would be here.
+
+            # Verify spells
+            known_spells = json.loads(new_character_level.spells_known_ids)
+            self.assertIn(self.spell1.id, known_spells) # Fire Bolt
+            self.assertIn(self.spell2.id, known_spells) # Magic Missile
+
+            # Verify items (simplified check)
+            items_count = Item.query.filter_by(character_id=new_char_id).count()
+            self.assertGreaterEqual(items_count, 2) # Spellbook, Dagger
+
+            # Verify session is cleared
+            cleared_session_data = session.get('new_character_data')
+            self.assertIsNone(cleared_session_data)

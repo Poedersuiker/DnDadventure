@@ -1,3 +1,4 @@
+import json
 from flask_login import UserMixin
 from app import db  # Assuming db will be initialized in app/__init__.py
 from datetime import datetime
@@ -141,6 +142,21 @@ class Race(db.Model):
     languages = db.Column(db.Text, nullable=False) # JSON list
     traits = db.Column(db.Text, nullable=True) # JSON list of trait names/descriptions
     skill_proficiencies = db.Column(db.Text, nullable=True) # JSON list, optional choices
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'speed': self.speed,
+            'ability_score_increases': json.loads(self.ability_score_increases or '{}'), # Ensure it's a dict
+            'age_description': self.age_description,
+            'alignment_description': self.alignment_description,
+            'size': self.size,
+            'size_description': self.size_description,
+            'languages': json.loads(self.languages or '[]'),
+            'traits': json.loads(self.traits or '[]'),
+            'skill_proficiencies': json.loads(self.skill_proficiencies or '[]')
+        }
 
     def __repr__(self):
         return f'<Race {self.name}>'

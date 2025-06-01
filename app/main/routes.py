@@ -36,22 +36,441 @@ def login_page():
         return redirect(url_for('main.index'))
     return render_template('login.html')
 
-@bp.route('/create_character', methods=['GET']) # Only GET needed now for redirect
+@bp.route('/create_character', methods=['GET']) # New main entry point
 @login_required
 def create_character():
-    # Redirect to the first step of the new character creation flow
-    return redirect(url_for('main.creation_race'))
+    # Redirect to the new character creation wizard
+    session.pop('new_character_data', None) # Clear any old session data before starting fresh
+    session.modified = True
+    return redirect(url_for('main.creation_wizard'))
+
+# CHARACTER CREATION WIZARD ROUTES START
+# ##############################################################################
+
+@bp.route('/creation_wizard', methods=['GET', 'POST'])
+@login_required
+def creation_wizard():
+    if request.method == 'GET':
+        # Initialize or retrieve character creation data from the session
+        if 'new_character_data' not in session:
+            session['new_character_data'] = {}
+            session.modified = True
+            current_app.logger.info("Initialized new_character_data in session for wizard.")
+        else:
+            current_app.logger.info(f"Found existing new_character_data in session: {session['new_character_data']}")
+
+        # This data is primarily for the overall page structure if needed,
+        # individual steps will fetch their specific data via AJAX to step_data route.
+        wizard_shell_data = {
+            'current_wizard_data': session.get('new_character_data', {})
+            # We could pass initial data for step 1 here if desired,
+            # but current design is for JS to fetch it.
+        }
+        return render_template('character_creation_wizard.html', wizard_shell_data=wizard_shell_data)
+
+    if request.method == 'POST':
+        # This POST is intended for the final submission from the wizard's "Finish" button
+        char_data = session.get('new_character_data', {})
+        current_app.logger.info(f"Finalizing character with data: {char_data}")
+
+        # --- Begin Character Finalization (adapted from old creation_review POST) ---
+        character_name = char_data.get('character_name', 'Unnamed Hero')
+        alignment = char_data.get('alignment', 'True Neutral')
+        char_description = char_data.get('character_description', '')
+
+        # Essential data checks
+        required_fields = ['race_id', 'class_id', 'ability_scores', 'background_name', 'max_hp', 'armor_class_base', 'speed']
+        missing_fields = [field for field in required_fields if field not in char_data]
+        if missing_fields:
+            flash(f'Critical data missing: {", ".join(missing_fields)}. Cannot finalize character.', 'error')
+            current_app.logger.error(f"Character finalization failed. Missing fields: {missing_fields}. Data: {char_data}")
+            # Client-side should prevent this. Respond with error for AJAX or redirect if it's a direct form post.
+            return jsonify(status="error", message=f"Missing data: {', '.join(missing_fields)}"), 400
+
+
+        race = Race.query.get(char_data.get('race_id'))
+        char_class_obj = Class.query.get(char_data.get('class_id'))
+
+        if not race or not char_class_obj:
+            flash('Race or Class data invalid. Cannot finalize character.', 'error')
+            current_app.logger.error(f"Race or Class object not found. Race ID: {char_data.get('race_id')}, Class ID: {char_data.get('class_id')}")
+            return jsonify(status="error", message="Invalid Race or Class ID"), 400
+
+        # Aggregate proficiencies
+        all_skill_proficiencies = set(char_data.get('background_skill_proficiencies', []))
+        all_skill_proficiencies.update(char_data.get('class_skill_proficiencies', []))
+        all_skill_proficiencies.update(char_data.get('race_skill_proficiencies', [])) # Added race skills
+
+        all_tool_proficiencies = set(char_data.get('background_tool_proficiencies', [])) # From BG definition
+        all_tool_proficiencies.update(char_data.get('tool_proficiencies_class_fixed', [])) # From class definition
+        all_tool_proficiencies.update(char_data.get('chosen_tool_proficiencies_from_bg', [])) # Chosen for BG
+
+        all_language_proficiencies = set(char_data.get('languages_from_race', [])) # From Race
+        all_language_proficiencies.update(char_data.get('background_languages_fixed', [])) # Fixed from BG
+        all_language_proficiencies.update(char_data.get('chosen_languages_from_bg', [])) # Chosen for BG
+
+
+        new_char = Character(
+            name=character_name,
+            description=char_description,
+            user_id=current_user.id,
+            race_id=race.id,
+            class_id=char_class_obj.id,
+            alignment=alignment,
+            background_name=char_data.get('background_name'),
+            background_proficiencies=json.dumps({ # Store only the profs granted directly by background definition
+                "skills": char_data.get('background_skill_proficiencies', []),
+                "tools": char_data.get('background_tool_proficiencies', []),
+                "languages": char_data.get('background_languages_fixed', [])
+            }),
+            adventure_log=json.dumps([]),
+            dm_allowed_level=1,
+            current_xp=0,
+            current_hit_dice=1, # Level 1 characters have 1 hit die (equal to their level)
+            player_notes=char_data.get('player_notes', "") # Added from wizard data
+        )
+        db.session.add(new_char)
+        db.session.flush() # Flush to get new_char.id for CharacterLevel and Items/Coinage
+
+        level_1_proficiencies_snapshot = {
+            'skills': sorted(list(all_skill_proficiencies)),
+            'tools': sorted(list(all_tool_proficiencies)),
+            'languages': sorted(list(all_language_proficiencies)),
+            'armor': sorted(list(char_data.get('armor_proficiencies', []))),
+            'weapons': sorted(list(char_data.get('weapon_proficiencies', []))),
+            'saving_throws': sorted(list(char_data.get('saving_throw_proficiencies', [])))
+        }
+
+        spell_slots_L1 = {}
+        if char_class_obj.spell_slots_by_level:
+            try:
+                all_class_level_slots = json.loads(char_class_obj.spell_slots_by_level)
+                slots_for_char_level_1_list = all_class_level_slots.get("1")
+                if slots_for_char_level_1_list:
+                    for spell_lvl_idx, num_slots in enumerate(slots_for_char_level_1_list):
+                        if num_slots > 0:
+                            spell_slots_L1[str(spell_lvl_idx + 1)] = num_slots
+            except json.JSONDecodeError:
+                current_app.logger.error(f"Failed to parse spell_slots_by_level for class {char_class_obj.name}")
+
+        ability_scores_final = char_data.get('ability_scores', {})
+        new_char_level_1 = CharacterLevel(
+            character_id=new_char.id,
+            level_number=1,
+            xp_at_level_up=0,
+            strength=ability_scores_final.get('STR', 10),
+            dexterity=ability_scores_final.get('DEX', 10),
+            constitution=ability_scores_final.get('CON', 10),
+            intelligence=ability_scores_final.get('INT', 10),
+            wisdom=ability_scores_final.get('WIS', 10),
+            charisma=ability_scores_final.get('CHA', 10),
+            hp=char_data.get('max_hp', 1), # Ensure HP is at least 1
+            max_hp=char_data.get('max_hp', 1),
+            armor_class=char_data.get('armor_class_base'),
+            hit_dice_rolled="Max HP at L1", # Or actual roll if that was an option
+            proficiencies=json.dumps(level_1_proficiencies_snapshot),
+            features_gained=json.dumps(char_data.get('initial_features', ["Initial class features", "Initial race features"])),
+            spells_known_ids=json.dumps(char_data.get('chosen_cantrip_ids', []) + char_data.get('chosen_level_1_spell_ids', [])),
+            spells_prepared_ids=json.dumps([]), # Initial state for prepared casters
+            spell_slots_snapshot=json.dumps(spell_slots_L1),
+            created_at=datetime.utcnow()
+        )
+        db.session.add(new_char_level_1)
+
+        # Process Equipment and Coinage from 'final_equipment_objects'
+        final_equipment_objects = char_data.get('final_equipment_objects', [])
+
+        # Handle coinage (often part of background equipment string but should be separated if possible)
+        # For simplicity, assuming 'final_equipment_objects' might contain coin-like entries or a dedicated 'coinage' field in char_data
+
+        # Example: if char_data contains a specific 'coinage_gp' field:
+        if 'coinage_gp' in char_data and char_data['coinage_gp'] > 0:
+             db.session.add(Coinage(name="Gold Pieces", quantity=char_data['coinage_gp'], character_id=new_char.id))
+        # Similar for SP, CP etc. Or parse from a general equipment string if necessary.
+
+        # Simplified item processing:
+        for item_obj in final_equipment_objects:
+            if item_obj.get('name') and item_obj.get('quantity', 0) > 0:
+                # Basic parsing for gold from item name string (if not handled separately)
+                if "gp" in item_obj['name'].lower() or "gold piece" in item_obj['name'].lower():
+                    # This is a basic example. A more robust parser for "15 gp" etc. would be needed.
+                    # For now, let's assume specific coinage fields or that items are distinct from raw currency.
+                    pass # Skip adding raw gold string as an "item" if handled by dedicated coinage fields
+                else:
+                    db.session.add(Item(
+                        name=item_obj['name'].strip().title(),
+                        quantity=item_obj['quantity'],
+                        description=item_obj.get('description', "Starting equipment"),
+                        character_id=new_char.id
+                    ))
+
+        db.session.commit()
+        session.pop('new_character_data', None)
+        session.modified = True
+        flash('Character created successfully!', 'success')
+        # Return JSON for AJAX, or redirect if it was a full form post
+        return jsonify(status="success", message="Character created!", character_id=new_char.id, redirect_url=url_for('main.index'))
+
+    # Fallthrough for GET if POST logic doesn't redirect earlier (should not happen for final POST)
+    # Or if it's a GET request, this is already handled above.
+    # This return is a safeguard.
+    return redirect(url_for('main.creation_wizard'))
+
+# sample_backgrounds_data is used by creation_wizard_step_data, so it's kept above the wizard routes.
+sample_backgrounds_data = {
+    "Acolyte": {"name": "Acolyte", "skill_proficiencies": ["Insight", "Religion"], "tool_proficiencies": [], "languages": ["Two of your choice"], "equipment": "A holy symbol (a gift to you when you entered the priesthood), a prayer book or prayer wheel, 5 sticks of incense, vestments, a set of common clothes, and a pouch containing 15 gp."},
+    "Criminal": {"name": "Criminal (Spy)", "skill_proficiencies": ["Deception", "Stealth"], "tool_proficiencies": ["One type of gaming set", "Thieves' tools"], "languages": [], "equipment": "A crowbar, a set of dark common clothes including a hood, and a pouch containing 15 gp."},
+    "Sage": {"name": "Sage", "skill_proficiencies": ["Arcana", "History"], "tool_proficiencies": [], "languages": ["Two of your choice"], "equipment": "A bottle of black ink, a quill, a small knife, a letter from a dead colleague posing a question you have not yet been able to answer, a set of common clothes, and a pouch containing 10 gp."},
+    "Soldier": {"name": "Soldier", "skill_proficiencies": ["Athletics", "Intimidation"], "tool_proficiencies": ["One type of gaming set", "Vehicles (land)"], "languages": [], "equipment": "An insignia of rank, a trophy taken from a fallen enemy, a set of bone dice or deck of cards, a set of common clothes, and a pouch containing 10 gp."},
+    "Entertainer": {"name": "Entertainer", "skill_proficiencies": ["Acrobatics", "Performance"], "tool_proficiencies": ["Disguise kit", "One type of musical instrument"], "languages": [], "equipment": "A musical instrument (one of your choice), the favor of an admirer (love letter, lock of hair, or trinket), a costume, and a pouch containing 15 gp."}
+}
+
+# parse_starting_equipment is used by creation_wizard_step_data, so it's kept.
+def parse_starting_equipment(starting_equipment_data_json):
+    fixed_items = []
+    choice_groups = []
+    if not starting_equipment_data_json:
+        return fixed_items, choice_groups
+    starting_equipment_data = json.loads(starting_equipment_data_json)
+    for i, item_or_choice in enumerate(starting_equipment_data):
+        if 'equipment' in item_or_choice and 'quantity' in item_or_choice:
+            fixed_items.append(item_or_choice)
+        elif 'choose' in item_or_choice and 'from' in item_or_choice:
+            options_list = []
+            actual_options_source = item_or_choice['from'].get('options', [])
+            for opt in actual_options_source:
+                if opt.get('option_type') == 'counted_reference' and 'of' in opt:
+                    options_list.append({"name": opt['of'].get('name', opt['of'].get('index', 'Unknown Item')), "index": opt['of'].get('index', 'unknown-item-' + str(i)), "quantity": opt.get('count', 1)})
+                elif opt.get('option_type') == 'reference' and 'item' in opt:
+                     options_list.append({"name": opt['item'].get('name', opt['item'].get('index', 'Unknown Item')), "index": opt['item'].get('index', 'unknown-item-' + str(i)), "quantity": 1})
+            if options_list:
+                choice_groups.append({"id": f"choice_{i}", "desc": item_or_choice.get('desc', f"Choose {item_or_choice['choose']}"), "choose": item_or_choice['choose'], "options": options_list})
+    return fixed_items, choice_groups
+
+@bp.route('/creation_wizard/step_data/<step_name>', methods=['GET'])
+@login_required
+def creation_wizard_step_data(step_name):
+    data = {}
+    char_data_session = session.get('new_character_data', {})
+
+    if step_name == 'race':
+        races = Race.query.all()
+        data = {'races': [r.to_dict() for r in races]}
+    elif step_name == 'class':
+        classes = Class.query.all()
+        data = {'classes': [c.to_dict() for c in classes]}
+    elif step_name == 'stats':
+        data = {'standard_array': [15, 14, 13, 12, 10, 8]}
+        race_id = char_data_session.get('race_id')
+        if race_id:
+            race = Race.query.get(race_id)
+            if race:
+                # ability_score_increases should be JSON string like '{"STR": 1, "DEX": 2}' in model
+                # to_dict() should handle json.loads for this field.
+                data['racial_bonuses'] = race.to_dict().get('ability_score_increases', {})
+            else: data['racial_bonuses'] = {}
+        else: data['racial_bonuses'] = {}
+    elif step_name == 'background':
+        data = {'backgrounds': sample_backgrounds_data} # Predefined dict
+    elif step_name == 'skills':
+        class_id = char_data_session.get('class_id')
+        if class_id:
+            selected_class = Class.query.get(class_id)
+            if selected_class:
+                class_dict = selected_class.to_dict()
+                data = {
+                    'skill_options': class_dict.get('skill_proficiencies_options', []),
+                    'num_to_choose': class_dict.get('skill_proficiencies_option_count', 0),
+                    # These are fixed profs from class, review if they should be sent here or on class selection
+                    'saving_throws': class_dict.get('proficiency_saving_throws', []),
+                    'armor_proficiencies': class_dict.get('proficiencies_armor', []),
+                    'weapon_proficiencies': class_dict.get('proficiencies_weapons', []),
+                    'tool_proficiencies_class_fixed': class_dict.get('proficiencies_tools', [])
+                }
+            else: data = {'error': 'Class not found'}
+        else: data = {'error': 'Class ID not in session'}
+    elif step_name == 'hp':
+        race_id = char_data_session.get('race_id')
+        class_id = char_data_session.get('class_id')
+        ability_scores = char_data_session.get('ability_scores')
+        if race_id and class_id and ability_scores:
+            race = Race.query.get(race_id)
+            s_class = Class.query.get(class_id)
+            if race and s_class:
+                con_score = ability_scores.get('CON', 10)
+                con_mod = (con_score - 10) // 2
+                try:
+                    hit_die_val = int(s_class.hit_die[1:]) # Assumes "dX" format
+                except: hit_die_val = 8 # Default
+                max_hp = hit_die_val + con_mod
+
+                dex_score = ability_scores.get('DEX', 10)
+                dex_mod = (dex_score - 10) // 2
+                ac_base = 10 + dex_mod
+                data = {'max_hp': max_hp, 'ac_base': ac_base, 'speed': race.speed}
+            else: data = {'error': 'Race or Class not found for HP calc'}
+        else: data = {'error': 'Missing data for HP calc (race, class, or scores)'}
+    elif step_name == 'equipment':
+        class_id = char_data_session.get('class_id')
+        background_name = char_data_session.get('background_name')
+        if class_id and background_name:
+            selected_class = Class.query.get(class_id)
+            background_details = sample_backgrounds_data.get(background_name)
+            if selected_class and background_details:
+                fixed_items, choice_groups = parse_starting_equipment(selected_class.starting_equipment or '[]')
+                data = {
+                    'fixed_items': fixed_items,
+                    'choice_groups': choice_groups,
+                    'background_equipment_string': background_details.get('equipment', '')
+                }
+            else: data = {'error': 'Class or Background details not found for equipment'}
+        else: data = {'error': 'Class ID or Background name not in session for equipment'}
+    elif step_name == 'spells':
+        class_id = char_data_session.get('class_id')
+        if class_id:
+            s_class = Class.query.get(class_id)
+            if s_class and s_class.spellcasting_ability:
+                s_class_dict = s_class.to_dict()
+                # Determine number of cantrips/spells to pick at L1
+                # This logic is simplified; actual numbers depend on class rules (Wizard, Sorc, etc.)
+                # For L1, cantrips_known_by_level/spells_known_by_level map for key "1"
+                cantrips_known_map = s_class_dict.get('cantrips_known_by_level', {})
+                spells_known_map = s_class_dict.get('spells_known_by_level', {})
+
+                num_cantrips = int(cantrips_known_map.get("1", 0))
+                num_level_1_spells = int(spells_known_map.get("1", 0))
+
+                # Special case for Wizard L1 spells
+                if s_class.name == "Wizard": num_level_1_spells = 6
+
+                search_pattern = f'%"{s_class.name}"%' # For Spell.classes_that_can_use
+                cantrips = Spell.query.filter(Spell.level == 0, Spell.classes_that_can_use.like(search_pattern)).order_by(Spell.name).all()
+                level_1_spells = Spell.query.filter(Spell.level == 1, Spell.classes_that_can_use.like(search_pattern)).order_by(Spell.name).all()
+                data = {
+                    'num_cantrips_to_select': num_cantrips,
+                    'num_level_1_spells_to_select': num_level_1_spells,
+                    'available_cantrips': [{'id': sp.id, 'name': sp.name, 'description': sp.description} for sp in cantrips],
+                    'available_level_1_spells': [{'id': sp.id, 'name': sp.name, 'description': sp.description} for sp in level_1_spells],
+                    'can_prepare_spells': s_class_dict.get('can_prepare_spells', False)
+                }
+            else: data = {'no_spells_or_class_issue': True} # No spellcasting ability or class not found
+        else: data = {'error': 'Class ID not in session for spells'}
+    elif step_name == 'review':
+        # Review step primarily uses data already in session. This can confirm/load full objects.
+        data = {'current_character_summary': char_data_session} # Send all accumulated data
+        if char_data_session.get('race_id'):
+            race = Race.query.get(char_data_session.get('race_id'))
+            if race: data['race_details'] = race.to_dict()
+        if char_data_session.get('class_id'):
+            s_class = Class.query.get(char_data_session.get('class_id'))
+            if s_class: data['class_details'] = s_class.to_dict()
+        # Add more details as needed for review page, e.g., spell names
+    else:
+        return jsonify(error="Invalid step name"), 404
+    return jsonify(data)
+
+@bp.route('/creation_wizard/update_session', methods=['POST'])
+@login_required
+def creation_wizard_update_session():
+    if 'new_character_data' not in session: # Should be initialized by GET /creation_wizard
+        session['new_character_data'] = {}
+        session.modified = True
+
+    update_data = request.get_json()
+    if not update_data:
+        return jsonify(status="error", message="No data provided"), 400
+
+    # `step_key` could be 'race', 'class', 'ability_scores', etc.
+    # `step_payload` is the data for that step, e.g. {'race_id': 5}
+    step_key = update_data.get('step_key')
+    step_payload = update_data.get('payload', {})
+
+    if not step_key:
+         return jsonify(status="error", message="Step key identifier missing"), 400
+
+    # Merge new payload into the session data for the character
+    # Example: if session['new_character_data'] = {'race_id': 1}, and payload is {'class_id': 2}
+    # it becomes {'race_id': 1, 'class_id': 2}
+    session['new_character_data'].update(step_payload)
+
+    # Perform server-side logic based on the step and payload
+    if step_key == 'race' and 'race_id' in step_payload:
+        race = Race.query.get(step_payload['race_id'])
+        if race:
+            race_dict = race.to_dict()
+            session['new_character_data']['race_name'] = race_dict.get('name')
+            session['new_character_data']['speed'] = race_dict.get('speed')
+            session['new_character_data']['languages_from_race'] = race_dict.get('languages', [])
+            session['new_character_data']['race_skill_proficiencies'] = race_dict.get('skill_proficiencies', []) # Store race skills
+            # Racial bonuses are typically applied client-side in stats step or by stats step_data
+        else:
+            return jsonify(status="error", message="Invalid Race ID"), 400
+
+    elif step_key == 'class' and 'class_id' in step_payload:
+        s_class = Class.query.get(step_payload['class_id'])
+        if s_class:
+            class_dict = s_class.to_dict()
+            session['new_character_data']['class_name'] = class_dict.get('name')
+            # Store proficiencies that are fixed for the class
+            session['new_character_data']['saving_throw_proficiencies'] = class_dict.get('proficiency_saving_throws', [])
+            session['new_character_data']['armor_proficiencies'] = class_dict.get('proficiencies_armor', [])
+            session['new_character_data']['weapon_proficiencies'] = class_dict.get('proficiencies_weapons', [])
+            session['new_character_data']['tool_proficiencies_class_fixed'] = class_dict.get('proficiencies_tools', [])
+        else:
+            return jsonify(status="error", message="Invalid Class ID"), 400
+
+    elif step_key == 'background' and 'background_name' in step_payload:
+        bg_name = step_payload['background_name']
+        if bg_name in sample_backgrounds_data:
+            bg_data = sample_backgrounds_data[bg_name]
+            session['new_character_data']['background_skill_proficiencies'] = bg_data.get('skill_proficiencies', [])
+            session['new_character_data']['background_tool_proficiencies'] = bg_data.get('tool_proficiencies', [])
+            session['new_character_data']['background_languages_fixed'] = bg_data.get('languages', []) # Store fixed languages
+            session['new_character_data']['background_equipment_string'] = bg_data.get('equipment', '')
+        else:
+            return jsonify(status="error", message="Invalid Background Name"), 400
+
+    elif step_key == "skills": # When skills are chosen
+        # Payload should include 'class_skill_proficiencies' and 'chosen_tool_proficiencies_from_bg' etc.
+        # These are directly updated by session['new_character_data'].update(step_payload)
+        pass # No extra server logic here if payload is structured correctly by client
+
+    elif step_key == "hp": # When HP is calculated
+        # Payload contains max_hp, ac_base. Speed is already from race.
+        pass
+
+    elif step_key == "equipment":
+        # Payload contains 'final_equipment_objects' which is a list of {name, quantity, description}
+        # And potentially 'coinage_gp', 'coinage_sp', 'coinage_cp'
+        pass
+
+    elif step_key == "spells":
+        # Payload contains 'chosen_cantrip_ids', 'chosen_level_1_spell_ids'
+        pass
+
+    elif step_key == "review":
+        # Payload contains 'character_name', 'alignment', 'character_description', 'player_notes'
+        pass
+
+
+    session.modified = True
+    current_app.logger.info(f"Session updated via wizard for step '{step_key}'. Current session data: {session['new_character_data']}")
+    return jsonify(status="success", message="Session updated", current_character_data=session['new_character_data'])
+
+# CHARACTER CREATION WIZARD ROUTES END
+# ##############################################################################
+
 
 @bp.route('/delete_character/<int:character_id>', methods=['POST'])
 @login_required
 def delete_character(character_id):
     character = Character.query.get_or_404(character_id) # Use get_or_404 for convenience
-    
+
     if character.user_id != current_user.id:
         flash('You do not have permission to delete this character.', 'error')
         # Or abort(403)
         return redirect(url_for('main.index'))
-        
+
     db.session.delete(character)
     db.session.commit()
     flash('Character deleted successfully.', 'success')
@@ -95,547 +514,9 @@ def clear_character_progress(character_id):
     flash('Adventure progress cleared. Your character has been reset. Inventory and coinage have been cleared.', 'success')
     return redirect(url_for('main.index'))
 
-# Character Creation Step 1: Race Selection
-@bp.route('/creation/race', methods=['GET', 'POST'])
-@login_required
-def creation_race():
-    if request.method == 'GET':
-        # Initialize or reset character data in session
-        session['new_character_data'] = {}
-        races = Race.query.all()
-        if not races:
-            flash('No races found in the database. Please run the population script.', 'error')
-            return render_template('create_character_race.html', races=[])
-        return render_template('create_character_race.html', races=races)
-    race_id = request.form.get('race_id')
-    selected_race = None
-    if race_id:
-        try:
-            selected_race = Race.query.get(int(race_id))
-        except ValueError:
-            flash('Invalid Race ID format.', 'error')
-            races = Race.query.all()
-            return render_template('create_character_race.html', races=races)
-    if selected_race:
-        session['new_character_data']['race_id'] = selected_race.id
-        session['new_character_data']['race_name'] = selected_race.name
-        session.modified = True 
-        flash(f'{selected_race.name} selected!', 'success')
-        return redirect(url_for('main.creation_class')) 
-    else:
-        flash('Please select a valid race.', 'error')
-        races = Race.query.all()
-        return render_template('create_character_race.html', races=races)
-
-@bp.route('/creation/class', methods=['GET', 'POST'])
-@login_required
-def creation_class():
-    char_data = session.get('new_character_data', {})
-    if not char_data.get('race_id'):
-        flash('Please select a race first.', 'error')
-        return redirect(url_for('main.creation_race'))
-    if request.method == 'GET':
-        classes = Class.query.all()
-        if not classes:
-            flash('No classes found in the database. Please run the population script.', 'error')
-            return render_template('create_character_class.html', classes=[], race_name=char_data.get('race_name'))
-        return render_template('create_character_class.html', classes=classes, race_name=char_data.get('race_name'))
-    class_id = request.form.get('class_id')
-    selected_class = None
-    if class_id:
-        try:
-            selected_class = Class.query.get(int(class_id))
-        except ValueError:
-            flash('Invalid Class ID format.', 'error')
-            classes = Class.query.all()
-            return render_template('create_character_class.html', classes=classes, race_name=char_data.get('race_name'))
-    if selected_class:
-        session['new_character_data']['class_id'] = selected_class.id
-        session['new_character_data']['class_name'] = selected_class.name
-        session.modified = True 
-        flash(f'{selected_class.name} selected!', 'success')
-        return redirect(url_for('main.creation_stats')) 
-    else:
-        flash('Please select a valid class.', 'error')
-        classes = Class.query.all()
-        return render_template('create_character_class.html', classes=classes, race_name=char_data.get('race_name'))
-
-@bp.route('/creation/stats', methods=['GET', 'POST'])
-@login_required
-def creation_stats():
-    char_data = session.get('new_character_data', {})
-    if not char_data.get('race_id'):
-        flash('Please select a race first.', 'error')
-        return redirect(url_for('main.creation_race'))
-    if not char_data.get('class_id'):
-        flash('Please select a class first.', 'error')
-        return redirect(url_for('main.creation_class'))
-    selected_race = Race.query.get(char_data['race_id'])
-    selected_class = Class.query.get(char_data['class_id'])
-    if not selected_race or not selected_class:
-        flash('Selected race or class not found. Please restart character creation.', 'error')
-        session.pop('new_character_data', None) 
-        return redirect(url_for('main.creation_race'))
-    racial_bonuses_list = json.loads(selected_race.ability_score_increases or '[]')
-    primary_ability = selected_class.spellcasting_ability or "Refer to class features"
-    standard_array = [15, 14, 13, 12, 10, 8]
-    racial_bonuses_dict = {bonus['name']: bonus['bonus'] for bonus in racial_bonuses_list}
-    rolled_stats_from_session = session.get('rolled_stats')
-    if request.method == 'POST':
-        action = request.form.get('action')
-        if action == 'roll_stats':
-            rolled_scores = [roll_dice(4, 6, 1)[0] for _ in range(6)]
-            session['rolled_stats'] = rolled_scores
-            session.modified = True
-            return render_template('create_character_stats.html',
-                                   race_name=selected_race.name,
-                                   class_name=selected_class.name,
-                                   racial_bonuses_dict=racial_bonuses_dict,
-                                   primary_ability=primary_ability,
-                                   standard_array=standard_array,
-                                   rolled_stats=rolled_scores,
-                                   submitted_scores=request.form)
-        base_scores = {}
-        errors = False
-        ability_map = {
-            'strength': 'STR', 'dexterity': 'DEX', 'constitution': 'CON',
-            'intelligence': 'INT', 'wisdom': 'WIS', 'charisma': 'CHA'
-        }
-        form_scores_to_repopulate = {}
-        for form_name, score_key in ability_map.items():
-            score_val_str = request.form.get(form_name)
-            form_scores_to_repopulate[form_name] = score_val_str
-            if not score_val_str:
-                flash(f'{form_name.capitalize()} score is required.', 'error')
-                errors = True
-                continue
-            try:
-                score = int(score_val_str)
-                if not (3 <= score <= 18):
-                    flash(f'{form_name.capitalize()} score must be between 3 and 18 before racial modifiers.', 'error')
-                    errors = True
-                base_scores[score_key] = score
-            except ValueError:
-                flash(f'Invalid score for {form_name.capitalize()}. Must be a number.', 'error')
-                errors = True
-        if errors:
-            return render_template('create_character_stats.html',
-                                   race_name=selected_race.name, 
-                                   class_name=selected_class.name, 
-                                   racial_bonuses_dict=racial_bonuses_dict, 
-                                   primary_ability=primary_ability, 
-                                   standard_array=standard_array, 
-                                   rolled_stats=session.get('rolled_stats'), 
-                                   submitted_scores=form_scores_to_repopulate)
-        final_scores = base_scores.copy()
-        for bonus_item in racial_bonuses_list:
-            ability_key = bonus_item.get('name')
-            bonus_value = bonus_item.get('bonus', 0)
-            if ability_key in final_scores:
-                final_scores[ability_key] += bonus_value
-        session['new_character_data']['ability_scores'] = final_scores
-        session['new_character_data']['base_ability_scores'] = base_scores
-        session.modified = True
-        session.pop('rolled_stats', None)
-        flash('Ability scores saved!', 'success')
-        return redirect(url_for('main.creation_background'))
-    return render_template('create_character_stats.html',
-                           race_name=selected_race.name,
-                           class_name=selected_class.name,
-                           racial_bonuses_dict=racial_bonuses_dict,
-                           primary_ability=primary_ability,
-                           standard_array=standard_array,
-                           rolled_stats=rolled_stats_from_session,
-                           submitted_scores=None)
-
-sample_backgrounds_data = {
-    "Acolyte": {"name": "Acolyte", "skill_proficiencies": ["Insight", "Religion"], "tool_proficiencies": [], "languages": ["Two of your choice"], "equipment": "A holy symbol (a gift to you when you entered the priesthood), a prayer book or prayer wheel, 5 sticks of incense, vestments, a set of common clothes, and a pouch containing 15 gp."},
-    "Criminal": {"name": "Criminal (Spy)", "skill_proficiencies": ["Deception", "Stealth"], "tool_proficiencies": ["One type of gaming set", "Thieves' tools"], "languages": [], "equipment": "A crowbar, a set of dark common clothes including a hood, and a pouch containing 15 gp."},
-    "Sage": {"name": "Sage", "skill_proficiencies": ["Arcana", "History"], "tool_proficiencies": [], "languages": ["Two of your choice"], "equipment": "A bottle of black ink, a quill, a small knife, a letter from a dead colleague posing a question you have not yet been able to answer, a set of common clothes, and a pouch containing 10 gp."},
-    "Soldier": {"name": "Soldier", "skill_proficiencies": ["Athletics", "Intimidation"], "tool_proficiencies": ["One type of gaming set", "Vehicles (land)"], "languages": [], "equipment": "An insignia of rank, a trophy taken from a fallen enemy, a set of bone dice or deck of cards, a set of common clothes, and a pouch containing 10 gp."},
-    "Entertainer": {"name": "Entertainer", "skill_proficiencies": ["Acrobatics", "Performance"], "tool_proficiencies": ["Disguise kit", "One type of musical instrument"], "languages": [], "equipment": "A musical instrument (one of your choice), the favor of an admirer (love letter, lock of hair, or trinket), a costume, and a pouch containing 15 gp."}
-}
-
-@bp.route('/creation/background', methods=['GET', 'POST'])
-@login_required
-def creation_background():
-    char_data = session.get('new_character_data', {})
-    if not char_data.get('ability_scores'):
-        flash('Please determine ability scores first.', 'error')
-        return redirect(url_for('main.creation_stats'))
-    if request.method == 'POST':
-        selected_bg_name = request.form.get('background_name')
-        if selected_bg_name and selected_bg_name in sample_backgrounds_data:
-            chosen_bg_data = sample_backgrounds_data[selected_bg_name]
-            session['new_character_data']['background_name'] = chosen_bg_data['name']
-            session['new_character_data']['background_skill_proficiencies'] = chosen_bg_data['skill_proficiencies']
-            session['new_character_data']['background_tool_proficiencies'] = chosen_bg_data['tool_proficiencies']
-            session['new_character_data']['background_languages'] = chosen_bg_data['languages']
-            session['new_character_data']['background_equipment'] = chosen_bg_data['equipment']
-            session.modified = True
-            flash(f"Background '{chosen_bg_data['name']}' selected.", 'success')
-            return redirect(url_for('main.creation_skills'))
-        else:
-            flash('Please select a valid background.', 'error')
-            return render_template('create_character_background.html', race_name=char_data.get('race_name'), class_name=char_data.get('class_name'), backgrounds=sample_backgrounds_data)
-    return render_template('create_character_background.html', race_name=char_data.get('race_name'), class_name=char_data.get('class_name'), backgrounds=sample_backgrounds_data)
-
-@bp.route('/creation/skills', methods=['GET', 'POST'])
-@login_required
-def creation_skills():
-    char_data = session.get('new_character_data', {})
-    if not char_data.get('background_name'):
-        flash('Please choose your background first.', 'error')
-        return redirect(url_for('main.creation_background'))
-    selected_class = Class.query.get(char_data.get('class_id'))
-    if not selected_class:
-        flash('Selected class not found. Please restart character creation.', 'error')
-        session.pop('new_character_data', None)
-        return redirect(url_for('main.creation_race'))
-    skill_options_from_class = json.loads(selected_class.skill_proficiencies_options or '[]')
-    num_skills_to_choose = selected_class.skill_proficiencies_option_count
-    saving_throw_proficiencies = json.loads(selected_class.proficiency_saving_throws or '[]')
-    if request.method == 'POST':
-        chosen_skills = request.form.getlist('chosen_skill')
-        if len(chosen_skills) != num_skills_to_choose:
-            flash(f'Please choose exactly {num_skills_to_choose} skill(s). You chose {len(chosen_skills)}.', 'error')
-            return render_template('create_character_skills.html', race_name=char_data.get('race_name'), class_name=selected_class.name, background_name=char_data.get('background_name'), skill_options=skill_options_from_class, num_to_choose=num_skills_to_choose, saving_throws=saving_throw_proficiencies, submitted_skills=chosen_skills)
-        session['new_character_data']['class_skill_proficiencies'] = chosen_skills
-        session['new_character_data']['armor_proficiencies'] = json.loads(selected_class.proficiencies_armor or '[]')
-        session['new_character_data']['weapon_proficiencies'] = json.loads(selected_class.proficiencies_weapons or '[]')
-        session['new_character_data']['tool_proficiencies_class_fixed'] = json.loads(selected_class.proficiencies_tools or '[]')
-        session['new_character_data']['saving_throw_proficiencies'] = saving_throw_proficiencies
-        session.modified = True
-        flash('Class skills and proficiencies saved!', 'success')
-        return redirect(url_for('main.creation_hp'))
-    return render_template('create_character_skills.html', race_name=char_data.get('race_name'), class_name=selected_class.name, background_name=char_data.get('background_name'), skill_options=skill_options_from_class, num_to_choose=num_skills_to_choose, saving_throws=saving_throw_proficiencies, submitted_skills=[])
-
-@bp.route('/creation/hp', methods=['GET'])
-@login_required
-def creation_hp():
-    char_data = session.get('new_character_data', {})
-    if not char_data.get('armor_proficiencies') and not char_data.get('class_skill_proficiencies'):
-        flash('Please complete the skills and proficiencies step first.', 'error')
-        return redirect(url_for('main.creation_skills'))
-    required_keys = ['race_id', 'class_id', 'ability_scores']
-    if not all(key in char_data for key in required_keys):
-        flash('Missing critical data (race, class, or scores). Please restart character creation.', 'error')
-        session.pop('new_character_data', None)
-        return redirect(url_for('main.creation_race'))
-    selected_race = Race.query.get(char_data['race_id'])
-    selected_class = Class.query.get(char_data['class_id'])
-    ability_scores = char_data.get('ability_scores', {})
-    if not selected_race or not selected_class:
-        flash('Selected race or class not found. Please restart character creation.', 'error')
-        session.pop('new_character_data', None)
-        return redirect(url_for('main.creation_race'))
-    if not ability_scores.get('CON') or not ability_scores.get('DEX'):
-        flash('Constitution or Dexterity scores not found. Please complete the stats step.', 'error')
-        return redirect(url_for('main.creation_stats'))
-    con_score = ability_scores.get('CON', 10)
-    con_modifier = (con_score - 10) // 2
-    try:
-        hit_die_value = int(selected_class.hit_die[1:]) if selected_class.hit_die else 8
-    except (ValueError, TypeError, IndexError):
-        flash('Error parsing hit die for the class. Defaulting HP calculation.', 'warning')
-        hit_die_value = 8
-    max_hp = hit_die_value + con_modifier
-    dex_score = ability_scores.get('DEX', 10)
-    dex_modifier = (dex_score - 10) // 2
-    ac_base = 10 + dex_modifier
-    speed = selected_race.speed
-    session['new_character_data']['max_hp'] = max_hp
-    session['new_character_data']['current_hp'] = max_hp
-    session['new_character_data']['armor_class_base'] = ac_base
-    session['new_character_data']['speed'] = speed
-    session.modified = True
-    return render_template('create_character_hp.html', race_name=selected_race.name, class_name=selected_class.name, background_name=char_data.get('background_name', 'N/A'), ability_scores_summary=ability_scores, max_hp=max_hp, ac_base=ac_base, speed=speed)
-
-def parse_starting_equipment(starting_equipment_data_json):
-    fixed_items = []
-    choice_groups = []
-    if not starting_equipment_data_json:
-        return fixed_items, choice_groups
-    starting_equipment_data = json.loads(starting_equipment_data_json)
-    for i, item_or_choice in enumerate(starting_equipment_data):
-        if 'equipment' in item_or_choice and 'quantity' in item_or_choice:
-            fixed_items.append(item_or_choice)
-        elif 'choose' in item_or_choice and 'from' in item_or_choice:
-            options_list = []
-            actual_options_source = item_or_choice['from'].get('options', [])
-            for opt in actual_options_source:
-                if opt.get('option_type') == 'counted_reference' and 'of' in opt:
-                    options_list.append({"name": opt['of'].get('name', opt['of'].get('index', 'Unknown Item')), "index": opt['of'].get('index', 'unknown-item-' + str(i)), "quantity": opt.get('count', 1)})
-                elif opt.get('option_type') == 'reference' and 'item' in opt:
-                     options_list.append({"name": opt['item'].get('name', opt['item'].get('index', 'Unknown Item')), "index": opt['item'].get('index', 'unknown-item-' + str(i)), "quantity": 1})
-            if options_list:
-                choice_groups.append({"id": f"choice_{i}", "desc": item_or_choice.get('desc', f"Choose {item_or_choice['choose']}"), "choose": item_or_choice['choose'], "options": options_list})
-    return fixed_items, choice_groups
-
-@bp.route('/creation/equipment', methods=['GET', 'POST'])
-@login_required
-def creation_equipment():
-    char_data = session.get('new_character_data', {})
-    if not char_data.get('max_hp'):
-        flash('Please complete the HP & combat stats step first.', 'error')
-        return redirect(url_for('main.creation_hp'))
-    selected_class = Class.query.get(char_data.get('class_id'))
-    if not selected_class:
-        flash('Selected class not found. Please restart character creation.', 'error')
-        session.pop('new_character_data', None)
-        return redirect(url_for('main.creation_race'))
-    class_starting_equipment_json = selected_class.starting_equipment or '[]'
-    fixed_items, choice_groups = parse_starting_equipment(class_starting_equipment_json)
-    background_equipment_string = char_data.get('background_equipment', '')
-    if request.method == 'POST':
-        chosen_equipment_list = []
-        for item_data in fixed_items:
-            if item_data.get('equipment'):
-                item_name = item_data['equipment'].get('name', item_data['equipment'].get('index', 'Unknown Fixed Item'))
-                chosen_equipment_list.append(f"{item_name} (x{item_data.get('quantity', 1)})")
-        for group in choice_groups:
-            group_id = group['id']
-            if group['choose'] == 1:
-                selected_option_index = request.form.get(group_id)
-                if selected_option_index:
-                    found_option = next((opt for opt in group['options'] if opt['index'] == selected_option_index), None)
-                    if found_option:
-                        chosen_equipment_list.append(f"{found_option['name']} (x{found_option.get('quantity',1)})")
-        if background_equipment_string:
-            chosen_equipment_list.append(f"Background: {background_equipment_string}")
-        session['new_character_data']['final_equipment'] = chosen_equipment_list
-        session.modified = True
-        flash('Starting equipment chosen!', 'success')
-        if selected_class.spellcasting_ability:
-            return redirect(url_for('main.creation_spells'))
-        else:
-            return redirect(url_for('main.creation_review'))
-    return render_template('create_character_equipment.html', race_name=char_data.get('race_name'), class_name=selected_class.name, background_name=char_data.get('background_name'), fixed_items=fixed_items, choice_groups=choice_groups, background_equipment_string=background_equipment_string)
-
-@bp.route('/creation/spells', methods=['GET', 'POST'])
-@login_required
-def creation_spells():
-    char_data = session.get('new_character_data', {})
-    if not char_data.get('final_equipment'):
-        flash('Please complete the equipment step first.', 'error')
-        return redirect(url_for('main.creation_equipment'))
-    selected_class = Class.query.get(char_data.get('class_id'))
-    if not selected_class:
-        flash('Selected class not found. Please restart character creation.', 'error')
-        session.pop('new_character_data', None)
-        return redirect(url_for('main.creation_race'))
-    if not selected_class.spellcasting_ability:
-        return redirect(url_for('main.creation_review'))
-    num_cantrips_to_select = 0
-    num_level_1_spells_to_select = 0
-    class_name = selected_class.name
-    if class_name == "Wizard":
-        num_cantrips_to_select = 3
-        num_level_1_spells_to_select = 6
-    elif class_name == "Sorcerer":
-        num_cantrips_to_select = 4
-        num_level_1_spells_to_select = 2
-    elif class_name == "Bard":
-        num_cantrips_to_select = 2
-        num_level_1_spells_to_select = 4
-    elif class_name == "Cleric":
-        num_cantrips_to_select = 3
-        num_level_1_spells_to_select = 0
-    elif class_name == "Druid":
-        num_cantrips_to_select = 2
-        num_level_1_spells_to_select = 0
-    elif class_name == "Warlock":
-        num_cantrips_to_select = 2
-        num_level_1_spells_to_select = 2
-    search_pattern = f'%"{selected_class.name}"%'
-    available_cantrips = Spell.query.filter(Spell.level == 0, Spell.classes_that_can_use.like(search_pattern)).order_by(Spell.name).all()
-    available_level_1_spells = Spell.query.filter(Spell.level == 1, Spell.classes_that_can_use.like(search_pattern)).order_by(Spell.name).all()
-    if num_cantrips_to_select == 0 and num_level_1_spells_to_select == 0 and request.method == 'GET':
-        session['new_character_data']['chosen_cantrip_ids'] = []
-        session['new_character_data']['chosen_level_1_spell_ids'] = []
-        flash('No spells to select at Level 1 for your class in this step (e.g. Clerics/Druids prepare spells daily).', 'info')
-        return redirect(url_for('main.creation_review'))
-    if request.method == 'POST':
-        chosen_cantrip_ids_str = request.form.getlist('chosen_cantrip')
-        chosen_level_1_spell_ids_str = request.form.getlist('chosen_level_1_spell')
-        errors = False
-        if len(chosen_cantrip_ids_str) != num_cantrips_to_select:
-            flash(f'Please select exactly {num_cantrips_to_select} cantrip(s). You chose {len(chosen_cantrip_ids_str)}.', 'error')
-            errors = True
-        if len(chosen_level_1_spell_ids_str) != num_level_1_spells_to_select:
-            flash(f'Please select exactly {num_level_1_spells_to_select} 1st-level spell(s). You chose {len(chosen_level_1_spell_ids_str)}.', 'error')
-            errors = True
-        if errors:
-            return render_template('create_character_spells.html', race_name=char_data.get('race_name'), class_name=selected_class.name, background_name=char_data.get('background_name'), available_cantrips=available_cantrips, num_cantrips_to_select=num_cantrips_to_select, available_level_1_spells=available_level_1_spells, num_level_1_spells_to_select=num_level_1_spells_to_select, submitted_cantrips=chosen_cantrip_ids_str, submitted_level_1_spells=chosen_level_1_spell_ids_str)
-        try:
-            session['new_character_data']['chosen_cantrip_ids'] = [int(id_str) for id_str in chosen_cantrip_ids_str]
-            session['new_character_data']['chosen_level_1_spell_ids'] = [int(id_str) for id_str in chosen_level_1_spell_ids_str]
-        except ValueError:
-            flash('Invalid spell ID submitted. Please try again.', 'error')
-            return render_template('create_character_spells.html', race_name=char_data.get('race_name'), class_name=selected_class.name, background_name=char_data.get('background_name'), available_cantrips=available_cantrips, num_cantrips_to_select=num_cantrips_to_select, available_level_1_spells=available_level_1_spells, num_level_1_spells_to_select=num_level_1_spells_to_select, submitted_cantrips=chosen_cantrip_ids_str, submitted_level_1_spells=chosen_level_1_spell_ids_str)
-        session.modified = True
-        flash('Spells selected!', 'success')
-        return redirect(url_for('main.creation_review'))
-    return render_template('create_character_spells.html', race_name=char_data.get('race_name'), class_name=selected_class.name, background_name=char_data.get('background_name'), available_cantrips=available_cantrips, num_cantrips_to_select=num_cantrips_to_select, available_level_1_spells=available_level_1_spells, num_level_1_spells_to_select=num_level_1_spells_to_select, submitted_cantrips=[], submitted_level_1_spells=[])
-
-@bp.route('/creation/review', methods=['GET', 'POST'])
-@login_required
-def creation_review():
-    char_data = session.get('new_character_data', {})
-    if not char_data.get('ability_scores'):
-        flash('Please complete the core character creation steps first, starting with ability scores.', 'error')
-        return redirect(url_for('main.creation_stats')) 
-    race = Race.query.get(char_data.get('race_id'))
-    char_class_obj = Class.query.get(char_data.get('class_id')) 
-    if not race or not char_class_obj:
-        flash('Race or Class data missing or invalid. Please restart character creation.', 'error')
-        session.pop('new_character_data', None)
-        return redirect(url_for('main.creation_race'))
-    cantrips = Spell.query.filter(Spell.id.in_(char_data.get('chosen_cantrip_ids', []))).all()
-    level_1_spells = Spell.query.filter(Spell.id.in_(char_data.get('chosen_level_1_spell_ids', []))).all()
-    all_skill_proficiencies = set(char_data.get('background_skill_proficiencies', []))
-    all_skill_proficiencies.update(char_data.get('class_skill_proficiencies', []))
-    all_tool_proficiencies = set(char_data.get('background_tool_proficiencies', []))
-    all_tool_proficiencies.update(char_data.get('tool_proficiencies_class_fixed', []))
-    all_language_proficiencies = set(char_data.get('background_languages', []))
-    # player_notes is handled by default in model
-
-    if request.method == 'POST':
-        character_name = request.form.get('character_name')
-        alignment = request.form.get('alignment')
-        char_description = request.form.get('character_description')
-        if not character_name:
-            flash('Character name is required.', 'error')
-            return render_template('create_character_review.html', data=char_data, race=race, char_class=char_class_obj, cantrips=cantrips, level_1_spells=level_1_spells, all_skill_proficiencies=list(all_skill_proficiencies), all_tool_proficiencies=list(all_tool_proficiencies), all_language_proficiencies=list(all_language_proficiencies), submitted_name=character_name, submitted_alignment=alignment, submitted_description=char_description)
-        current_skills_set = set(char_data.get('background_skill_proficiencies', []))
-        current_skills_set.update(char_data.get('class_skill_proficiencies', []))
-        current_tools_set = set(char_data.get('background_tool_proficiencies', []))
-        current_tools_set.update(char_data.get('tool_proficiencies_class_fixed', []))
-        current_languages_set = set(char_data.get('background_languages', []))
-        new_char = Character(
-            name=character_name,
-            description=char_description,
-            user_id=current_user.id,
-            race_id=char_data.get('race_id'),
-            class_id=char_data.get('class_id'),
-            alignment=alignment,
-            background_name=char_data.get('background_name'),
-            background_proficiencies=json.dumps( 
-                char_data.get('background_skill_proficiencies', []) +
-                char_data.get('background_tool_proficiencies', []) +
-                char_data.get('background_languages', [])
-            ),
-            adventure_log=json.dumps([]), 
-            dm_allowed_level=1,
-            current_xp=0,
-            current_hit_dice=1, # Initialize L1 character with 1 hit die
-            player_notes="" # Initialize player_notes as empty string
-        )
-        db.session.add(new_char)
-        db.session.flush() 
-        level_1_proficiencies = {
-            'skills': list(current_skills_set),
-            'tools': list(current_tools_set),
-            'languages': list(current_languages_set), 
-            'armor': char_data.get('armor_proficiencies', []),
-            'weapons': char_data.get('weapon_proficiencies', []),
-            'saving_throws': char_data.get('saving_throw_proficiencies', [])
-        }
-        spell_slots_L1 = {}
-        if char_class_obj and char_class_obj.spell_slots_by_level:
-            try:
-                all_class_level_slots = json.loads(char_class_obj.spell_slots_by_level)
-                slots_for_char_level_1_list = all_class_level_slots.get("1") 
-                if slots_for_char_level_1_list:
-                    for spell_lvl_idx, num_slots in enumerate(slots_for_char_level_1_list):
-                        if num_slots > 0: 
-                            spell_slots_L1[str(spell_lvl_idx + 1)] = num_slots
-            except json.JSONDecodeError:
-                current_app.logger.error(f"Failed to parse spell_slots_by_level for class {char_class_obj.name}")
-        ability_scores_from_session = char_data.get('ability_scores', {})
-        new_char_level_1 = CharacterLevel(
-            character_id=new_char.id,
-            level_number=1,
-            xp_at_level_up=0,
-            strength=ability_scores_from_session.get('STR', 10),
-            dexterity=ability_scores_from_session.get('DEX', 10),
-            constitution=ability_scores_from_session.get('CON', 10),
-            intelligence=ability_scores_from_session.get('INT', 10),
-            wisdom=ability_scores_from_session.get('WIS', 10),
-            charisma=ability_scores_from_session.get('CHA', 10),
-            hp=char_data.get('max_hp', 0),
-            max_hp=char_data.get('max_hp', 0),
-            armor_class=char_data.get('armor_class_base'),
-            hit_dice_rolled="Max HP at L1", 
-            proficiencies=json.dumps(level_1_proficiencies),
-            features_gained=json.dumps(["Initial class features", "Initial race features"]), 
-            spells_known_ids=json.dumps(char_data.get('chosen_cantrip_ids', []) + char_data.get('chosen_level_1_spell_ids', [])),
-            spells_prepared_ids=json.dumps([]), 
-            spell_slots_snapshot=json.dumps(spell_slots_L1),
-            created_at=datetime.utcnow()
-        )
-        db.session.add(new_char_level_1)
-        final_equipment_from_session = char_data.get('final_equipment', [])
-        background_equipment_str = char_data.get('background_equipment', '') 
-        parsed_coins = parse_coinage(background_equipment_str)
-        for coin_type, quantity in parsed_coins.items():
-            if quantity > 0:
-                coin_name = f"{coin_type.title()} Pieces" 
-                coin_entry = Coinage(name=coin_name, quantity=quantity, character_id=new_char.id)
-                db.session.add(coin_entry)
-        all_item_strings_to_parse = []
-        if background_equipment_str:
-            potential_bg_items = re.split(r',\s*|\s+and\s+', background_equipment_str)
-            for p_item in potential_bg_items:
-                p_item_clean = p_item.strip()
-                if "gp" in p_item_clean.lower() or "gold pieces" in p_item_clean.lower() or "gold" in p_item_clean.lower():
-                    continue 
-                if p_item_clean and not p_item_clean.lower().startswith("a pouch containing"): 
-                    all_item_strings_to_parse.append(p_item_clean)
-        for item_string_from_session in final_equipment_from_session:
-            if item_string_from_session.lower().startswith("background:"):
-                actual_bg_items_str = item_string_from_session.replace("Background: ", "", 1)
-                potential_bg_items_from_final = re.split(r',\s*|\s+and\s+', actual_bg_items_str)
-                for p_item in potential_bg_items_from_final:
-                    p_item_clean = p_item.strip()
-                    if "gp" in p_item_clean.lower() or "gold pieces" in p_item_clean.lower() or "gold" in p_item_clean.lower():
-                        continue
-                    if p_item_clean and not p_item_clean.lower().startswith("a pouch containing"):
-                         all_item_strings_to_parse.append(p_item_clean)
-            else:
-                all_item_strings_to_parse.append(item_string_from_session)
-        aggregated_items = {}
-        for item_string in all_item_strings_to_parse:
-            item_name_raw = item_string
-            quantity = 1
-            description = "Starting equipment" 
-            qty_match_suffix = re.match(r'^(.*?)\s*\(x(\d+)\)$', item_string) 
-            qty_match_prefix = re.match(r'(\d+)\s+(.*)', item_string)   
-            if qty_match_suffix:
-                item_name_raw = qty_match_suffix.group(1).strip()
-                quantity = int(qty_match_suffix.group(2))
-            elif qty_match_prefix:
-                quantity = int(qty_match_prefix.group(1))
-                item_name_raw = qty_match_prefix.group(2).strip()
-            normalized_item_name = item_name_raw.strip().title()
-            if not normalized_item_name: 
-                continue
-            if normalized_item_name in aggregated_items:
-                aggregated_items[normalized_item_name]['quantity'] += quantity
-                if aggregated_items[normalized_item_name]['description'] == "Starting equipment" and description != "Starting equipment":
-                    aggregated_items[normalized_item_name]['description'] = description
-            else:
-                aggregated_items[normalized_item_name] = {'quantity': quantity, 'description': description }
-        for name, data in aggregated_items.items():
-            item = Item(name=name, quantity=data['quantity'], character_id=new_char.id, description=data['description'])
-            db.session.add(item)
-        db.session.commit() 
-        session.pop('new_character_data', None) 
-        flash('Character created successfully!', 'success')
-        return redirect(url_for('main.index'))
-    return render_template('create_character_review.html', data=char_data, race=race, char_class=char_class_obj, cantrips=cantrips, level_1_spells=level_1_spells, all_skill_proficiencies=list(all_skill_proficiencies), all_tool_proficiencies=list(all_tool_proficiencies), all_language_proficiencies=list(all_language_proficiencies), submitted_name=char_data.get('character_name_draft',''), submitted_alignment=char_data.get('alignment_draft',''), submitted_description=char_data.get('description_draft',''))
-
-# ALL_SKILLS_LIST and XP_THRESHOLDS moved to app.utils
+# ALL_SKILLS_LIST and XP_THRESHOLDS are used in adventure route and utils.
+# generate_character_sheet_text is used in level_up_apply.
+# parse_coinage is used by the new creation_wizard POST route.
 
 @bp.route('/<int:character_id>/adventure', methods=['GET', 'POST'])
 @login_required

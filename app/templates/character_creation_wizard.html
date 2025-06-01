@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Character Creation Wizard{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Character Creation Wizard</h1>
+
+    <div id="wizard-container">
+        <!-- Step Indicators (Optional) -->
+        <div class="step-indicators">
+            <span class="step-indicator active" data-step="1">1</span>
+            <span class="step-indicator" data-step="2">2</span>
+            <span class="step-indicator" data-step="3">3</span>
+            <span class="step-indicator" data-step="4">4</span>
+            <span class="step-indicator" data-step="5">5</span>
+            <span class="step-indicator" data-step="6">6</span>
+            <span class="step-indicator" data-step="7">7</span>
+            <span class="step-indicator" data-step="8">8</span>
+            <span class="step-indicator" data-step="9">9</span>
+        </div>
+
+        <div id="step-1" class="wizard-step">
+            <h2>Step 1: Race Selection</h2>
+            <p>Race selection content will go here.</p>
+        </div>
+        <div id="step-2" class="wizard-step" style="display: none;">
+            <h2>Step 2: Class Selection</h2>
+            <p>Class selection content will go here.</p>
+        </div>
+        <div id="step-3" class="wizard-step" style="display: none;">
+            <h2>Step 3: Ability Scores</h2>
+            <p>Ability scores content will go here.</p>
+        </div>
+        <div id="step-4" class="wizard-step" style="display: none;">
+            <h2>Step 4: Background Selection</h2>
+            <p>Background selection content will go here.</p>
+        </div>
+        <div id="step-5" class="wizard-step" style="display: none;">
+            <h2>Step 5: Skills & Proficiencies</h2>
+            <p>Skills & proficiencies content will go here.</p>
+        </div>
+        <div id="step-6" class="wizard-step" style="display: none;">
+            <h2>Step 6: HP & Combat Stats</h2>
+            <p>HP & combat stats content will go here.</p>
+        </div>
+        <div id="step-7" class="wizard-step" style="display: none;">
+            <h2>Step 7: Equipment</h2>
+            <p>Equipment content will go here.</p>
+        </div>
+        <div id="step-8" class="wizard-step" style="display: none;">
+            <h2>Step 8: Spells (if applicable)</h2>
+            <p>Spells content will go here.</p>
+        </div>
+        <div id="step-9" class="wizard-step" style="display: none;">
+            <h2>Step 9: Review & Finalize</h2>
+            <p>Review & finalize content will go here.</p>
+        </div>
+
+        <div id="phb-description">
+            <p>Description for the current step will go here.</p>
+        </div>
+
+        <div class="navigation-buttons">
+            <button id="prev-button" style="display: none;">Previous</button>
+            <button id="next-button">Next</button>
+            <button id="cancel-button" onclick="window.location.href='{{ url_for('main.index') }}'">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentStep = 1;
+    const totalSteps = 9;
+
+    const prevButton = document.getElementById('prev-button');
+    const nextButton = document.getElementById('next-button');
+    const stepIndicators = document.querySelectorAll('.step-indicator');
+
+    function showStep(stepNumber) {
+        // Hide all steps
+        document.querySelectorAll('.wizard-step').forEach(step => {
+            step.style.display = 'none';
+        });
+
+        // Show current step
+        document.getElementById(`step-${stepNumber}`).style.display = 'block';
+
+        // Update PHB description placeholder
+        document.getElementById('phb-description').innerHTML = `<p>Description for step ${stepNumber} will go here.</p>`;
+
+        // Update button visibility and text
+        if (stepNumber === 1) {
+            prevButton.style.display = 'none';
+        } else {
+            prevButton.style.display = 'inline-block';
+        }
+
+        if (stepNumber === totalSteps) {
+            nextButton.textContent = 'Finish';
+        } else {
+            nextButton.textContent = 'Next';
+        }
+
+        // Update step indicators
+        stepIndicators.forEach(indicator => {
+            if (parseInt(indicator.dataset.step) === stepNumber) {
+                indicator.classList.add('active');
+            } else {
+                indicator.classList.remove('active');
+            }
+        });
+    }
+
+    prevButton.addEventListener('click', () => {
+        if (currentStep > 1) {
+            currentStep--;
+            showStep(currentStep);
+        }
+    });
+
+    nextButton.addEventListener('click', () => {
+        if (currentStep < totalSteps) {
+            currentStep++;
+            showStep(currentStep);
+        } else {
+            // Handle Finish action (e.g., submit form)
+            alert('Character creation finished!');
+            // Potentially redirect or submit data
+            // window.location.href = '{{ url_for("main.index") }}';
+        }
+    });
+
+    // Initialize first step
+    showStep(currentStep);
+</script>
+
+<style>
+    .step-indicators {
+        margin-bottom: 20px;
+        text-align: center;
+    }
+    .step-indicator {
+        display: inline-block;
+        width: 30px;
+        height: 30px;
+        line-height: 30px;
+        border-radius: 50%;
+        background-color: #ddd;
+        margin: 0 5px;
+        cursor: default;
+    }
+    .step-indicator.active {
+        background-color: #007bff;
+        color: white;
+    }
+    #phb-description {
+        margin-top: 20px;
+        padding: 10px;
+        border: 1px solid #eee;
+        background-color: #f9f9f9;
+    }
+    .navigation-buttons {
+        margin-top: 20px;
+    }
+</style>
+{% endblock %}
