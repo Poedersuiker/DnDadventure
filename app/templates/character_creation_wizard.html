@@ -127,7 +127,33 @@
         </div>
         <div id="step-5" class="wizard-step" style="display: none;">
             <h2>Step 5: Skills & Proficiencies</h2>
-            <p>Skills & proficiencies content will go here.</p>
+
+            <div id="skills-step-content">
+                <div id="racial-skills-display" class="skills-category">
+                    <h4>Racial Skill Proficiencies</h4>
+                    <p>Loading racial skills...</p>
+                    <!-- Racial skills will be listed here -->
+                </div>
+
+                <div id="class-skills-selection" class="skills-category">
+                    <h4>Class Skill Proficiencies</h4>
+                    <p>Loading class skills...</p>
+                    <!-- Class skill choices (checkboxes) will be populated here -->
+                </div>
+
+                <div id="background-skills-selection" class="skills-category">
+                    <h4>Background Skill Proficiencies</h4>
+                    <p>Loading background skills...</p>
+                    <!-- Background skills (fixed and choices) will be populated here -->
+                </div>
+
+                <div id="skills-summary" class="skills-category">
+                    <h4>Selected Skill Proficiencies</h4>
+                    <ul id="selected-skills-list">
+                        <!-- Summary of all chosen/granted skills -->
+                    </ul>
+                </div>
+            </div>
         </div>
         <div id="step-6" class="wizard-step" style="display: none;">
             <h2>Step 6: HP & Combat Stats</h2>
@@ -198,6 +224,24 @@
     const backgroundSelectionArea = document.getElementById('background-selection-area');
     const backgroundDetailsArea = document.getElementById('background-details-area');
 
+    // Global variables for Skills & Proficiencies (Step 5)
+    const skillsStepContent = document.getElementById('skills-step-content');
+    const racialSkillsDisplay = document.getElementById('racial-skills-display');
+    const classSkillsSelection = document.getElementById('class-skills-selection');
+    const backgroundSkillsSelection = document.getElementById('background-skills-selection');
+    const selectedSkillsList = document.getElementById('selected-skills-list');
+
+    let characterSkillsData = {
+        racial: [],
+        classFixed: [],
+        classChoices: [],
+        classNumToChoose: 0,
+        backgroundFixed: [],
+        backgroundChoices: []
+    };
+    let chosenClassSkills = [];
+    let chosenBackgroundSkillChoices = {};
+
     const prevButton = document.getElementById('prev-button'); // This ID is now in wizard-top-controls
     const nextButton = document.getElementById('next-button'); // This ID is now in wizard-top-controls
     const cancelButton = document.getElementById('cancel-button'); // This ID is now in wizard-top-controls
@@ -248,6 +292,12 @@
             <p>Other details to consider: Name, Sex, Height and Weight, Alignment, Personal Characteristics (appearance, mannerisms).</p>`,
         5: `<h3>5. Skills and Proficiencies</h3>
             <p><strong>Skills:</strong> Each ability covers a broad range of capabilities, including skills that a character or a monster can be proficient in. A skill represents a specific aspect of an ability score, and a character's proficiency in a skill demonstrates a focus on that aspect. Your character gains skill proficiencies from their class, background, and sometimes race.</p>
+            <p>The information out of the open5e API gives multiple options for how these are gained:</p>
+            <ul>
+                <li><strong>Race - Skill Proficiencies (Racial):</strong> Example: Intimidation. This results in one skill with +proficiency. These are automatically granted if your race provides them.</li>
+                <li><strong>Class - Skill Proficiencies:</strong> Example: Choose two from Animal Handling, Athletics, Intimidation, Nature, Perception, and Survival. This requires you to select the specified number of skills from the list provided by your class.</li>
+                <li><strong>Background - Skill Proficiencies:</strong> Example: Religion, and either Insight or Persuasion. This gives Religion a +proficiency automatically and requires you to choose between Insight or Persuasion.</li>
+            </ul>
             <p><strong>Proficiency Bonus:</strong> Characters have a proficiency bonus determined by level. This bonus is used for:
             <br> - Attack rolls using weapons you’re proficient with
             <br> - Attack rolls with spells you cast
@@ -255,10 +305,7 @@
             <br> - Ability checks using tools you’re proficient with
             <br> - Saving throws you’re proficient in
             <br> - The saving throw DCs for spells you cast (if applicable)</p>
-            <p><strong>Other Proficiencies:</strong>
-            <br> - <strong>Armor and Weapons:</strong> Your race, class, and feats can grant you proficiency with certain types of armor or weapons.
-            <br> - <strong>Tools:</strong> Proficiency with a tool allows you to add your proficiency bonus to ability checks you make using that tool.
-            <br> - <strong>Languages:</strong> Your race determines languages you know, and your background might grant more.</p>`,
+            <p>Your selected skills will grant you this proficiency bonus when making relevant ability checks.</p>`,
         6: `<h3>6. Hit Points and Combat Stats</h3>
             <p><strong>Hit Points (HP):</strong> Your character’s hit points define how tough your character is in combat and other dangerous situations. Your hit points are determined by your Hit Dice (from your class).
             <br> - <strong>At 1st Level:</strong> You start with hit points equal to the highest roll of your Hit Die, plus your Constitution modifier.
@@ -364,6 +411,8 @@
             if (currentlySelectedBackground) {
                 currentlySelectedBackground.classList.remove('selected-background'); // This will be handled by dataset attribute now
             }
+        } else if (stepNumber === 5) {
+            initializeSkillsStep();
         }
 
 
@@ -567,7 +616,9 @@
                 }
                 const backgroundDetails = selectedBackgroundObj.data;
 
-                let payload_skills = [];
+                let payload_skills_for_session = []; //This will be the list of strings for the session
+                let display_skills = []; // For UI display only
+
                 let payload_tools = [];
                 let payload_languages = [];
                 let payload_equipment = "";
@@ -575,23 +626,65 @@
                 let payload_featureDesc = "";
                 let payload_mainDesc = (backgroundDetails.desc && backgroundDetails.desc !== "[No description provided]") ? backgroundDetails.desc : "";
 
+                // Skill processing for payload
+                if (Array.isArray(backgroundDetails.skill_proficiencies)) {
+                    backgroundDetails.skill_proficiencies.forEach(profText => {
+                        if (typeof profText === 'string' && profText.trim()) {
+                            payload_skills_for_session.push(profText.trim());
+                            // For display, we can still parse them further if needed by parseProficiencyString
+                            display_skills.push(...parseProficiencyString(profText.trim()));
+                        }
+                    });
+                } else if (typeof backgroundDetails.skills_text === 'string' && backgroundDetails.skills_text.trim()) {
+                    let cleanedSkillsText = backgroundDetails.skills_text.replace(/^(Skills|Skill Proficiencies):\s*/i, '').trim();
+                    if (cleanedSkillsText.toLowerCase().startsWith('choose ') && cleanedSkillsText.toLowerCase().includes(' from ')) {
+                        payload_skills_for_session.push(cleanedSkillsText);
+                        display_skills.push(cleanedSkillsText); // Or parse for display if parseProficiencyString handles choices well for UI
+                    } else if (cleanedSkillsText.includes(' or ')) {
+                        payload_skills_for_session.push(cleanedSkillsText);
+                        display_skills.push(cleanedSkillsText); // Similar for "or"
+                    } else {
+                        let simpleSkills = cleanedSkillsText.split(',')
+                                            .map(s => s.replace(/and /gi, '').trim())
+                                            .filter(s => s.length > 0 && !s.toLowerCase().includes("proficiency in one type of gaming set"));
+                        simpleSkills.forEach(skill => {
+                            if (!payload_skills_for_session.includes(skill)) {
+                                payload_skills_for_session.push(skill);
+                            }
+                            if (!display_skills.includes(skill)) {
+                                display_skills.push(skill);
+                            }
+                        });
+                    }
+                }
+
+                // Process benefits array for other items (tools, languages, equipment, feature)
+                // and potentially supplement skills if the above fields were not comprehensive.
+                // For this example, we assume skills are primarily from skill_proficiencies or skills_text for the payload.
+                // The display_skills can be further populated from benefits if needed.
                 if (Array.isArray(backgroundDetails.benefits)) {
                     backgroundDetails.benefits.forEach(benefit => {
                         const benefitName = benefit.name || "";
                         const benefitDesc = benefit.desc || "";
                         const benefitType = benefit.type || "";
 
-                        if (benefitType === "skill_proficiency") {
-                            payload_skills.push(...parseProficiencyString(benefitDesc || benefitName));
+                        // Example: if benefitType for skill is very specific and not covered above
+                        if (benefitType === "skill_proficiency" && benefitDesc) {
+                            // Check if this specific string or its parsed equivalent is already in payload_skills_for_session
+                            // This part requires careful consideration to avoid duplicates and ensure correct format.
+                            // For now, the prompt focuses on skill_proficiencies and skills_text for the payload.
+                            // We'll add to display_skills if not already there.
+                            let skillsFromBenefit = parseProficiencyString(benefitDesc || benefitName);
+                            skillsFromBenefit.forEach(sfb => { if(!display_skills.includes(sfb)) display_skills.push(sfb); });
                         } else if (benefitType === "tool_proficiency") {
                             payload_tools.push(...parseProficiencyString(benefitDesc || benefitName));
                         } else if (benefitType === "language" || benefitName.toLowerCase().includes("language")) {
                             payload_languages.push(...parseProficiencyString(benefitDesc || benefitName));
                         } else if (benefitType === "equipment") {
-                            if (payload_equipment) payload_equipment += "; "; // Append if already exists
+                            if (payload_equipment) payload_equipment += "; ";
                             payload_equipment += benefitDesc;
                         } else if (benefitType === "feature" || benefitName.toLowerCase().includes("feature")) {
-                            if (!payload_featureName) { // Take the first one
+                            if (!payload_featureName) {
                                 payload_featureName = benefitName;
                                 payload_featureDesc = benefitDesc;
                             }
@@ -599,14 +692,7 @@
                     });
                 }
 
-                // Fallback to root properties if not adequately populated from benefits
-                if (payload_skills.length === 0 && Array.isArray(backgroundDetails.skill_proficiencies)) {
-                    payload_skills = backgroundDetails.skill_proficiencies.flatMap(s => parseProficiencyString(s));
-                } else if (payload_skills.length === 0 && typeof backgroundDetails.skills_text === 'string') {
-                    payload_skills = parseProficiencyString(backgroundDetails.skills_text);
-                }
-
-
+                // Fallback for tools and languages if not in benefits (similar to original logic)
                 if (payload_tools.length === 0 && Array.isArray(backgroundDetails.tool_proficiencies)) {
                     payload_tools = backgroundDetails.tool_proficiencies.flatMap(t => parseProficiencyString(t));
                 } else if (payload_tools.length === 0 && typeof backgroundDetails.tools_text === 'string') {
@@ -637,7 +723,7 @@
                     background_slug: selectedBackgroundSlug,
                     background_name: backgroundDetails.name || 'Unknown Background',
                     desc: payload_mainDesc,
-                    background_skill_proficiencies: [...new Set(payload_skills)],
+                    background_skill_proficiencies: [...new Set(payload_skills_for_session)], // Use the new list for payload
                     background_tool_proficiencies: [...new Set(payload_tools)],
                     background_languages_fixed: [...new Set(payload_languages)],
                     background_equipment_string: payload_equipment,
@@ -664,6 +750,47 @@
             } catch (error) {
                 console.error('Error updating session with background:', error);
                 alert(`Error saving background selection: ${error.message}. Please try again.`);
+                return;
+            }
+        } else if (currentStep === 5) {
+            // Validate class skills
+            if (characterSkillsData.classNumToChoose > 0 && chosenClassSkills.length !== characterSkillsData.classNumToChoose) {
+                alert(`Please select exactly ${characterSkillsData.classNumToChoose} class skills.`);
+                return;
+            }
+            // Validate background skills
+            for (const choiceGroup of characterSkillsData.backgroundChoices) {
+                if (!chosenBackgroundSkillChoices[choiceGroup.id] || chosenBackgroundSkillChoices[choiceGroup.id] === "") { // Check for empty selection
+                    alert(`Please make a selection for the background skill choice: "${choiceGroup.description}"`);
+                    return;
+                }
+            }
+
+            const payload = {
+                chosen_class_skills: chosenClassSkills,
+                chosen_background_skills: Object.values(chosenBackgroundSkillChoices)
+            };
+
+            try {
+                const response = await fetch('/creation_wizard/update_session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ step_key: 'skills', payload: payload })
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                }
+                const result = await response.json();
+                if (result.status !== 'success') {
+                    throw new Error(result.message || 'Failed to update session with skill selections.');
+                }
+                console.log('Session updated with skills:', result.current_character_data);
+                currentStep++;
+                showStep(currentStep);
+            } catch (error) {
+                console.error('Error updating session with skills:', error);
+                alert(`Error saving skill selections: ${error.message}. Please try again.`);
                 return;
             }
         } else if (currentStep < totalSteps) { // Original logic for other steps
@@ -722,7 +849,7 @@
         let displayName = backgroundDetails.name || 'Unknown Background';
         let mainDesc = (backgroundDetails.desc && backgroundDetails.desc !== "[No description provided]") ? backgroundDetails.desc : "";
 
-        let skills = [];
+        let skills_for_display = [];
         let tools = [];
         let languages = [];
         let equipment = "";
@@ -737,7 +864,7 @@
                 const benefitType = benefit.type || "";
 
                 if (benefitType === "skill_proficiency") {
-                    skills.push(benefitDesc || benefitName);
+                    skills_for_display.push(benefitDesc || benefitName);
                 } else if (benefitType === "tool_proficiency") {
                     tools.push(benefitDesc || benefitName);
                 } else if (benefitType === "language" || benefitName.toLowerCase().includes("language")) {
@@ -768,10 +895,10 @@
         }
 
         // Fallbacks if not found in benefits array (using root-level properties)
-        if (skills.length === 0 && Array.isArray(backgroundDetails.skill_proficiencies) && backgroundDetails.skill_proficiencies.length > 0) {
-            skills = backgroundDetails.skill_proficiencies;
-        } else if (skills.length === 0 && backgroundDetails.skills_text) {
-             skills = [backgroundDetails.skills_text];
+        if (skills_for_display.length === 0 && Array.isArray(backgroundDetails.skill_proficiencies) && backgroundDetails.skill_proficiencies.length > 0) {
+            skills_for_display = backgroundDetails.skill_proficiencies.slice(); // Use .slice() to ensure it's a copy
+        } else if (skills_for_display.length === 0 && typeof backgroundDetails.skills_text === 'string' && backgroundDetails.skills_text.trim()) {
+             skills_for_display = [backgroundDetails.skills_text];
         }
 
         if (tools.length === 0 && Array.isArray(backgroundDetails.tool_proficiencies) && backgroundDetails.tool_proficiencies.length > 0) {
@@ -806,8 +933,31 @@
         if (mainDesc) {
             detailsHtml += `<p><em>${mainDesc}</em></p>`;
         }
-        if (skills.length > 0) {
-            detailsHtml += `<p><strong>Skill Proficiencies:</strong> ${skills.join('; ')}</p>`;
+        // Use the 'display_skills' which might be more broken down by parseProficiencyString
+        // compared to payload_skills_for_session which keeps choices intact for backend.
+        // For this part of the code, it seems 'skills' was already populated based on the logic above
+        // the payload creation. We should ensure that the 'skills' variable used for display
+        // (which I renamed to skills_for_display in the payload section for clarity) is used here.
+        // The original code had 'skills' populated from benefits and then fallbacks.
+        // Let's assume 'skills_for_display' (which was 'skills' before my rename in the payload section)
+        // is the correct one for this display logic.
+        // Directly use the collected raw skill description strings for display
+        if (skills_for_display.length > 0) {
+            // Each item in skills_for_display should be a raw string like
+            // "Religion, and either Insight or Persuasion." or "Two of your choice."
+            // We can join them if there are multiple, or just display if one.
+            // Using a list format might be cleaner if multiple skill benefit lines exist.
+            detailsHtml += `<h5>Skill Proficiencies:</h5>`; // Heading
+            const skillListUl = document.createElement('ul');
+            skills_for_display.forEach(rawSkillText => {
+                const skillItemLi = document.createElement('li');
+                skillItemLi.textContent = rawSkillText; // Display the raw text
+                skillListUl.appendChild(skillItemLi);
+            });
+            // Temporarily create a div to get innerHTML of the ul
+            const tempDiv = document.createElement('div');
+            tempDiv.appendChild(skillListUl);
+            detailsHtml += tempDiv.innerHTML;
         }
         if (tools.length > 0) {
             detailsHtml += `<p><strong>Tool Proficiencies:</strong> ${tools.join('; ')}</p>`;
@@ -1769,6 +1919,272 @@
 
     // --- END OF ABILITY SCORE STEP 3 FUNCTIONS ---
 
+    // --- SKILLS & PROFICIENCIES (STEP 5) FUNCTIONS ---
+    async function initializeSkillsStep() {
+        console.log("Initializing Step 5: Skills & Proficiencies");
+        // Ensure skillsStepContent is defined, query if not (it's global now but good practice for pasted code)
+        const currentSkillsStepContent = document.getElementById('skills-step-content');
+
+        if (!currentSkillsStepContent) {
+            console.error("Critical: skills-step-content div not found in HTML for Step 5.");
+            // Display a general error or stop if this happens, as the page structure is broken.
+            // For example, you could try to find the parent #step-5 and append error there.
+            const step5Div = document.getElementById('step-5');
+            if (step5Div) {
+                step5Div.innerHTML = '<p class="error">Error: UI structure for skills step is missing. Cannot proceed.</p>';
+            }
+            return;
+        }
+
+        racialSkillsDisplay.innerHTML = '<h4>Racial Skill Proficiencies</h4><p>Loading...</p>';
+        classSkillsSelection.innerHTML = '<h4>Class Skill Proficiencies</h4><p>Loading...</p>';
+        backgroundSkillsSelection.innerHTML = '<h4>Background Skill Proficiencies</h4><p>Loading...</p>';
+        selectedSkillsList.innerHTML = '';
+        chosenClassSkills = [];
+        chosenBackgroundSkillChoices = {};
+
+        try {
+            const response = await fetch('/creation_wizard/step_data/skills');
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            console.log("Skills data from backend for step 5:", data);
+
+            characterSkillsData.racial = data.racial_skills || [];
+            characterSkillsData.classFixed = data.class_fixed_skills || [];
+            characterSkillsData.classChoices = data.class_skill_options || [];
+            characterSkillsData.classNumToChoose = data.num_class_skills_to_choose || 0;
+            characterSkillsData.backgroundFixed = data.background_fixed_skills || [];
+            characterSkillsData.backgroundChoices = data.background_skill_choices || [];
+
+            renderRacialSkills();
+            renderClassSkills();
+            renderBackgroundSkills();
+            updateSelectedSkillsSummary();
+
+        } catch (error) {
+            console.error('Error fetching skills data for step 5:', error);
+            if (currentSkillsStepContent) {
+               currentSkillsStepContent.innerHTML = `<p class="error">Could not load skill information: ${error.message}.<br>Please ensure previous steps (Race, Class, Background) are completed correctly and the server is providing data for the 'skills' step. You might need to go back and re-select options if data is missing from the session.</p>`;
+            } else {
+               console.error("Could not find skills-step-content to display error.");
+            }
+        }
+    }
+
+    function renderRacialSkills() {
+        racialSkillsDisplay.innerHTML = '<h4>Racial Skill Proficiencies</h4>';
+        if (characterSkillsData.racial.length > 0) {
+            const ul = document.createElement('ul');
+            characterSkillsData.racial.forEach(skill => {
+                const li = document.createElement('li');
+                li.textContent = skill;
+                ul.appendChild(li);
+            });
+            racialSkillsDisplay.appendChild(ul);
+        } else {
+            racialSkillsDisplay.innerHTML += '<p>None.</p>';
+        }
+    }
+
+    function renderClassSkills() {
+        classSkillsSelection.innerHTML = '<h4>Class Skill Proficiencies</h4>';
+        let hasContent = false;
+        if (characterSkillsData.classFixed.length > 0) {
+            hasContent = true;
+            const fixedUl = document.createElement('ul');
+            fixedUl.innerHTML = '<p><strong>Fixed:</strong></p>'; // Added a paragraph for clarity
+            characterSkillsData.classFixed.forEach(skill => {
+                const li = document.createElement('li');
+                li.textContent = skill;
+                fixedUl.appendChild(li);
+            });
+            classSkillsSelection.appendChild(fixedUl);
+        }
+
+        if (characterSkillsData.classChoices.length > 0 && characterSkillsData.classNumToChoose > 0) {
+            hasContent = true;
+            const instruction = document.createElement('p');
+            instruction.textContent = `Choose ${characterSkillsData.classNumToChoose} from the following:`;
+            classSkillsSelection.appendChild(instruction);
+
+            const choiceForm = document.createElement('form');
+            choiceForm.id = 'class-skills-form';
+            characterSkillsData.classChoices.forEach(skillOption => {
+                const label = document.createElement('label');
+                label.style.display = 'block';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.name = 'class_skill_choice';
+                checkbox.value = skillOption;
+                checkbox.addEventListener('change', handleClassSkillSelectionChange);
+                label.appendChild(checkbox);
+                label.appendChild(document.createTextNode(` ${skillOption}`));
+                choiceForm.appendChild(label);
+            });
+            classSkillsSelection.appendChild(choiceForm);
+        }
+
+        if (!hasContent) {
+             classSkillsSelection.innerHTML += '<p>None or no choices available for your class.</p>';
+        }
+    }
+
+    function renderBackgroundSkills() {
+           backgroundSkillsSelection.innerHTML = '<h4>Background Skill Proficiencies</h4>';
+           let hasContent = false;
+
+           // Display Fixed Background Skills
+           if (characterSkillsData.backgroundFixed && characterSkillsData.backgroundFixed.length > 0) {
+               hasContent = true;
+               const fixedDiv = document.createElement('div'); // Changed from ul for better structure before choices
+               fixedDiv.innerHTML = '<p><strong>Granted Proficiencies:</strong></p>';
+               const fixedUl = document.createElement('ul');
+               characterSkillsData.backgroundFixed.forEach(skill => {
+                   const li = document.createElement('li');
+                   li.textContent = skill;
+                   fixedUl.appendChild(li);
+               });
+               fixedDiv.appendChild(fixedUl);
+               backgroundSkillsSelection.appendChild(fixedDiv);
+           }
+
+           // Display Choice-Based Background Skills
+           if (characterSkillsData.backgroundChoices && characterSkillsData.backgroundChoices.length > 0) {
+               hasContent = true;
+               const choicesDiv = document.createElement('div');
+               choicesDiv.innerHTML = '<p><strong>Skill Choices:</strong></p>';
+
+               const choiceForm = document.createElement('form'); // Keep the form if styling relies on it or for future grouping
+               choiceForm.id = 'background-skills-choices-form'; // More specific ID
+
+               characterSkillsData.backgroundChoices.forEach((choiceGroup) => {
+                   const groupContainer = document.createElement('div');
+                   groupContainer.className = 'background-choice-group';
+
+                   const p = document.createElement('p');
+                   p.textContent = choiceGroup.description; // e.g., "Choose one: Insight or Persuasion"
+                   groupContainer.appendChild(p);
+
+                   if (choiceGroup.num_to_pick === 1 && choiceGroup.options.length > 0) {
+                       const select = document.createElement('select');
+                       // Use choiceGroup.id directly for the select element's name or a dataset attribute
+                       // to link it back to the choice group in the event handler.
+                       select.name = `background_skill_choice_${choiceGroup.id}`; // Unique name for the select
+                       select.dataset.choiceGroupId = choiceGroup.id; // Store the original choice group ID
+
+                       const defaultOption = document.createElement('option');
+                       defaultOption.value = "";
+                       defaultOption.textContent = "-- Select an Option --";
+                       select.appendChild(defaultOption);
+
+                       choiceGroup.options.forEach(option => {
+                           const optElement = document.createElement('option');
+                           optElement.value = option;
+                           optElement.textContent = option;
+                           select.appendChild(optElement);
+                       });
+                       select.addEventListener('change', handleBackgroundSkillSelectionChange); // Existing handler
+                       groupContainer.appendChild(select);
+                   } else if (choiceGroup.num_to_pick > 1 && choiceGroup.options.length > 0) {
+                       // Handle multiple choices from a single group (e.g., "Choose two from X, Y, Z")
+                       // This would require checkboxes and logic similar to class skills,
+                       // but specific to this choiceGroup.id.
+                       // For now, log a warning if this case is encountered, as it's less common for backgrounds.
+                       console.warn(`Background choice group '${choiceGroup.id}' requires picking ${choiceGroup.num_to_pick} skills, but UI currently only supports 1 via dropdown. Options: ${choiceGroup.options.join(', ')}`);
+                       const warningP = document.createElement('p');
+                       warningP.textContent = `Note: Advanced selection for '${choiceGroup.description}' (pick ${choiceGroup.num_to_pick}) is not fully supported in this UI view. Please ensure selections are noted manually if needed.`;
+                       warningP.style.color = 'orange';
+                       groupContainer.appendChild(warningP);
+                       // Still list options for visibility, though not selectable via this simple dropdown
+                        const infoUl = document.createElement('ul');
+                        choiceGroup.options.forEach(opt => {
+                            const li = document.createElement('li');
+                            li.textContent = opt + " (manual selection needed if pick > 1)";
+                            infoUl.appendChild(li);
+                        });
+                        groupContainer.appendChild(infoUl);
+
+                   } else {
+                        // No options or num_to_pick is 0 or invalid
+                        const noOptionsP = document.createElement('p');
+                        noOptionsP.textContent = 'No selectable options for this choice.';
+                        noOptionsP.style.fontStyle = 'italic';
+                        groupContainer.appendChild(noOptionsP);
+                   }
+                   choiceForm.appendChild(groupContainer);
+               });
+               choicesDiv.appendChild(choiceForm);
+               backgroundSkillsSelection.appendChild(choicesDiv);
+           }
+
+           if (!hasContent) {
+               backgroundSkillsSelection.innerHTML += '<p>This background provides no specific skill proficiencies or choices.</p>';
+           }
+       }
+
+    function handleClassSkillSelectionChange(event) {
+        const checkbox = event.target;
+        if (checkbox.checked) {
+            if (chosenClassSkills.length < characterSkillsData.classNumToChoose) {
+                chosenClassSkills.push(checkbox.value);
+            } else {
+                alert(`You can only select ${characterSkillsData.classNumToChoose} class skills.`);
+                checkbox.checked = false;
+            }
+        } else {
+            chosenClassSkills = chosenClassSkills.filter(skill => skill !== checkbox.value);
+        }
+        updateSelectedSkillsSummary();
+        console.log("Chosen class skills:", chosenClassSkills);
+    }
+
+    function handleBackgroundSkillSelectionChange(event) {
+           const selectElement = event.target;
+           const choiceGroupId = selectElement.dataset.choiceGroupId; // Corrected dataset key
+           const selectedValue = selectElement.value;
+
+           if (!choiceGroupId) { // Should not happen if dataset attribute is set
+               console.error("Error: choiceGroupId not found on select element.", selectElement);
+               return;
+           }
+
+           if (selectedValue) {
+               chosenBackgroundSkillChoices[choiceGroupId] = selectedValue;
+           } else {
+               delete chosenBackgroundSkillChoices[choiceGroupId];
+           }
+           updateSelectedSkillsSummary();
+           console.log("Chosen background skills:", chosenBackgroundSkillChoices);
+       }
+
+    function updateSelectedSkillsSummary() {
+        selectedSkillsList.innerHTML = '';
+        let allSelected = new Set();
+
+        characterSkillsData.racial.forEach(skill => allSelected.add(skill));
+        characterSkillsData.classFixed.forEach(skill => allSelected.add(skill));
+        chosenClassSkills.forEach(skill => allSelected.add(skill));
+        characterSkillsData.backgroundFixed.forEach(skill => allSelected.add(skill));
+        for (const choiceId in chosenBackgroundSkillChoices) {
+            allSelected.add(chosenBackgroundSkillChoices[choiceId]);
+        }
+
+        if (allSelected.size > 0) {
+            allSelected.forEach(skill => {
+                const li = document.createElement('li');
+                li.textContent = skill;
+                selectedSkillsList.appendChild(li);
+            });
+        } else {
+            const li = document.createElement('li');
+            li.textContent = 'No skills selected or granted yet.';
+            selectedSkillsList.appendChild(li);
+        }
+    }
+    // --- END OF SKILLS & PROFICIENCIES (STEP 5) FUNCTIONS ---
 
     // Initialize first step
     showStep(currentStep);

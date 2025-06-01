@@ -97,9 +97,42 @@ def creation_wizard():
         #     return jsonify(status="error", message="Invalid Race or Class ID"), 400
 
         # Aggregate proficiencies
-        all_skill_proficiencies = set(char_data.get('background_skill_proficiencies', []))
-        all_skill_proficiencies.update(char_data.get('class_skill_proficiencies', []))
-        all_skill_proficiencies.update(char_data.get('race_skill_proficiencies_from_traits', [])) # Added race skills from traits
+        all_skill_proficiencies = set()
+
+        # Race skills
+        race_skills = char_data.get('race_skill_proficiencies_from_traits', [])
+        if isinstance(race_skills, list):
+            for skill in race_skills:
+                if isinstance(skill, str) and skill.strip():
+                    all_skill_proficiencies.add(skill.strip().title())
+
+        # Chosen Class skills
+        chosen_class_skills_list = char_data.get('chosen_class_skills', [])
+        if isinstance(chosen_class_skills_list, list):
+            for skill in chosen_class_skills_list:
+                if isinstance(skill, str) and skill.strip():
+                    all_skill_proficiencies.add(skill.strip().title())
+
+        # Background skills:
+        # Fixed background skills (extracted from the original background_skill_proficiencies list)
+        raw_bg_skills = char_data.get('background_skill_proficiencies', [])
+        if isinstance(raw_bg_skills, list):
+            for item in raw_bg_skills:
+                if isinstance(item, str) and not item.lower().startswith('choose ') and not ' or ' in item.lower():
+                    # This is a simple check; assumes fixed skills don't use "choose" or "or"
+                    # Multiple fixed skills in one string e.g. "Skill1, Skill2"
+                    fixed_in_item = [s.strip().title() for s in item.split(',') if s.strip()]
+                    for s_fixed in fixed_in_item:
+                        all_skill_proficiencies.add(s_fixed)
+
+        # Chosen background skills (from dropdowns/radio selections in Step 5)
+        chosen_bg_skills_list = char_data.get('chosen_background_skills', [])
+        if isinstance(chosen_bg_skills_list, list):
+            for skill in chosen_bg_skills_list:
+                if isinstance(skill, str) and skill.strip():
+                    all_skill_proficiencies.add(skill.strip().title())
+
+        current_app.logger.info(f"Final aggregated skills before saving: {all_skill_proficiencies}")
 
         all_tool_proficiencies = set(char_data.get('background_tool_proficiencies', [])) # From BG definition
         all_tool_proficiencies.update(char_data.get('tool_proficiencies_class_fixed', [])) # From class definition
@@ -284,6 +317,139 @@ def parse_starting_equipment(starting_equipment_data_json):
                 choice_groups.append({"id": f"choice_{i}", "desc": item_or_choice.get('desc', f"Choose {item_or_choice['choose']}"), "choose": item_or_choice['choose'], "options": options_list})
     return fixed_items, choice_groups
 
+def parse_one_background_skill_desc(desc_string, choice_group_id_prefix="bg_choice_"):
+    """
+    Parses a single skill proficiency description string from a background benefit.
+    Returns a tuple: (list_of_fixed_skills, list_of_choice_groups)
+    Each choice_group is a dict: {id, description, options, num_to_pick}
+    """
+    fixed_skills = set()
+    choice_groups = []
+    # ALL_SKILLS_LIST should be imported in the module this function resides in.
+    all_skill_names = [skill_tuple[0] for skill_tuple in ALL_SKILLS_LIST]
+
+    original_desc_for_choice_description = desc_string # Keep for choice group descriptions
+
+    desc_string = desc_string.strip()
+
+    # Normalize common phrasing variations for "N of your choice"
+    # "Choose any two skills" -> "Two of your choice"
+    # Important: Apply these normalizations carefully to avoid unintended changes to specific skill names or other patterns.
+    temp_desc_string = re.sub(r"choose any (\w+) skills?", r"\1 of your choice", desc_string, flags=re.IGNORECASE)
+    temp_desc_string = re.sub(r"proficiency in (\w+) skills? of your choice", r"\1 of your choice", temp_desc_string, flags=re.IGNORECASE)
+    # Remove leading "Skill Proficiencies: " or "Skills: "
+    temp_desc_string = re.sub(r"^(Skill Proficiencies|Skills):\s*", "", temp_desc_string, flags=re.IGNORECASE).strip()
+
+
+    # 1. Handle "N of your choice" (covers "Two of your choice", "One skill of your choice")
+    # Use temp_desc_string for this match
+    general_choice_match = re.fullmatch(r"(one|two|three|four) of your choice", temp_desc_string, re.IGNORECASE)
+    if general_choice_match:
+        num_word = general_choice_match.group(1).lower()
+        num_map = {"one": 1, "two": 2, "three": 3, "four": 4}
+        num_to_pick = num_map.get(num_word, 1)
+
+        choice_groups.append({
+            "id": f"{choice_group_id_prefix}any_{num_to_pick}",
+            "description": original_desc_for_choice_description, # Use original for UI clarity
+            "options": all_skill_names,
+            "num_to_pick": num_to_pick
+        })
+        return list(fixed_skills), choice_groups # This type of string usually stands alone
+
+    # 2. Handle complex strings:
+    # Back to using the original desc_string (or the prefix-stripped one if that's preferred) for more specific parsing.
+    # Let's use the prefix-stripped one:
+    desc_to_parse_clauses = temp_desc_string
+
+    clauses = []
+    # Split by ", and " first, then try " and " if the first yields only one part (or no split)
+    # This handles cases like "A, B, and C" vs "A and B"
+    # Regex split by ", and " or " and " (case insensitive for "and")
+    # A simple approach: replace ", and " with a unique delimiter, then " and " with it, then split.
+    delimiter = "&&&SPLIT&&&"
+    temp_for_split = re.sub(r",\s+and\s+", delimiter, desc_to_parse_clauses, flags=re.IGNORECASE)
+    temp_for_split = re.sub(r"\s+and\s+", delimiter, temp_for_split, flags=re.IGNORECASE) # For cases without comma before 'and'
+
+    if delimiter in temp_for_split:
+        clauses = [c.strip() for c in temp_for_split.split(delimiter)]
+    else:
+        clauses = [desc_to_parse_clauses.strip()] # Treat as a single clause if no "and"
+
+    processed_clauses_for_fixed_skills = []
+    next_choice_idx = 0 # To make choice group IDs unique within this desc_string parse
+
+    for clause in clauses:
+        clause = clause.strip().rstrip(',') # Clean each clause
+
+        # Check for "either X or Y"
+        either_or_match = re.fullmatch(r"either (.+) or (.+)", clause, re.IGNORECASE)
+        if either_or_match:
+            opt1 = either_or_match.group(1).strip().title()
+            opt2 = either_or_match.group(2).strip().title()
+            choice_groups.append({
+                "id": f"{choice_group_id_prefix}eo_{next_choice_idx}",
+                "description": f"Choose one: {opt1} or {opt2}", # Original clause might be better: clause
+                "options": [opt1, opt2],
+                "num_to_pick": 1
+            })
+            next_choice_idx += 1
+            continue
+
+        # Check for "X or Y" (without "either")
+        simple_or_match = re.fullmatch(r"(.+) or (.+)", clause, re.IGNORECASE)
+        if simple_or_match:
+            opt1 = simple_or_match.group(1).strip().title()
+            opt2 = simple_or_match.group(2).strip().title()
+            choice_groups.append({
+                "id": f"{choice_group_id_prefix}so_{next_choice_idx}",
+                "description": f"Choose one: {opt1} or {opt2}", # Original clause might be better: clause
+                "options": [opt1, opt2],
+                "num_to_pick": 1
+            })
+            next_choice_idx += 1
+            continue
+
+        # Check for "Choose N from X, Y, Z" (specifically "Choose one from..." for now)
+        choose_from_match = re.fullmatch(r"choose (one) from (.+)", clause, re.IGNORECASE)
+        if choose_from_match:
+            num_word = choose_from_match.group(1).lower() # Should be "one"
+            options_str = choose_from_match.group(2)
+
+            raw_options_list = options_str.split(',')
+            cleaned_options = []
+            for opt_part in raw_options_list:
+                processed_opt_part = re.sub(r"^(and|or)\s+", "", opt_part.strip(), flags=re.IGNORECASE)
+                if processed_opt_part:
+                    cleaned_options.append(processed_opt_part.title())
+
+            options = [opt for opt in cleaned_options if opt]
+            num_to_pick = 1
+
+            if options:
+                choice_groups.append({
+                    "id": f"{choice_group_id_prefix}cf_{next_choice_idx}",
+                    "description": clause, # Use original clause for description
+                    "options": options,
+                    "num_to_pick": num_to_pick
+                })
+            next_choice_idx += 1
+            continue
+
+        # If none of the choice patterns matched this clause, it's treated as containing fixed skills
+        processed_clauses_for_fixed_skills.append(clause)
+
+    if processed_clauses_for_fixed_skills:
+        full_fixed_skill_string = ", ".join(processed_clauses_for_fixed_skills)
+        # Split by comma, but also handle cases where a fixed skill might be inadvertently split by previous "and" logic
+        # The goal here is that `full_fixed_skill_string` contains only comma separated fixed skills.
+        found_fixed = [skill.strip().title() for skill in full_fixed_skill_string.split(',') if skill.strip()]
+        for fs in found_fixed:
+            if fs and fs.lower() not in ["either", "choose one from"]: # Basic filter against keywords
+                fixed_skills.add(fs)
+
+    return list(fixed_skills), choice_groups
+
 @bp.route('/creation_wizard/step_data/<step_name>', methods=['GET'])
 @login_required
 def creation_wizard_step_data(step_name):
@@ -316,23 +482,100 @@ def creation_wizard_step_data(step_name):
     elif step_name == 'background':
         data = {'backgrounds': sample_backgrounds_data} # Predefined dict
     elif step_name == 'skills':
-        # class_id = char_data_session.get('class_id') # Removed
-        # if class_id: # Removed
-        #     selected_class = Class.query.get(class_id) # Removed
-        #     if selected_class: # Removed
-        #         class_dict = selected_class.to_dict() # Removed
-        #         data = { # Removed
-        #             'skill_options': class_dict.get('skill_proficiencies_options', []), # Removed
-        #             'num_to_choose': class_dict.get('skill_proficiencies_option_count', 0), # Removed
-        #             # These are fixed profs from class, review if they should be sent here or on class selection
-        #             'saving_throws': class_dict.get('proficiency_saving_throws', []), # Removed
-        #             'armor_proficiencies': class_dict.get('proficiencies_armor', []), # Removed
-        #             'weapon_proficiencies': class_dict.get('proficiencies_weapons', []), # Removed
-        #             'tool_proficiencies_class_fixed': class_dict.get('proficiencies_tools', []) # Removed
-        #         } # Removed
-        #     else: data = {'error': 'Class not found'} # Removed
-        # else: data = {'error': 'Class ID not in session'} # Removed
-        data = {'skill_options': [], 'num_to_choose': 0, 'saving_throws': [], 'armor_proficiencies': [], 'weapon_proficiencies': [], 'tool_proficiencies_class_fixed': []} # Changed
+        # Default structure
+        data = {
+            'racial_skills': [],
+            'class_fixed_skills': [], # Fixed skills directly from class definition (rare for 5e)
+            'class_skill_options': [],
+            'num_class_skills_to_choose': 0,
+            'background_fixed_skills': [],
+            'background_skill_choices': [] # List of choice groups {id, description, options, num_to_pick}
+        }
+
+        # 1. Racial Skills (these are typically fixed)
+        #    session['new_character_data']['race_skill_proficiencies_from_traits'] is expected to be a list of skill names.
+        racial_skills_from_session = char_data_session.get('race_skill_proficiencies_from_traits', [])
+        if isinstance(racial_skills_from_session, list):
+            data['racial_skills'] = [str(skill).strip().title() for skill in racial_skills_from_session if str(skill).strip()]
+        else:
+            current_app.logger.warning(f"race_skill_proficiencies_from_traits was not a list: {racial_skills_from_session}")
+
+
+        # 2. Class Skills
+        #    session['new_character_data']['skill_proficiencies_options_raw'] (e.g., "Choose two from A, B, C")
+        #    session['new_character_data']['skill_proficiencies_option_count'] (e.g., 2)
+        class_options_raw = char_data_session.get('skill_proficiencies_options_raw')
+        class_num_to_choose = char_data_session.get('skill_proficiencies_option_count', 0)
+
+        if isinstance(class_num_to_choose, str): # Ensure it's an int
+            try:
+                class_num_to_choose = int(class_num_to_choose)
+            except ValueError:
+                current_app.logger.warning(f"Could not convert class_num_to_choose '{class_num_to_choose}' to int. Defaulting to 0.")
+                class_num_to_choose = 0
+
+        data['num_class_skills_to_choose'] = class_num_to_choose
+
+        if class_options_raw and isinstance(class_options_raw, str) and class_num_to_choose > 0:
+            options_text_segment = class_options_raw
+
+            # Remove "Choose X from " prefix if it exists
+            # Using a more general regex to catch variations like "Choose any two from" etc.
+            prefix_match = re.match(r"choose (any )?\w+ from\s+", options_text_segment, re.IGNORECASE)
+            if prefix_match:
+                options_text_segment = options_text_segment[len(prefix_match.group(0)):].strip()
+
+            # Split by comma, then further process each part to remove "and " and handle potential empty strings
+            raw_options = options_text_segment.split(',')
+            cleaned_skill_options = []
+            for opt in raw_options:
+                # Remove "and " prefix from individual options if present (e.g., ", and Survival")
+                processed_opt = re.sub(r"^and\s+", "", opt.strip(), flags=re.IGNORECASE)
+                if processed_opt: # Ensure option is not empty after stripping
+                    cleaned_skill_options.append(processed_opt.title())
+
+            data['class_skill_options'] = [s for s in cleaned_skill_options if s] # Ensure no empty strings in the final list
+
+        elif isinstance(class_options_raw, list) and class_num_to_choose > 0: # If already a list (less likely from API but good fallback)
+             data['class_skill_options'] = [str(opt).strip().title() for opt in class_options_raw if str(opt).strip()]
+
+        # Ensure that if num_class_skills_to_choose is 0, class_skill_options is also empty
+        if data['num_class_skills_to_choose'] == 0:
+            data['class_skill_options'] = []
+
+        # 3. Background Skills
+        #    session['new_character_data']['background_skill_proficiencies']
+        #    This is expected to be a list, potentially mixed: e.g., ["Religion", "Choose one from Insight, Persuasion"]
+        bg_skills_raw_list = char_data_session.get('background_skill_proficiencies', [])
+
+        # The helper function expects a list of strings.
+        # If bg_skills_raw_list contains non-strings (e.g. already parsed dicts by mistake), filter them or log.
+        valid_bg_skill_strings = [item for item in bg_skills_raw_list if isinstance(item, str)]
+
+        aggregated_fixed_bg_skills = set()
+        aggregated_bg_choice_groups = []
+        choice_group_counter = 0 # To ensure unique IDs if multiple choice strings are parsed
+
+        for skill_desc_str in valid_bg_skill_strings:
+            # The modified parse_skill_proficiencies now expects a single string and a prefix
+            # It was renamed in place, but its logic is that of parse_one_background_skill_desc
+            # The choice_group_id_prefix argument is part of the new function's signature.
+            fixed_skills_from_item, choice_groups_from_item = parse_skill_proficiencies(skill_desc_str, choice_group_id_prefix=f"bg_choice_outer_{choice_group_counter}_")
+            for fs in fixed_skills_from_item:
+                aggregated_fixed_bg_skills.add(fs)
+            # Adjust IDs from the inner parser to be globally unique if necessary, though the prefix might handle it.
+            for cg in choice_groups_from_item:
+                # Example of further ID adjustment if the parser's internal IDs aren't unique across calls:
+                # cg['id'] = f"bg_choice_overall_{choice_group_counter}_{cg['id']}"
+                # However, the current parser uses choice_group_id_prefix which should be sufficient if passed correctly.
+                aggregated_bg_choice_groups.append(cg)
+            choice_group_counter +=1
+
+        data['background_fixed_skills'] = list(aggregated_fixed_bg_skills)
+        data['background_skill_choices'] = aggregated_bg_choice_groups
+
+        # Log the data being sent for the skills step
+        current_app.logger.info(f"Data prepared for skills step (5): {data}")
     elif step_name == 'hp':
         # race_id = char_data_session.get('race_id') # Removed
         # class_id = char_data_session.get('class_id') # Removed
@@ -585,10 +828,21 @@ def creation_wizard_update_session():
 
         current_app.logger.info(f"Session updated for background selection: {step_payload.get('background_name')} (Slug: {step_payload.get('background_slug')})")
 
-    elif step_key == "skills": # When skills are chosen
-        # Payload should include 'class_skill_proficiencies' and 'chosen_tool_proficiencies_from_bg' etc.
-        # These are directly updated by session['new_character_data'].update(step_payload)
-        pass # No extra server logic here if payload is structured correctly by client
+    elif step_key == "skills":
+        chosen_class_skills = step_payload.get('chosen_class_skills', [])
+        chosen_background_skills = step_payload.get('chosen_background_skills', []) # These are the resolved choices
+
+        if not isinstance(chosen_class_skills, list):
+            current_app.logger.warning(f"Received non-list for chosen_class_skills: {chosen_class_skills}")
+            # Optionally return an error or try to recover if possible, for now, log and use empty
+            chosen_class_skills = []
+        if not isinstance(chosen_background_skills, list):
+            current_app.logger.warning(f"Received non-list for chosen_background_skills: {chosen_background_skills}")
+            chosen_background_skills = []
+
+        session['new_character_data']['chosen_class_skills'] = chosen_class_skills
+        session['new_character_data']['chosen_background_skills'] = chosen_background_skills
+        current_app.logger.info(f"Session updated for skills step. Chosen class skills: {chosen_class_skills}, Chosen background skills: {chosen_background_skills}")
 
     elif step_key == "hp": # When HP is calculated
         # Payload contains max_hp, ac_base. Speed is already from race.
