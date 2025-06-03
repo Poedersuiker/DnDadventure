@@ -1,0 +1,26 @@
+# Instance Configuration Example
+# Copy this file to 'config.py' in the same 'instance' directory and fill in your actual secrets.
+# This instance/config.py file is gitignored and will not be committed.
+
+# Flask App Secret Key - Replace with a long, random string
+# You can generate one using: python -c 'import secrets; print(secrets.token_hex(16))'
+SECRET_KEY = 'YOUR_ACTUAL_FLASK_SECRET_KEY'
+
+# Google OAuth Credentials
+GOOGLE_CLIENT_ID = 'YOUR_ACTUAL_GOOGLE_CLIENT_ID'
+GOOGLE_CLIENT_SECRET = 'YOUR_ACTUAL_GOOGLE_CLIENT_SECRET'
+
+# Example for overriding database URI if needed
+# SQLALCHEMY_DATABASE_URI = 'sqlite:///your_custom_database_name.db'
+
+# Example for SQLAlchemy track modifications (True or False)
+# SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+# Example Gemini API Key (replace with your actual key)
+# GEMINI_API_KEY = 'YOUR_ACTUAL_GEMINI_API_KEY'
+
+# Example Default Gemini Model
+# DEFAULT_GEMINI_MODEL = 'gemini-pro'
+
+# Example Administrator Email
+# ADMIN_EMAIL = 'your_admin_email@example.com'
