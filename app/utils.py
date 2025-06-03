@@ -253,3 +253,11 @@ def generate_character_sheet_text(character, character_level, char_class_obj, sp
         sheet_lines.append("  None")
 
     return "\n".join(sheet_lines)
+
+
+def inject_build_info():
+    """Injects build-time information into the template context."""
+    return dict(
+        GIT_BRANCH=current_app.config.get('GIT_BRANCH', 'unknown'),
+        DEPLOYMENT_TIME=current_app.config.get('DEPLOYMENT_TIME', 'N/A')
+    )
