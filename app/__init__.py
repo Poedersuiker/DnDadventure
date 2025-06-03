@@ -117,6 +117,12 @@ def from_json_filter(value):
 
 app.jinja_env.filters['fromjson'] = from_json_filter
 
+# Context Processors
+from app.utils import inject_build_info
+
+@app.context_processor
+def _inject_build_info_context(): # Renamed to avoid potential clashes if inject_build_info was also directly decorated
+    return inject_build_info()
 
 # Import and register blueprints
 from .auth import auth_bp
