@@ -185,36 +185,18 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     nextButton.addEventListener('click', async () => {
         // Store data if moving from Step 1
         if (currentStep === 1 && selectedRaceSlug) {
-            let selectedData = null;
-            if (allRacesData) {
-                for (const race of allRacesData) {
-                    if (race.slug === selectedRaceSlug) {
-                        selectedData = race;
-                        break;
-                    }
-                    if (race.subraces) {
-                        for (const subrace of race.subraces) {
-                            if (subrace.slug === selectedRaceSlug) {
-                                selectedData = subrace; // Storing the subrace object directly
-                                // Optionally, add parent race info if needed: selectedData.parent_race_slug = race.slug;
-                                break;
-                            }
-                        }
-                    }
-                    if (selectedData) break;
-                }
-            }
-            if (selectedData) {
-                characterCreationData.step1_race = selectedData;
-                console.log("Race selected:", characterCreationData.step1_race); // For debugging
+            const selectedItem = allRacesData ? allRacesData.find(item => item.slug === selectedRaceSlug) : null;
+
+            if (selectedItem && selectedItem.data) {
+                characterCreationData.step1_race = selectedItem.data; // Store the 'data' object
+                console.log("Race/Subrace selected and stored in characterCreationData:", characterCreationData.step1_race);
             } else {
-                // console.warn("Selected race/subrace slug not found in allRacesData:", selectedRaceSlug);
-                // Optionally, prevent moving to next step if selection is critical and not found
-                // alert("Please select a valid race or subrace.");
+                console.warn("Selected race/subrace slug not found in allRacesData or item.data is missing for storage:", selectedRaceSlug);
+                // Optionally, prevent moving to next step if selection is critical
+                // alert("Please select a valid race or subrace before proceeding.");
                 // return;
             }
         }
-
 
         if (currentStep < totalSteps) {
             currentStep++;
@@ -325,50 +307,48 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     }
 
     function handleRaceOrSubraceClick(event) {
-        const targetLi = event.target.closest('li'); // Ensure we get the LI even if a nested element is clicked
-        if (!targetLi || !targetLi.dataset.slug) return; // Clicked outside an LI or LI has no slug
+        const clickedLi = event.target.closest('li'); // Get the actual LI that was clicked or contains the click target
 
-        selectedRaceSlug = targetLi.dataset.slug;
-        const parentSlug = targetLi.dataset.parentRaceSlug;
-
-        let itemData = null;
-        if (allRacesData) {
-            if (parentSlug) {
-                const parentRace = allRacesData.find(r => r.slug === parentSlug);
-                // Subraces are expected to be in parentRace.data.subraces
-                if (parentRace && parentRace.data && parentRace.data.subraces) {
-                    itemData = parentRace.data.subraces.find(sr => sr.slug === selectedRaceSlug);
-                }
-            } else {
-                // For parent races, the full data is in race.data
-                const race = allRacesData.find(r => r.slug === selectedRaceSlug);
-                if (race && race.data) {
-                    itemData = race.data; // Store the 'data' object
-                } else if (race) {
-                    itemData = race; // Fallback if structure is flatter than expected
-                    console.warn(`Race data object not found for slug: ${selectedRaceSlug}. Using root race object.`);
-                }
-            }
+        if (!clickedLi || !clickedLi.dataset || !clickedLi.dataset.slug) {
+            // Click was not on a valid race/subrace list item or its child
+            return;
         }
+
+        const slug = clickedLi.dataset.slug;
+        selectedRaceSlug = slug; // Update the global selected slug
+
+        // Find the item (race or subrace) in the flat allRacesData list
+        // allRacesData stores objects like { slug: "...", data: { actual race/subrace properties } }
+        const selectedItem = allRacesData.find(item => item.slug === slug);
 
         const descriptionContainer = document.getElementById('race-description-container');
-        if (descriptionContainer) {
-            if (itemData) {
-                descriptionContainer.textContent = JSON.stringify(itemData, null, 2);
+        if (!descriptionContainer) {
+            console.error('Race description container not found!');
+            return;
+        }
 
-                // Remove 'selected' class from previously selected item
-                const currentlySelected = document.querySelector('#race-selection-list .selected-item');
-                if (currentlySelected) {
-                    currentlySelected.classList.remove('selected-item');
-                }
-                // Add 'selected' class to the clicked item
-                targetLi.classList.add('selected-item');
+        if (selectedItem && selectedItem.data) {
+            // Display the 'data' property of the found item.
+            descriptionContainer.textContent = JSON.stringify(selectedItem.data, null, 2);
 
-            } else {
-                descriptionContainer.textContent = 'Details not found for the selected item.';
+            // Update .selected-item class
+            // First, remove from any previously selected item
+            const currentlySelected = document.querySelector('#race-selection-list .selected-item');
+            if (currentlySelected) {
+                currentlySelected.classList.remove('selected-item');
+            }
+            // Then, add to the newly clicked item
+            clickedLi.classList.add('selected-item');
+            console.log("Selected item displayed:", selectedRaceSlug, selectedItem.data); // For debugging
+        } else {
+            console.error(`Data for slug '${slug}' not found or item.data is missing in allRacesData.`);
+            descriptionContainer.textContent = 'Details not found for the selected item.';
+            // Clear selection if item not found or data is missing
+             const currentlySelected = document.querySelector('#race-selection-list .selected-item');
+            if (currentlySelected) {
+                currentlySelected.classList.remove('selected-item');
             }
         }
-        console.log("Selected item:", selectedRaceSlug, itemData); // For debugging
     }
 
     // Initialize first step
