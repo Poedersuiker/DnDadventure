@@ -78,124 +78,69 @@ def creation_wizard():
         alignment = char_data.get('alignment', 'True Neutral')
         char_description = char_data.get('character_description', '')
 
-        # Essential data checks
-        # Removed 'race_id', 'class_id' from required_fields
+        # Default ability scores if not present (e.g., if step was skipped or data cleared)
+        ability_scores_final = char_data.get('ability_scores', {})
+        for ability_abbr in ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']:
+            ability_scores_final.setdefault(ability_abbr, 10)
+
+        # Essential data checks - adjusted for potentially missing data from removed steps
+        # 'max_hp', 'armor_class_base', 'speed' might come from later steps or need defaults here.
+        # For now, assume they might be set by other steps or have defaults.
+        char_data.setdefault('max_hp', 10) # Default HP
+        char_data.setdefault('armor_class_base', 10) # Default AC
+        char_data.setdefault('speed', 30) # Default speed
+        char_data.setdefault('background_name', "Unknown Background") # Default background name
+
         required_fields = ['ability_scores', 'background_name', 'max_hp', 'armor_class_base', 'speed']
         missing_fields = [field for field in required_fields if field not in char_data]
+
         if missing_fields:
-            flash(f'Critical data missing: {", ".join(missing_fields)}. Cannot finalize character.', 'error')
-            current_app.logger.error(f"Character finalization failed. Missing fields: {missing_fields}. Data: {char_data}")
-            # Client-side should prevent this. Respond with error for AJAX or redirect if it's a direct form post.
-            return jsonify(status="error", message=f"Missing data: {', '.join(missing_fields)}"), 400
+            # This check might still fail if defaults aren't consistently applied or if a step that
+            # was supposed to set these is also modified/removed. For now, we'll proceed with defaults.
+            current_app.logger.warning(f"Character finalization has missing fields even after defaults: {missing_fields}. Data: {char_data}")
+            # flash(f'Critical data missing: {", ".join(missing_fields)}. Cannot finalize character.', 'error')
+            # return jsonify(status="error", message=f"Missing data: {', '.join(missing_fields)}"), 400
 
-        # race = Race.query.get(char_data.get('race_id')) # Removed
-        # char_class_obj = Class.query.get(char_data.get('class_id')) # Removed
 
-        # if not race or not char_class_obj: # Adjusted: This check might be removed or always pass
-        #     flash('Race or Class data invalid. Cannot finalize character.', 'error')
-        #     current_app.logger.error(f"Race or Class object not found. Race ID: {char_data.get('race_id')}, Class ID: {char_data.get('class_id')}")
-        #     return jsonify(status="error", message="Invalid Race or Class ID"), 400
+        all_skill_proficiencies = set() # Will remain empty as sources are removed
+        all_tool_proficiencies = set()    # Will remain empty
+        all_language_proficiencies = set() # Will remain empty
+        all_armor_proficiencies = []      # Will remain empty
+        all_weapon_proficiencies = []     # Will remain empty
+        saving_throw_proficiencies = []   # Will remain empty
+        class_features_list = ["Basic class features (default)"] # Default
+        race_trait_names = ["Basic racial traits (default)"] # Default
+        chosen_cantrip_ids = [] # Default
+        chosen_level_1_spell_ids = [] # Default
+        hit_die_str = char_data.get('hit_die', 'd8') # Default hit die
 
-        # Aggregate proficiencies
-        all_skill_proficiencies = set()
-
-        # Race skills
-        race_skills = char_data.get('race_skill_proficiencies_from_traits', [])
-        if isinstance(race_skills, list):
-            for skill in race_skills:
-                if isinstance(skill, str) and skill.strip():
-                    all_skill_proficiencies.add(skill.strip().title())
-
-        # Chosen Class skills
-        chosen_class_skills_list = char_data.get('chosen_class_skills', [])
-        if isinstance(chosen_class_skills_list, list):
-            for skill in chosen_class_skills_list:
-                if isinstance(skill, str) and skill.strip():
-                    all_skill_proficiencies.add(skill.strip().title())
-
-        # Background skills:
-        # Fixed background skills (extracted from the original background_skill_proficiencies list)
-        raw_bg_skills = char_data.get('background_skill_proficiencies', [])
-        if isinstance(raw_bg_skills, list):
-            for item in raw_bg_skills:
-                if isinstance(item, str) and not item.lower().startswith('choose ') and not ' or ' in item.lower():
-                    # This is a simple check; assumes fixed skills don't use "choose" or "or"
-                    # Multiple fixed skills in one string e.g. "Skill1, Skill2"
-                    fixed_in_item = [s.strip().title() for s in item.split(',') if s.strip()]
-                    for s_fixed in fixed_in_item:
-                        all_skill_proficiencies.add(s_fixed)
-
-        # Chosen background skills (from dropdowns/radio selections in Step 5)
-        chosen_bg_skills_list = char_data.get('chosen_background_skills', [])
-        if isinstance(chosen_bg_skills_list, list):
-            for skill in chosen_bg_skills_list:
-                if isinstance(skill, str) and skill.strip():
-                    all_skill_proficiencies.add(skill.strip().title())
-
-        current_app.logger.info(f"Final aggregated skills before saving: {all_skill_proficiencies}")
-
-        all_tool_proficiencies = set(char_data.get('background_tool_proficiencies', [])) # From BG definition
-        all_tool_proficiencies.update(char_data.get('tool_proficiencies_class_fixed', [])) # From class definition
-        all_tool_proficiencies.update(char_data.get('chosen_tool_proficiencies_from_bg', [])) # Chosen for BG
-        all_tool_proficiencies.update(char_data.get('race_tool_proficiencies_from_traits', [])) # Added race tool profs from traits
-
-        all_language_proficiencies = set(char_data.get('languages_from_race', [])) # From Race
-        all_language_proficiencies.update(char_data.get('background_languages_fixed', [])) # Fixed from BG
-        all_language_proficiencies.update(char_data.get('chosen_languages_from_bg', [])) # Chosen for BG
-
+        current_app.logger.info(f"Final aggregated skills before saving (will be empty): {all_skill_proficiencies}")
 
         new_char = Character(
             name=character_name,
             description=char_description,
             user_id=current_user.id,
-            # race_id=race.id, # Removed
-            # class_id=char_class_obj.id, # Removed
             alignment=alignment,
-            background_name=char_data.get('background_name'),
-            background_proficiencies=json.dumps({ # Store only the profs granted directly by background definition
-                "skills": char_data.get('background_skill_proficiencies', []),
-                "tools": char_data.get('background_tool_proficiencies', []),
-                "languages": char_data.get('background_languages_fixed', [])
+            background_name=char_data.get('background_name', "Default Background"),
+            background_proficiencies=json.dumps({
+                "skills": [], "tools": [], "languages": [] # Empty defaults
             }),
             adventure_log=json.dumps([]),
             dm_allowed_level=1,
             current_xp=0,
-            current_hit_dice=1, # Level 1 characters have 1 hit die (equal to their level)
-            player_notes=char_data.get('player_notes', "") # Added from wizard data
+            current_hit_dice=1,
+            player_notes=char_data.get('player_notes', "")
         )
         db.session.add(new_char)
-        db.session.flush() # Flush to get new_char.id for CharacterLevel and Items/Coinage
-
-        class_armor_prof = set(char_data.get('armor_proficiencies', [])) # Assuming this key holds class armor profs
-        race_armor_prof = set(char_data.get('race_armor_proficiencies_from_traits', []))
-        all_armor_proficiencies = sorted(list(class_armor_prof.union(race_armor_prof)))
-
-        class_weapon_prof = set(char_data.get('weapon_proficiencies', [])) # Assuming this key holds class weapon profs
-        race_weapon_prof = set(char_data.get('race_weapon_proficiencies_from_traits', []))
-        all_weapon_proficiencies = sorted(list(class_weapon_prof.union(race_weapon_prof)))
+        db.session.flush()
 
         level_1_proficiencies_snapshot = {
-            'skills': sorted(list(all_skill_proficiencies)),
-            'tools': sorted(list(all_tool_proficiencies)),
-            'languages': sorted(list(all_language_proficiencies)),
-            'armor': all_armor_proficiencies,
-            'weapons': all_weapon_proficiencies,
-            'saving_throws': sorted(list(char_data.get('saving_throw_proficiencies', [])))
+            'skills': [], 'tools': [], 'languages': [],
+            'armor': [], 'weapons': [], 'saving_throws': []
         }
 
-        spell_slots_L1 = {} # Default to empty dict as char_class_obj is removed
-        # if char_class_obj.spell_slots_by_level: # Removed
-        #     try:
-        #         all_class_level_slots = json.loads(char_class_obj.spell_slots_by_level)
-        #         slots_for_char_level_1_list = all_class_level_slots.get("1")
-        #         if slots_for_char_level_1_list:
-        #             for spell_lvl_idx, num_slots in enumerate(slots_for_char_level_1_list):
-        #                 if num_slots > 0:
-        #                     spell_slots_L1[str(spell_lvl_idx + 1)] = num_slots
-        #     except json.JSONDecodeError:
-        #         current_app.logger.error(f"Failed to parse spell_slots_by_level for class {char_class_obj.name}")
+        spell_slots_L1 = {}
 
-        ability_scores_final = char_data.get('ability_scores', {})
         new_char_level_1 = CharacterLevel(
             character_id=new_char.id,
             level_number=1,
@@ -206,44 +151,33 @@ def creation_wizard():
             intelligence=ability_scores_final.get('INT', 10),
             wisdom=ability_scores_final.get('WIS', 10),
             charisma=ability_scores_final.get('CHA', 10),
-            hp=char_data.get('max_hp', 1), # Ensure HP is at least 1
-            max_hp=char_data.get('max_hp', 1),
-            armor_class=char_data.get('armor_class_base'),
-            hit_dice_rolled="Max HP at L1", # Or actual roll if that was an option
+            hp=char_data.get('max_hp', 10), # Use defaulted HP
+            max_hp=char_data.get('max_hp', 10), # Use defaulted HP
+            armor_class=char_data.get('armor_class_base', 10), # Use defaulted AC
+            hit_dice_rolled="Max HP at L1 (defaulted)",
             proficiencies=json.dumps(level_1_proficiencies_snapshot),
-            features_gained=json.dumps(
-                char_data.get('class_features_list', ["Initial Class Features"]) + \
-                char_data.get('race_trait_names', []) or \
-                ["Basic racial and class features"] # Fallback if both class_features_list and race_trait_names are empty or missing
-            ),
-            spells_known_ids=json.dumps(char_data.get('chosen_cantrip_ids', []) + char_data.get('chosen_level_1_spell_ids', [])),
-            spells_prepared_ids=json.dumps([]), # Initial state for prepared casters
+            features_gained=json.dumps(class_features_list + race_trait_names),
+            spells_known_ids=json.dumps(chosen_cantrip_ids + chosen_level_1_spell_ids),
+            spells_prepared_ids=json.dumps([]),
             spell_slots_snapshot=json.dumps(spell_slots_L1),
             created_at=datetime.utcnow()
         )
 
-        # HP and AC calculation using final ability scores
         con_score = ability_scores_final.get('CON', 10)
         con_mod = (con_score - 10) // 2
-        hit_die_str = char_data.get('hit_die', 'd8') # From class selection step
         try:
             hit_die_val = int(hit_die_str[1:])
         except (ValueError, TypeError, IndexError):
-            current_app.logger.error(f"Invalid hit_die format '{hit_die_str}' during final save. Defaulting to 8.")
-            hit_die_val = 8
+            hit_die_val = 8 # Default if parsing fails
 
         max_hp_at_level_1 = hit_die_val + con_mod
-        new_char_level_1.max_hp = max_hp_at_level_1 # Set calculated max_hp
-        new_char_level_1.hp = max_hp_at_level_1 # Set current hp to max_hp for L1
+        new_char_level_1.max_hp = max_hp_at_level_1 if max_hp_at_level_1 > 0 else 1
+        new_char_level_1.hp = new_char_level_1.max_hp
 
         dex_score = ability_scores_final.get('DEX', 10)
         dex_mod = (dex_score - 10) // 2
-        base_ac_calculated = 10 + dex_mod # This doesn't account for armor from equipment yet
-
-        # Allow armor_class_base from session (e.g. if calculated in a later step with armor)
-        # to override this basic calculation. If 'armor_class_base' is not in char_data, use the calculated one.
+        base_ac_calculated = 10 + dex_mod
         new_char_level_1.armor_class = char_data.get('armor_class_base', base_ac_calculated)
-
 
         db.session.add(new_char_level_1)
 
@@ -457,206 +391,35 @@ def creation_wizard_step_data(step_name):
     char_data_session = session.get('new_character_data', {})
 
     if step_name == 'race':
-        # races = Race.query.all() # Removed
-        data = {'races': []} # Changed
+        data = {'races': []}
     elif step_name == 'class':
-        # classes = Class.query.all() # Removed
-        data = {'classes': []} # Changed
+        data = {'classes': []}
     elif step_name == 'stats':
-        data = {'standard_array': [15, 14, 13, 12, 10, 8]}
-        # race_id = char_data_session.get('race_id') # Removed
-        # if race_id: # Removed
-        #     race = Race.query.get(race_id) # Removed
-        #     if race: # Removed
-        #         # ability_score_increases should be JSON string like '{"STR": 1, "DEX": 2}' in model
-        #         # to_dict() should handle json.loads for this field.
-        #         data['racial_bonuses'] = race.to_dict().get('ability_score_increases', {}) # Removed
-        #     else: data['racial_bonuses'] = {} # Removed
-        # else: data['racial_bonuses'] = {} # Removed
-        # data['racial_bonuses'] = {} # Changed: Set directly - This line is now part of the new structure below
         data = {
-            'standard_array': [15, 14, 13, 12, 10, 8], # Standard array might be an alternative method in future
+            'standard_array': [], # Standard array might be an alternative method in future
             'racial_bonuses': {}, # Client-side handles this primarily from effectiveRaceDetailsForSession
             'class_ability_suggestions': {} # Placeholder for future server-side class tips
         }
     elif step_name == 'background':
-        data = {'backgrounds': sample_backgrounds_data} # Predefined dict
+        data = {'backgrounds': {}} # Empty dict as per instruction
     elif step_name == 'skills':
-        # Default structure
         data = {
             'racial_skills': [],
-            'class_fixed_skills': [], # Fixed skills directly from class definition (rare for 5e)
+            'class_fixed_skills': [],
             'class_skill_options': [],
             'num_class_skills_to_choose': 0,
             'background_fixed_skills': [],
-            'background_skill_choices': [] # List of choice groups {id, description, options, num_to_pick}
+            'background_skill_choices': []
         }
-
-        # 1. Racial Skills (these are typically fixed)
-        #    session['new_character_data']['race_skill_proficiencies_from_traits'] is expected to be a list of skill names.
-        racial_skills_from_session = char_data_session.get('race_skill_proficiencies_from_traits', [])
-        if isinstance(racial_skills_from_session, list):
-            data['racial_skills'] = [str(skill).strip().title() for skill in racial_skills_from_session if str(skill).strip()]
-        else:
-            current_app.logger.warning(f"race_skill_proficiencies_from_traits was not a list: {racial_skills_from_session}")
-
-
-        # 2. Class Skills
-        #    session['new_character_data']['skill_proficiencies_options_raw'] (e.g., "Choose two from A, B, C")
-        #    session['new_character_data']['skill_proficiencies_option_count'] (e.g., 2)
-        class_options_raw = char_data_session.get('skill_proficiencies_options_raw')
-        class_num_to_choose = char_data_session.get('skill_proficiencies_option_count', 0)
-
-        if isinstance(class_num_to_choose, str): # Ensure it's an int
-            try:
-                class_num_to_choose = int(class_num_to_choose)
-            except ValueError:
-                current_app.logger.warning(f"Could not convert class_num_to_choose '{class_num_to_choose}' to int. Defaulting to 0.")
-                class_num_to_choose = 0
-
-        data['num_class_skills_to_choose'] = class_num_to_choose
-
-        if class_options_raw and isinstance(class_options_raw, str) and class_num_to_choose > 0:
-            options_text_segment = class_options_raw
-
-            # Remove "Choose X from " prefix if it exists
-            # Using a more general regex to catch variations like "Choose any two from" etc.
-            prefix_match = re.match(r"choose (any )?\w+ from\s+", options_text_segment, re.IGNORECASE)
-            if prefix_match:
-                options_text_segment = options_text_segment[len(prefix_match.group(0)):].strip()
-
-            # Split by comma, then further process each part to remove "and " and handle potential empty strings
-            raw_options = options_text_segment.split(',')
-            cleaned_skill_options = []
-            for opt in raw_options:
-                # Remove "and " prefix from individual options if present (e.g., ", and Survival")
-                processed_opt = re.sub(r"^and\s+", "", opt.strip(), flags=re.IGNORECASE)
-                if processed_opt: # Ensure option is not empty after stripping
-                    cleaned_skill_options.append(processed_opt.title())
-
-            data['class_skill_options'] = [s for s in cleaned_skill_options if s] # Ensure no empty strings in the final list
-
-        elif isinstance(class_options_raw, list) and class_num_to_choose > 0: # If already a list (less likely from API but good fallback)
-             data['class_skill_options'] = [str(opt).strip().title() for opt in class_options_raw if str(opt).strip()]
-
-        # Ensure that if num_class_skills_to_choose is 0, class_skill_options is also empty
-        if data['num_class_skills_to_choose'] == 0:
-            data['class_skill_options'] = []
-
-        # 3. Background Skills
-        #    session['new_character_data']['background_skill_proficiencies']
-        #    This is expected to be a list, potentially mixed: e.g., ["Religion", "Choose one from Insight, Persuasion"]
-        bg_skills_raw_list = char_data_session.get('background_skill_proficiencies', [])
-
-        # The helper function expects a list of strings.
-        # If bg_skills_raw_list contains non-strings (e.g. already parsed dicts by mistake), filter them or log.
-        valid_bg_skill_strings = [item for item in bg_skills_raw_list if isinstance(item, str)]
-
-        aggregated_fixed_bg_skills = set()
-        aggregated_bg_choice_groups = []
-        choice_group_counter = 0 # To ensure unique IDs if multiple choice strings are parsed
-
-        for skill_desc_str in valid_bg_skill_strings:
-            # The modified parse_skill_proficiencies now expects a single string and a prefix
-            # It was renamed in place, but its logic is that of parse_one_background_skill_desc
-            # The choice_group_id_prefix argument is part of the new function's signature.
-            fixed_skills_from_item, choice_groups_from_item = parse_skill_proficiencies(skill_desc_str, choice_group_id_prefix=f"bg_choice_outer_{choice_group_counter}_")
-            for fs in fixed_skills_from_item:
-                aggregated_fixed_bg_skills.add(fs)
-            # Adjust IDs from the inner parser to be globally unique if necessary, though the prefix might handle it.
-            for cg in choice_groups_from_item:
-                # Example of further ID adjustment if the parser's internal IDs aren't unique across calls:
-                # cg['id'] = f"bg_choice_overall_{choice_group_counter}_{cg['id']}"
-                # However, the current parser uses choice_group_id_prefix which should be sufficient if passed correctly.
-                aggregated_bg_choice_groups.append(cg)
-            choice_group_counter +=1
-
-        data['background_fixed_skills'] = list(aggregated_fixed_bg_skills)
-        data['background_skill_choices'] = aggregated_bg_choice_groups
-
-        # Log the data being sent for the skills step
-        current_app.logger.info(f"Data prepared for skills step (5): {data}")
+        current_app.logger.info(f"Data prepared for skills step (5) - returning empty structure: {data}")
     elif step_name == 'hp':
-        # race_id = char_data_session.get('race_id') # Removed
-        # class_id = char_data_session.get('class_id') # Removed
-        # ability_scores = char_data_session.get('ability_scores') # Removed
-        # if race_id and class_id and ability_scores: # Removed
-        #     race = Race.query.get(race_id) # Removed
-        #     s_class = Class.query.get(class_id) # Removed
-        #     if race and s_class: # Removed
-        #         con_score = ability_scores.get('CON', 10) # Removed
-        #         con_mod = (con_score - 10) // 2 # Removed
-        #         try: # Removed
-        #             hit_die_val = int(s_class.hit_die[1:]) # Assumes "dX" format # Removed
-        #         except: hit_die_val = 8 # Default # Removed
-        #         max_hp = hit_die_val + con_mod # Removed
-
-        #         dex_score = ability_scores.get('DEX', 10) # Removed
-        #         dex_mod = (dex_score - 10) // 2 # Removed
-        #         ac_base = 10 + dex_mod # Removed
-        #         data = {'max_hp': max_hp, 'ac_base': ac_base, 'speed': race.speed} # Removed
-        #     else: data = {'error': 'Race or Class not found for HP calc'} # Removed
-        # else: data = {'error': 'Missing data for HP calc (race, class, or scores)'} # Removed
-        data = {'max_hp': 10, 'ac_base': 10, 'speed': 30} # Changed
+        data = {'max_hp': 10, 'ac_base': 10, 'speed': 30} # Fixed defaults
     elif step_name == 'equipment':
-        # class_id = char_data_session.get('class_id') # Removed
-        background_name = char_data_session.get('background_name') # Kept background_name for now
-        # if class_id and background_name: # Removed
-        #     selected_class = Class.query.get(class_id) # Removed
-        #     background_details = sample_backgrounds_data.get(background_name) # Kept
-        #     if selected_class and background_details: # Removed selected_class
-        #         fixed_items, choice_groups = parse_starting_equipment(selected_class.starting_equipment or '[]') # Removed
-        #         data = { # Removed
-        #             'fixed_items': fixed_items, # Removed
-        #             'choice_groups': choice_groups, # Removed
-        #             'background_equipment_string': background_details.get('equipment', '') # Kept
-        #         } # Removed
-        #     else: data = {'error': 'Class or Background details not found for equipment'} # Removed
-        # else: data = {'error': 'Class ID or Background name not in session for equipment'} # Removed
-        # Simplified data for equipment, assuming background_details might still be used if available
-        background_details = sample_backgrounds_data.get(background_name) if background_name else {}
-        data = {'fixed_items': [], 'choice_groups': [], 'background_equipment_string': background_details.get('equipment', '')} # Changed
+        data = {'fixed_items': [], 'choice_groups': [], 'background_equipment_string': ''} # Fixed defaults
     elif step_name == 'spells':
-        # class_id = char_data_session.get('class_id') # Removed
-        # if class_id: # Removed
-        #     s_class = Class.query.get(class_id) # Removed
-        #     if s_class and s_class.spellcasting_ability: # Removed
-        #         s_class_dict = s_class.to_dict() # Removed
-        #         # Determine number of cantrips/spells to pick at L1
-        #         # This logic is simplified; actual numbers depend on class rules (Wizard, Sorc, etc.)
-        #         # For L1, cantrips_known_by_level/spells_known_by_level map for key "1"
-        #         cantrips_known_map = s_class_dict.get('cantrips_known_by_level', {}) # Removed
-        #         spells_known_map = s_class_dict.get('spells_known_by_level', {}) # Removed
-
-        #         num_cantrips = int(cantrips_known_map.get("1", 0)) # Removed
-        #         num_level_1_spells = int(spells_known_map.get("1", 0)) # Removed
-
-        #         # Special case for Wizard L1 spells
-        #         if s_class.name == "Wizard": num_level_1_spells = 6 # Removed
-
-        #         search_pattern = f'%"{s_class.name}"%' # For Spell.classes_that_can_use # Removed
-        #         cantrips = Spell.query.filter(Spell.level == 0, Spell.classes_that_can_use.like(search_pattern)).order_by(Spell.name).all() # Removed
-        #         level_1_spells = Spell.query.filter(Spell.level == 1, Spell.classes_that_can_use.like(search_pattern)).order_by(Spell.name).all() # Removed
-        #         data = { # Removed
-        #             'num_cantrips_to_select': num_cantrips, # Removed
-        #             'num_level_1_spells_to_select': num_level_1_spells, # Removed
-        #             'available_cantrips': [{'id': sp.id, 'name': sp.name, 'description': sp.description} for sp in cantrips], # Removed
-        #             'available_level_1_spells': [{'id': sp.id, 'name': sp.name, 'description': sp.description} for sp in level_1_spells], # Removed
-        #             'can_prepare_spells': s_class_dict.get('can_prepare_spells', False) # Removed
-        #         } # Removed
-        #     else: data = {'no_spells_or_class_issue': True} # No spellcasting ability or class not found # Removed
-        # else: data = {'error': 'Class ID not in session for spells'} # Removed
-        data = {'num_cantrips_to_select': 0, 'num_level_1_spells_to_select': 0, 'available_cantrips': [], 'available_level_1_spells': [], 'can_prepare_spells': False} # Changed
+        data = {'num_cantrips_to_select': 0, 'num_level_1_spells_to_select': 0, 'available_cantrips': [], 'available_level_1_spells': [], 'can_prepare_spells': False} # Fixed defaults
     elif step_name == 'review':
-        # Review step primarily uses data already in session. This can confirm/load full objects.
-        data = {'current_character_summary': char_data_session} # Send all accumulated data
-        # if char_data_session.get('race_id'): # Removed
-        #     race = Race.query.get(char_data_session.get('race_id')) # Removed
-        #     if race: data['race_details'] = race.to_dict() # Removed
-        # if char_data_session.get('class_id'): # Removed
-        #     s_class = Class.query.get(char_data_session.get('class_id')) # Removed
-        #     if s_class: data['class_details'] = s_class.to_dict() # Removed
-        # Add more details as needed for review page, e.g., spell names
+        data = {'current_character_summary': char_data_session} # Send all accumulated data (will be emptier)
     else:
         return jsonify(error="Invalid step name"), 404
     return jsonify(data)
@@ -686,165 +449,11 @@ def creation_wizard_update_session():
     # session['new_character_data'].update(step_payload) # This will be handled more selectively
 
     # Perform server-side logic based on the step and payload
-    if step_key == 'race': # Broader check, specific slug/details check inside
-        # payload_data = step_payload # The payload from JS is step_payload.payload # Corrected: step_payload *is* the payload
-
-        race_slug_to_lookup = step_payload.get('race_slug')
-        effective_details = step_payload.get('effective_race_details')
-
-        if not race_slug_to_lookup:
-            current_app.logger.warning("race_slug missing from payload for 'race' step.")
-            return jsonify(status="error", message="Race slug is missing."), 400
-
-        # Always look up the race by slug to get its database ID and for fallback
-        # This assumes slugs in DB match names after hyphen-to-space and title case,
-        # which is how they were populated by populate_races.py from Open5e slugs.
-        # race_name_candidate = race_slug_to_lookup.replace('-', ' ').title() # Removed
-        # race = Race.query.filter_by(name=race_name_candidate).first() # Removed
-
-        # if not race: # This means the slug sent from frontend didn't match any race name # Removed
-        #     current_app.logger.warning(f"Race not found for name candidate: '{race_name_candidate}' (from slug: '{race_slug_to_lookup}')") # Removed
-        #     return jsonify(status="error", message=f"Invalid Race Slug: {race_slug_to_lookup}"), 400 # Removed
-
-        # Store the fundamental race_id and the original slug from the selected race/subrace
-        # session['new_character_data']['race_id'] = race.id # Removed
-        session['new_character_data']['selected_race_slug'] = race_slug_to_lookup # Kept slug for now, though race_id is gone
-
-        if effective_details:
-            current_app.logger.info(f"Using effective_race_details for race: {effective_details.get('name')}")
-            session['new_character_data']['race_name'] = effective_details.get('name')
-            session['new_character_data']['speed'] = effective_details.get('speed')
-            session['new_character_data']['languages_from_race'] = effective_details.get('languages', [])
-            session['new_character_data']['ability_score_increases_details'] = effective_details.get('asi') # This is just data now
-
-            # Updated to use new keys from effective_details for traits and proficiencies
-            session['new_character_data']['race_trait_names'] = effective_details.get('trait_names', [])
-            session['new_character_data']['race_skill_proficiencies_from_traits'] = effective_details.get('skill_proficiencies_from_traits', [])
-            session['new_character_data']['race_tool_proficiencies_from_traits'] = effective_details.get('tool_proficiencies_from_traits', [])
-            session['new_character_data']['race_weapon_proficiencies_from_traits'] = effective_details.get('weapon_proficiencies_from_traits', [])
-            session['new_character_data']['race_armor_proficiencies_from_traits'] = effective_details.get('armor_proficiencies_from_traits', [])
-
-            session['new_character_data']['is_subrace'] = effective_details.get('is_subrace', False)
-            if effective_details.get('is_subrace'):
-                session['new_character_data']['parent_race_slug'] = effective_details.get('parent_slug')
-
-            # The old 'race_skill_proficiencies' placeholder is removed as new specific keys are used.
-            # session['new_character_data']['race_skill_proficiencies'] = [] # This line is now removed.
-
-            # Ensure 'race_document__slug' is still handled (though its origin might change if not from a direct race model object)
-            # For now, assuming it might not be in effective_details, so keep default.
-            session['new_character_data'].setdefault('race_document__slug', None)
-
-
-        else:
-            # Fallback to old logic if effective_race_details is not provided
-            # current_app.logger.info(f"Using race.to_dict() for race: {race.name} as no effective_details provided.") # Removed
-            # race_dict = race.to_dict() # Removed
-            session['new_character_data']['race_name'] = "Default Race" # Default
-            session['new_character_data']['speed'] = 30 # Default
-            session['new_character_data']['languages_from_race'] = [] # Default
-            session['new_character_data']['race_skill_proficiencies'] = [] # Default
-            session['new_character_data']['ability_score_increases_details'] = {} # Default
-            session['new_character_data']['is_subrace'] = False # Default
-            session['new_character_data']['race_trait_names'] = [] # Default
-            session['new_character_data'].setdefault('race_document__slug', None) # Default
-
-
-        current_app.logger.info(f"Session updated for race. Name: {session['new_character_data'].get('race_name', 'N/A')}")
-
-    # If not 'race' step, or if 'race' step didn't have specific payload fields like 'race_slug',
-    # we might still want the generic update for other step types.
-    # However, for 'race', we've handled it. For other steps, the generic update is fine.
-    # This logic needs adjustment as 'race' step should now also fall into generic update for most fields
-    # session['new_character_data'].update(step_payload) # Apply generic update for all steps initially
-    # The specific 'race' logic above now mostly populates defaults if race object is not available.
-
     # Let's refine: Apply step_payload generally, then override with specific logic if needed.
     session['new_character_data'].update(step_payload) # Apply general update first
 
     # Specific handling for 'class' step, replacing the old logic
-    if step_key == 'class':
-        class_slug = step_payload.get('class_slug')
-        class_name = step_payload.get('class_name')
-        hit_die = step_payload.get('hit_die')
-        proficiencies_armor = step_payload.get('proficiencies_armor', [])
-        proficiencies_weapons = step_payload.get('proficiencies_weapons', [])
-        # Map proficiencies_tools from payload to tool_proficiencies_class_fixed in session
-        proficiencies_tools_raw = step_payload.get('proficiencies_tools', [])
-        saving_throw_proficiencies = step_payload.get('saving_throw_proficiencies', [])
-        spellcasting_ability = step_payload.get('spellcasting_ability', "")
-        class_features_list = step_payload.get('class_features_list', []) # Placeholder from JS
-        skill_proficiencies_options_raw = step_payload.get('skill_proficiencies_options')
-        skill_proficiencies_option_count = step_payload.get('skill_proficiencies_option_count')
-
-        if not class_slug or not class_name:
-            current_app.logger.error(f"Class slug or name missing in payload for 'class' step. Payload: {step_payload}")
-            return jsonify(status="error", message="Class slug or name is missing."), 400
-
-        # Store extracted values into session['new_character_data']
-        session['new_character_data']['class_slug'] = class_slug
-        session['new_character_data']['class_name'] = class_name
-        session['new_character_data']['hit_die'] = hit_die
-        session['new_character_data']['armor_proficiencies'] = proficiencies_armor
-        session['new_character_data']['weapon_proficiencies'] = proficiencies_weapons
-        session['new_character_data']['tool_proficiencies_class_fixed'] = proficiencies_tools_raw
-        session['new_character_data']['saving_throw_proficiencies'] = saving_throw_proficiencies
-        session['new_character_data']['spellcasting_ability'] = spellcasting_ability
-        session['new_character_data']['class_features_list'] = class_features_list
-        session['new_character_data']['skill_proficiencies_options_raw'] = skill_proficiencies_options_raw
-        session['new_character_data']['skill_proficiencies_option_count'] = skill_proficiencies_option_count
-
-        current_app.logger.info(f"Session updated for class selection: {class_name} ({class_slug})")
-
-    elif step_key == 'ability_scores':
-        assigned_scores_raw = step_payload.get('assigned_scores')
-        final_scores_breakdown = step_payload.get('final_ability_scores')
-        racial_asi_details = step_payload.get('racial_asi_details_applied')
-
-        if not final_scores_breakdown or not isinstance(final_scores_breakdown, dict) or \
-           not all(k in final_scores_breakdown for k in ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']):
-            current_app.logger.error(f"Invalid or incomplete final_ability_scores payload: {final_scores_breakdown}")
-            return jsonify(status="error", message="Invalid final ability scores data."), 400
-
-        session['new_character_data']['ability_scores_assigned_raw'] = assigned_scores_raw
-        session['new_character_data']['ability_scores_final_breakdown'] = final_scores_breakdown
-        session['new_character_data']['ability_scores_racial_asi_details'] = racial_asi_details
-
-        simple_final_scores = {k: v.get('total', 10) for k, v in final_scores_breakdown.items()}
-        session['new_character_data']['ability_scores'] = simple_final_scores
-
-        current_app.logger.info(f"Session updated for ability scores. Final simple scores: {simple_final_scores}")
-
-    elif step_key == 'background' and 'background_slug' in step_payload:
-        # Frontend now sends all necessary details, so we directly use them.
-        session['new_character_data']['background_slug'] = step_payload.get('background_slug')
-        session['new_character_data']['background_name'] = step_payload.get('background_name')
-        session['new_character_data']['background_skill_proficiencies'] = step_payload.get('background_skill_proficiencies', [])
-        session['new_character_data']['background_tool_proficiencies'] = step_payload.get('background_tool_proficiencies', [])
-        session['new_character_data']['background_languages_fixed'] = step_payload.get('background_languages_fixed', [])
-        session['new_character_data']['background_equipment_string'] = step_payload.get('background_equipment_string', '')
-        session['new_character_data']['background_feature_name'] = step_payload.get('feature_name', '')
-        session['new_character_data']['background_feature_desc'] = step_payload.get('feature_desc', '')
-
-        current_app.logger.info(f"Session updated for background selection: {step_payload.get('background_name')} (Slug: {step_payload.get('background_slug')})")
-
-    elif step_key == "skills":
-        chosen_class_skills = step_payload.get('chosen_class_skills', [])
-        chosen_background_skills = step_payload.get('chosen_background_skills', []) # These are the resolved choices
-
-        if not isinstance(chosen_class_skills, list):
-            current_app.logger.warning(f"Received non-list for chosen_class_skills: {chosen_class_skills}")
-            # Optionally return an error or try to recover if possible, for now, log and use empty
-            chosen_class_skills = []
-        if not isinstance(chosen_background_skills, list):
-            current_app.logger.warning(f"Received non-list for chosen_background_skills: {chosen_background_skills}")
-            chosen_background_skills = []
-
-        session['new_character_data']['chosen_class_skills'] = chosen_class_skills
-        session['new_character_data']['chosen_background_skills'] = chosen_background_skills
-        current_app.logger.info(f"Session updated for skills step. Chosen class skills: {chosen_class_skills}, Chosen background skills: {chosen_background_skills}")
-
-    elif step_key == "hp": # When HP is calculated
+    if step_key == "hp": # When HP is calculated
         # Payload contains max_hp, ac_base. Speed is already from race.
         pass
 
