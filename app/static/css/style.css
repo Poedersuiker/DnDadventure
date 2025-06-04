@@ -1247,8 +1247,9 @@ footer {
 
 #race-selection-list li,
 #class-selection-list li {
-    padding: 8px;
-    margin-bottom: 4px;
+    padding: 4px;
+    margin-bottom: 2px;
+    font-size: 0.85em;
     border: 1px solid transparent; /* For spacing and hover effect */
     border-radius: 2px;
     cursor: pointer;
@@ -1264,8 +1265,8 @@ footer {
 /* Indentation for subraces/archetypes */
 #race-selection-list ul.subrace-list,
 #class-selection-list ul.archetype-list {
-    margin-left: 15px; /* Indentation */
-    padding-left: 10px;
+    margin-left: 10px; /* Indentation */
+    padding-left: 5px;
     border-left: 1px solid #D1C7B7; /* Visual indicator for nesting */
     margin-top: 4px;
     list-style-type: none; /* Ensure no bullets */
@@ -1273,6 +1274,8 @@ footer {
 
 #race-selection-list li.subrace-item,
 #class-selection-list li.archetype-item { /* Added archetype item */
+    padding: 4px;
+    font-size: 0.85em;
     /* Sub-races/archetypes might have slightly different padding or font if needed */
     /* For now, they inherit base li styling */
     /* Example: font-size: 0.95em; */
