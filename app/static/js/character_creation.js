@@ -1200,7 +1200,8 @@ function populateBackgroundList(backgroundsData) {
         // The API /api/v2/backgrounds/ provides { slug: "...", name: "...", desc: "..." }
         // The list from /api/v2/backgrounds/?limit=50 gives { slug: "slug", document__slug: "slug", document__name: "Name", ... }
         // Let's adjust to the paginated list structure.
-        const name = item.document__name || item.name || item.slug;
+        // Prioritize item.name for display, then item.slug as fallback. De-prioritize document__name.
+        const name = item.name || item.slug;
         const slug = item.slug || item.document__slug;
 
         if (!slug) {
