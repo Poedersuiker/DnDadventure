@@ -253,7 +253,7 @@
     });
 
     nextButton.addEventListener('click', async () => {
-        if (currentStep < totalSteps) {
+
             currentStep++;
             showStep(currentStep);
         } else {
@@ -264,6 +264,7 @@
             // finalizeCharacter(); // Comment out or remove if not defined/needed
         }
     });
+
 
     // Initialize first step
     showStep(currentStep);

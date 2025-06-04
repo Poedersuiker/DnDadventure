@@ -76,7 +76,11 @@ def creation_wizard():
         # --- Begin Character Finalization (adapted from old creation_review POST) ---
         character_name = char_data.get('character_name', 'Unnamed Hero')
         alignment = char_data.get('alignment', 'True Neutral')
-        char_description = char_data.get('character_description', '')
+
+        # Determine final character description
+        char_description_from_review = char_data.get('character_description', '')
+        background_main_desc = char_data.get('desc', '') # From background
+        final_character_description = char_description_from_review if char_description_from_review.strip() else background_main_desc
 
         # Default ability scores if not present (e.g., if step was skipped or data cleared)
         ability_scores_final = char_data.get('ability_scores', {})
@@ -118,12 +122,9 @@ def creation_wizard():
 
         new_char = Character(
             name=character_name,
-            description=char_description,
+            description=final_character_description,
             user_id=current_user.id,
             alignment=alignment,
-            background_name=char_data.get('background_name', "Default Background"),
-            background_proficiencies=json.dumps({
-                "skills": [], "tools": [], "languages": [] # Empty defaults
             }),
             adventure_log=json.dumps([]),
             dm_allowed_level=1,
@@ -411,7 +412,7 @@ def creation_wizard_step_data(step_name):
             'background_fixed_skills': [],
             'background_skill_choices': []
         }
-        current_app.logger.info(f"Data prepared for skills step (5) - returning empty structure: {data}")
+
     elif step_name == 'hp':
         data = {'max_hp': 10, 'ac_base': 10, 'speed': 30} # Fixed defaults
     elif step_name == 'equipment':
@@ -453,7 +454,7 @@ def creation_wizard_update_session():
     session['new_character_data'].update(step_payload) # Apply general update first
 
     # Specific handling for 'class' step, replacing the old logic
-    if step_key == "hp": # When HP is calculated
+
         # Payload contains max_hp, ac_base. Speed is already from race.
         pass
 
