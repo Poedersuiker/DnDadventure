@@ -651,37 +651,43 @@ function getStatBonuses() {
     };
 
     function parseAbilityScoreIncrease(description) {
-        if (typeof description !== 'string') return null;
-        const match = description.match(/Your (\w+) score increases by (\d+)/i);
-        if (match) {
-            const abilityName = match[1].toLowerCase();
-            const bonusValue = parseInt(match[2], 10);
-            return { abilityName, bonusValue };
+        if (typeof description !== 'string') return []; // Return empty array for non-string input
+        const matches = [];
+        const regex = /Your (\w+) score increases by (\d+)/gi; // Added global flag
+        let match;
+        while ((match = regex.exec(description)) !== null) {
+            matches.push({
+                abilityName: match[1].toLowerCase(),
+                bonusValue: parseInt(match[2], 10)
+            });
         }
         // Handle cases like "Choose any +2; choose any other +1" or "All of your ability scores increase by 1."
-        // For now, this simple parser only handles "Your X score increases by Y".
-        // More complex parsing can be added here if needed.
-        return null;
+        // For now, this parser only handles "Your X score increases by Y".
+        // More complex parsing can be added here if needed for other formats.
+        return matches; // Return array of matches
     }
 
     function processTraits(traits, type) { // type is 'race' or 'class'
         if (traits && Array.isArray(traits)) {
             traits.forEach(trait => {
                 if (trait.name === "Ability Score Increase" && trait.desc) {
-                    const parsedBonus = parseAbilityScoreIncrease(trait.desc);
-                    if (parsedBonus) {
-                        const statAbbr = abilityScoreMap[parsedBonus.abilityName];
-                        if (statAbbr) {
-                            if (type === 'race') {
-                                bonuses[statAbbr].race += parsedBonus.bonusValue;
-                            } else if (type === 'class') {
-                                bonuses[statAbbr].class += parsedBonus.bonusValue;
+                    const parsedBonusesArray = parseAbilityScoreIncrease(trait.desc); // Returns an array
+                    if (parsedBonusesArray.length > 0) {
+                        parsedBonusesArray.forEach(parsedBonus => { // Iterate over each found bonus
+                            const statAbbr = abilityScoreMap[parsedBonus.abilityName];
+                            if (statAbbr) {
+                                if (type === 'race') {
+                                    bonuses[statAbbr].race += parsedBonus.bonusValue;
+                                } else if (type === 'class') {
+                                    bonuses[statAbbr].class += parsedBonus.bonusValue;
+                                }
+                            } else {
+                                console.warn(`Unknown ability name: ${parsedBonus.abilityName} from trait: ${trait.name} in description: "${trait.desc}"`);
                             }
-                        } else {
-                            console.warn(`Unknown ability name: ${parsedBonus.abilityName} from trait: ${trait.name}`);
-                        }
+                        });
                     } else {
-                        console.log(`Could not parse ASI description: "${trait.desc}" from trait: ${trait.name}`);
+                        // This console log can be noisy if many traits don't match the simple pattern.
+                        // console.log(`Could not parse any ASI from description: "${trait.desc}" in trait: ${trait.name}`);
                     }
                 }
             });
