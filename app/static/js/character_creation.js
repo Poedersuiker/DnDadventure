@@ -795,14 +795,59 @@ let currentStep = 0; // Start at Step 0 (Introduction)
            }
 
            let proficienciesHTML = "";
-           if (baseClassData.prof_armor && baseClassData.prof_armor.length > 0) proficienciesHTML += `<li><strong>Armor:</strong> ${baseClassData.prof_armor.map(p=>p.name || p).join(', ')}</li>`;
-           if (baseClassData.prof_weapons && baseClassData.prof_weapons.length > 0) proficienciesHTML += `<li><strong>Weapons:</strong> ${baseClassData.prof_weapons.map(p=>p.name || p).join(', ')}</li>`;
-           if (baseClassData.prof_tools && baseClassData.prof_tools.length > 0) proficienciesHTML += `<li><strong>Tools:</strong> ${baseClassData.prof_tools.map(p=>p.name || p).join(', ')}</li>`;
-           if (baseClassData.prof_saving_throws && baseClassData.prof_saving_throws.length > 0) proficienciesHTML += `<li><strong>Saving Throws:</strong> ${baseClassData.prof_saving_throws.map(p=>p.name || p).join(', ')}</li>`;
-
-           if (baseClassData.proficiencies && baseClassData.proficiencies.length > 0) { // General proficiencies array
-                proficienciesHTML += `<li><strong>Proficiencies:</strong> ${baseClassData.proficiencies.map(p => p.name).join(', ')}</li>`;
+           // Armor
+           if (baseClassData.prof_armor) {
+               if (typeof baseClassData.prof_armor === 'string' && baseClassData.prof_armor.trim() !== '') {
+                   proficienciesHTML += `<li><strong>Armor:</strong> ${baseClassData.prof_armor}</li>`;
+                   textSummary += `Proficient Armor: ${baseClassData.prof_armor}\n`;
+               } else if (Array.isArray(baseClassData.prof_armor) && baseClassData.prof_armor.length > 0) {
+                   proficienciesHTML += `<li><strong>Armor:</strong> ${baseClassData.prof_armor.map(p => p.name || p).join(', ')}</li>`;
+                   textSummary += `Proficient Armor: ${baseClassData.prof_armor.map(p => p.name || p).join(', ')}\n`;
+               }
            }
+           // Weapons
+           if (baseClassData.prof_weapons) {
+               if (typeof baseClassData.prof_weapons === 'string' && baseClassData.prof_weapons.trim() !== '') {
+                   proficienciesHTML += `<li><strong>Weapons:</strong> ${baseClassData.prof_weapons}</li>`;
+                   textSummary += `Proficient Weapons: ${baseClassData.prof_weapons}\n`;
+               } else if (Array.isArray(baseClassData.prof_weapons) && baseClassData.prof_weapons.length > 0) {
+                   proficienciesHTML += `<li><strong>Weapons:</strong> ${baseClassData.prof_weapons.map(p => p.name || p).join(', ')}</li>`;
+                   textSummary += `Proficient Weapons: ${baseClassData.prof_weapons.map(p => p.name || p).join(', ')}\n`;
+               }
+           }
+           // Tools
+           if (baseClassData.prof_tools) {
+               if (typeof baseClassData.prof_tools === 'string' && baseClassData.prof_tools.trim() !== '') {
+                   proficienciesHTML += `<li><strong>Tools:</strong> ${baseClassData.prof_tools}</li>`;
+                   textSummary += `Proficient Tools: ${baseClassData.prof_tools}\n`;
+               } else if (Array.isArray(baseClassData.prof_tools) && baseClassData.prof_tools.length > 0) {
+                   proficienciesHTML += `<li><strong>Tools:</strong> ${baseClassData.prof_tools.map(p => p.name || p).join(', ')}</li>`;
+                   textSummary += `Proficient Tools: ${baseClassData.prof_tools.map(p => p.name || p).join(', ')}\n`;
+               }
+           }
+           // Saving Throws
+           if (baseClassData.prof_saving_throws) {
+               if (typeof baseClassData.prof_saving_throws === 'string' && baseClassData.prof_saving_throws.trim() !== '') {
+                   proficienciesHTML += `<li><strong>Saving Throws:</strong> ${baseClassData.prof_saving_throws}</li>`;
+                   textSummary += `Proficient Saving Throws: ${baseClassData.prof_saving_throws}\n`;
+               } else if (Array.isArray(baseClassData.prof_saving_throws) && baseClassData.prof_saving_throws.length > 0) {
+                   proficienciesHTML += `<li><strong>Saving Throws:</strong> ${baseClassData.prof_saving_throws.map(p => p.name || p).join(', ')}</li>`;
+                   textSummary += `Proficient Saving Throws: ${baseClassData.prof_saving_throws.map(p => p.name || p).join(', ')}\n`;
+               }
+           }
+           // Skills (typically a string like "Choose two from...")
+           if (baseClassData.prof_skills && typeof baseClassData.prof_skills === 'string' && baseClassData.prof_skills.trim() !== '') {
+               proficienciesHTML += `<li><strong>Skills:</strong> ${baseClassData.prof_skills}</li>`;
+               textSummary += `Skill Proficiencies: ${baseClassData.prof_skills}\n`;
+           }
+
+           // This was for a general 'proficiencies' array, which might be different from prof_skills.
+           // Keep if API might provide a separate 'proficiencies' array of objects.
+           // For now, assuming prof_skills covers the "Choose X from Y" type.
+           // if (baseClassData.proficiencies && Array.isArray(baseClassData.proficiencies) && baseClassData.proficiencies.length > 0) {
+           //      proficienciesHTML += `<li><strong>General Proficiencies:</strong> ${baseClassData.proficiencies.map(p => p.name).join(', ')}</li>`;
+           //      textSummary += `General Proficiencies: ${baseClassData.proficiencies.map(p => p.name).join(', ')}\n`;
+           // }
 
             if (baseClassData.proficiency_choices) {
                 baseClassData.proficiency_choices.forEach(choice => {
