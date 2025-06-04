@@ -124,8 +124,7 @@ def creation_wizard():
             name=character_name,
             description=final_character_description,
             user_id=current_user.id,
-            alignment=alignment,
-            }),
+            alignment=alignment, # Corrected line
             adventure_log=json.dumps([]),
             dm_allowed_level=1,
             current_xp=0,
