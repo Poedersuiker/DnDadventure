@@ -263,19 +263,27 @@ let currentStep = 0; // Start at Step 0 (Introduction)
         ul.id = 'race-selection-list'; // Add an ID for the UL for easier event delegation
 
         races.forEach(race => {
+            // Assuming race object structure is: { slug: "...", data: { name: "...", subraces: [...] } }
             const raceLi = document.createElement('li');
-            raceLi.textContent = race.name;
+            if (race.data && race.data.name) {
+                raceLi.textContent = race.data.name;
+            } else {
+                raceLi.textContent = race.slug; // Fallback if name is not found
+                console.warn(`Race name not found for slug: ${race.slug}. Displaying slug instead.`);
+            }
             raceLi.dataset.slug = race.slug;
             ul.appendChild(raceLi);
 
-            if (race.subraces && race.subraces.length > 0) {
+            // Check for subraces within race.data
+            if (race.data && race.data.subraces && race.data.subraces.length > 0) {
                 const subUl = document.createElement('ul');
                 subUl.classList.add('subrace-list');
-                race.subraces.forEach(subrace => {
+                race.data.subraces.forEach(subrace => {
+                    // Assuming subrace object structure is: { name: "...", slug: "..." }
                     const subLi = document.createElement('li');
-                    subLi.textContent = subrace.name;
+                    subLi.textContent = subrace.name; // Subraces usually have direct properties
                     subLi.dataset.slug = subrace.slug;
-                    subLi.dataset.parentRaceSlug = race.slug;
+                    subLi.dataset.parentRaceSlug = race.slug; // Parent's slug
                     subLi.classList.add('subrace-item');
                     subUl.appendChild(subLi);
                 });
@@ -299,11 +307,19 @@ let currentStep = 0; // Start at Step 0 (Introduction)
         if (allRacesData) {
             if (parentSlug) {
                 const parentRace = allRacesData.find(r => r.slug === parentSlug);
-                if (parentRace && parentRace.subraces) {
-                    itemData = parentRace.subraces.find(sr => sr.slug === selectedRaceSlug);
+                // Subraces are expected to be in parentRace.data.subraces
+                if (parentRace && parentRace.data && parentRace.data.subraces) {
+                    itemData = parentRace.data.subraces.find(sr => sr.slug === selectedRaceSlug);
                 }
             } else {
-                itemData = allRacesData.find(r => r.slug === selectedRaceSlug);
+                // For parent races, the full data is in race.data
+                const race = allRacesData.find(r => r.slug === selectedRaceSlug);
+                if (race && race.data) {
+                    itemData = race.data; // Store the 'data' object
+                } else if (race) {
+                    itemData = race; // Fallback if structure is flatter than expected
+                    console.warn(`Race data object not found for slug: ${selectedRaceSlug}. Using root race object.`);
+                }
             }
         }
 
