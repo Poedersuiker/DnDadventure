@@ -452,11 +452,11 @@ def creation_wizard_update_session():
     # Let's refine: Apply step_payload generally, then override with specific logic if needed.
     session['new_character_data'].update(step_payload) # Apply general update first
 
-    # Specific handling for 'class' step, replacing the old logic
+    if step_key == "class":
+        # Specific handling for 'class' step, replacing the old logic
 
-    # Payload contains max_hp, ac_base. Speed is already from race.
-    pass
-
+        # Payload contains max_hp, ac_base. Speed is already from race.
+        pass
     elif step_key == "equipment":
         # Payload contains 'final_equipment_objects' which is a list of {name, quantity, description}
         # And potentially 'coinage_gp', 'coinage_sp', 'coinage_cp'
