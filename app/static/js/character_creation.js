@@ -339,10 +339,10 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             let newHtmlContent = '';
 
             if (mainDesc) {
-                newHtmlContent += `<h3>Description</h3><p>${mainDesc}</p>`;
+                newHtmlContent += `<h5>Description</h5><p>${mainDesc}</p>`;
             }
 
-            newHtmlContent += '<h3>Traits</h3>';
+            newHtmlContent += '<h5>Traits</h5>';
             let traitsText = '';
             if (mainDesc) {
                 traitsText += `Description:\n${mainDesc}\n\n`;
@@ -351,7 +351,7 @@ let currentStep = 0; // Start at Step 0 (Introduction)
 
             if (selectedItem.data.traits && Array.isArray(selectedItem.data.traits)) {
                 selectedItem.data.traits.forEach(trait => {
-                    newHtmlContent += `<h4>${trait.name}</h4><p>${trait.desc}</p>`;
+                    newHtmlContent += `<h6>${trait.name}</h6><p>${trait.desc}</p>`;
                     traitsText += `${trait.name}\n${trait.desc}\n\n`;
                 });
             }
