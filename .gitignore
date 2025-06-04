@@ -20,6 +20,7 @@ ENV/
 # Instance folder (Flask)
 # Ignore most content of instance folder, especially sensitive config
 instance/*
+!instance/open5e.db
 # But DO NOT ignore the example config file
 !instance/config.py.example
 # Also, ensure .gitkeep or other non-sensitive files can be added if needed
@@ -30,7 +31,6 @@ instance/build_info.py
 
 # Database files
 *.sqlite3
-*.db
 # Note: app/app.db is currently tracked. Adding *.db to .gitignore means
 # app/app.db will be ignored by default for future commits unless
 # specifically added using `git add -f app/app.db` or by excluding it
