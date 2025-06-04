@@ -364,13 +364,18 @@ let currentStep = 0; // Start at Step 0 (Introduction)
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status} for parent race ${parentRaceSlug}`);
                     }
-                    const parentRaceFullData = await response.json(); // This should be the full object {slug, data}
-                    const parentRaceData = parentRaceFullData.data; // Extract the 'data' part
+                    const parentRaceFullData = await response.json();
+                    console.log("Fetched parentRaceFullData:", parentRaceFullData); // Log 1
+                    // const parentRaceData = parentRaceFullData.data; // Original
+                    const parentRaceData = parentRaceFullData; // Attempted Fix
+                    console.log("Using parentRaceData:", parentRaceData); // Log 3
 
                     if (parentRaceData && parentRaceData.traits && Array.isArray(parentRaceData.traits)) {
+                        console.log("Parent race traits found:", parentRaceData.traits); // Log 4a
                         newHtmlContent += `<h5>Parent race traits (${parentRaceData.name || parentRaceSlug})</h5>`;
                         traitsText += `Parent Race Traits (${parentRaceData.name || parentRaceSlug}):\n`;
                         parentRaceData.traits.forEach(trait => {
+                            console.log("Processing parent trait - Name:", trait.name, "Desc:", trait.desc); // Log 4b
                             newHtmlContent += `<h6>${trait.name}</h6><p>${trait.desc}</p>`;
                             traitsText += `${trait.name}\n${trait.desc}\n\n`;
                         });
@@ -380,10 +385,14 @@ let currentStep = 0; // Start at Step 0 (Introduction)
                     newHtmlContent += `<p class="error">Error loading parent race traits: ${error.message}</p>`;
                     traitsText += `Error loading parent race traits: ${error.message}\n\n`;
                 }
+                console.log("newHtmlContent after parent traits:", newHtmlContent); // Log 5a
+                console.log("traitsText after parent traits:", traitsText); // Log 5b
             }
             // --- End Parent Race Trait Handling ---
 
+            console.log("Final newHtmlContent before DOM update:", newHtmlContent); // Log 6
             descriptionContainer.innerHTML = newHtmlContent;
+            console.log("Final traitsText before storing:", traitsText); // Log 7
             characterCreationData.step1_race_traits_text = traitsText.trim();
 
             // Update .selected-item class
