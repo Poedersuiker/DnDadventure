@@ -161,6 +161,12 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     }
 
     function showStep(stepNumber) {
+        if (stepNumber === 0) {
+            characterCreationData.step3_assigned_stats = {};
+            characterCreationData.step3_dice_rolled_once = false;
+            characterCreationData.step3_rolled_stats = null;
+            saveCharacterDataToSession();
+        }
         // Clear race-specific content when leaving step 1
         if (stepNumber !== 1) {
             const raceListContainer = document.getElementById('race-list-container');
