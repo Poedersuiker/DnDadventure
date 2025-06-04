@@ -3,6 +3,7 @@ let currentStep = 0; // Start at Step 0 (Introduction)
 
     // Global variables for character creation
     let allRacesData = null;
+    let allClassesData = null; // Added for Step 2
     let characterCreationData;
     try {
         const storedData = sessionStorage.getItem('characterCreationData');
@@ -10,14 +11,23 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             characterCreationData = JSON.parse(storedData);
             console.log("Loaded characterCreationData from session storage:", characterCreationData);
         } else {
-            characterCreationData = {};
+            characterCreationData = {}; // Initialize as empty object
             console.log("Initialized new characterCreationData.");
         }
     } catch (e) {
         console.error("Error loading character creation data from session storage:", e);
-        characterCreationData = {};
+        characterCreationData = {}; // Initialize as empty object on error
     }
+    // Ensure all expected keys exist
+    characterCreationData.step1_race_selection = characterCreationData.step1_race_selection || null;
+    characterCreationData.step1_parent_race_selection = characterCreationData.step1_parent_race_selection || null;
+    characterCreationData.step1_race_traits_text = characterCreationData.step1_race_traits_text || '';
+    characterCreationData.step2_class_selection = characterCreationData.step2_class_selection || null;
+    characterCreationData.step2_class_details_text = characterCreationData.step2_class_details_text || '';
+    // ... any other steps ...
+
     let selectedRaceSlug = null;
+    let selectedClassSlug = null; // Added for Step 2
 
     const prevButton = document.getElementById('prev-button'); // This ID is now in wizard-top-controls
     const nextButton = document.getElementById('next-button'); // This ID is now in wizard-top-controls
@@ -41,7 +51,15 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             <p><strong>Racial Traits:</strong> The description of each race includes racial traits that are common to members of that race. These can include: Ability Score Increase, Age, Alignment tendencies, Size, Speed, Languages, and Subraces.</p>`,
         2: `<h3>2. Choose a Class</h3>
             <p>Your class gives you a variety of special features, such as a fighter’s mastery of weapons and armor, or a wizard’s spells. At low levels, your class gives you only two or three features, but as you advance in level you gain more, and your existing features often improve.</p>
-            <p>Each class entry in the Player's Handbook includes information on: Hit Dice, Hit Points at 1st Level, Hit Points at Higher Levels, Proficiencies (Armor, Weapons, Tools, Saving Throws, Skills), Equipment, and class-specific features (e.g., Spellcasting, Channel Divinity, Martial Archetype).</p>`,
+            <p>Your class is the primary definition of what your character can do in the extraordinary world of Dungeons & Dragons. It's more than a profession; it’s your character’s calling. Class determines your character's combat capabilities, skills, and access to magic.</p>
+<p>Key aspects of your chosen class include:</p>
+<ul>
+    <li><strong>Hit Dice:</strong> Determines your character's hit points and ability to recover from damage.</li>
+    <li><strong>Proficiencies:</strong> Includes armor, weapons, tools, saving throws, and skills. These are things your character is particularly good at.</li>
+    <li><strong>Starting Equipment:</strong> The gear your character begins their adventuring career with.</li>
+    <li><strong>Class Features:</strong> Special abilities, such as a fighter’s Action Surge or a wizard’s Spellcasting, that define your class. Many classes gain more features as they level up.</li>
+</ul>
+<p>Consider how your choice of class will complement your chosen race and your desired play style. The information presented here is typically from the Player's Handbook (PHB) or other official sources available through the API.</p>`,
         3: `<h3>3. Determine Ability Scores</h3>
             <p>Six abilities provide a quick description of every creature’s physical and mental characteristics:
             <br> - <strong>Strength (STR):</strong> Natural athleticism, bodily power.
@@ -139,6 +157,12 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             if (raceDescriptionContainer) raceDescriptionContainer.innerHTML = ''; // This now also clears traits if they were in race-description-container
             // if (traitsDisplayContainer) traitsDisplayContainer.innerHTML = ''; // Removed
         }
+       if (stepNumber !== 2) {
+           const classListContainer = document.getElementById('class-list-container');
+           const classDescriptionContainer = document.getElementById('class-description-container');
+           if (classListContainer) classListContainer.innerHTML = '';
+           if (classDescriptionContainer) classDescriptionContainer.innerHTML = '';
+       }
 
         // Hide all main content wizard steps first
         document.querySelectorAll('.wizard-step').forEach(step => {
@@ -162,7 +186,31 @@ let currentStep = 0; // Start at Step 0 (Introduction)
                 // handleRaceOrSubraceClick is now responsible for updating #race-description-container.
                 // If no race is selected when step 1 loads, #race-description-container will be empty
                 // or show a default message set by populateRaceList/handleRaceOrSubraceClick if applicable.
-            }
+                // Ensure correct re-display if race was already selected
+               if (selectedRaceSlug) {
+                   const selectedLi = document.querySelector(`#race-selection-list li[data-slug="${selectedRaceSlug}"]`);
+                   const raceDescContainer = document.getElementById('race-description-container');
+                   if (selectedLi && raceDescContainer && (raceDescContainer.innerHTML === '' || raceDescContainer.innerHTML.includes('Loading details for'))) {
+                       handleRaceOrSubraceClick({ target: selectedLi });
+                   }
+               }
+            } else if (stepNumber === 2) {
+               if (!allClassesData) {
+                   loadClassStepData();
+               } else {
+                   populateClassList(allClassesData);
+                   if (selectedClassSlug) {
+                       // Ensure details are displayed if a class was already selected
+                       const classDescContainer = document.getElementById('class-description-container');
+                       if (classDescContainer && (classDescContainer.innerHTML === '' || classDescContainer.innerHTML.includes('Loading details for'))) {
+                            displayClassDetails(selectedClassSlug);
+                       } else if (classDescContainer && selectedClassSlug && !classDescContainer.innerHTML.includes(selectedClassSlug)) {
+                           // If a different class's details are showing, or it's empty but a slug is selected
+                           displayClassDetails(selectedClassSlug);
+                       }
+                   }
+               }
+           }
         } else {
             // For step 0 (Introduction)
             const stepZeroContent = document.getElementById('step-0');
@@ -257,6 +305,34 @@ let currentStep = 0; // Start at Step 0 (Introduction)
                 // Optionally, display an error to the user and/or prevent moving to the next step
                 // alert(`Error: ${error.message}. Please try again.`);
                 // return; // Prevent moving to next step
+            }
+        } else if (currentStep === 1 && !selectedRaceSlug) {
+            alert("Please select a race before proceeding.");
+            return;
+        }
+        // ADD THIS BLOCK FOR STEP 2:
+        else if (currentStep === 2) {
+            if (selectedClassSlug) {
+                try {
+                    // Fetch full class data again to ensure it's the latest
+                    const classResponse = await fetch(`/api/v1/classes/${selectedClassSlug}/`);
+                    if (!classResponse.ok) {
+                        throw new Error(`Failed to fetch full class data for ${selectedClassSlug}: ${classResponse.status}`);
+                    }
+                    const classData = await classResponse.json();
+                    characterCreationData.step2_class_selection = classData;
+                    // step2_class_details_text is already saved by displayClassDetails
+                    console.log("Updated characterCreationData after step 2 with full class object:", characterCreationData);
+                    saveCharacterDataToSession();
+                    // Fall through to proceed to next step
+                } catch (error) {
+                    console.error("Error processing class selection on next:", error);
+                    alert(`Error saving class selection: ${error.message}. Please try again or reselect the class.`);
+                    return; // Prevent moving to next step
+                }
+            } else {
+                alert("Please select a class before proceeding.");
+                return; // Stay on step 2
             }
         }
 
@@ -476,3 +552,199 @@ let currentStep = 0; // Start at Step 0 (Introduction)
 
     // Initialize first step
     showStep(currentStep);
+
+    // --- New Functions for Step 2: Class Selection ---
+
+    async function loadClassStepData() {
+       const classListContainer = document.getElementById('class-list-container');
+       if (!classListContainer) {
+           console.error("Class list container not found for step 2!");
+           return;
+       }
+       classListContainer.innerHTML = '<p>Loading classes...</p>';
+       try {
+           const response = await fetch('/api/v1/classes/');
+           if (!response.ok) {
+               throw new Error(`HTTP error! status: ${response.status}`);
+           }
+           const data = await response.json();
+           allClassesData = Array.isArray(data) ? data : (data.results || []); // Handle if data is {results: [...]}
+
+           if (!Array.isArray(allClassesData)) {
+               console.warn('Class data is not an array after fetch:', allClassesData);
+               if(classListContainer) classListContainer.innerHTML = '<p>Error: Class data is not in the expected format.</p>';
+               allClassesData = [];
+           }
+           populateClassList(allClassesData);
+       } catch (error) {
+           console.error("Could not load class data:", error);
+           if(classListContainer) classListContainer.innerHTML = '<p>Error loading classes. Please try again later.</p>';
+           allClassesData = [];
+       }
+    }
+
+    function populateClassList(classesData) {
+       const classListContainer = document.getElementById('class-list-container');
+       if (!classListContainer) {
+           console.error("Class list container not found in populateClassList!");
+           return;
+       }
+       classListContainer.innerHTML = '';
+
+       if (!classesData || classesData.length === 0) {
+           classListContainer.innerHTML = '<p>No classes available or error in loading.</p>';
+           return;
+       }
+
+       const classSelectionList = document.createElement('ul');
+       classSelectionList.id = 'class-selection-list';
+
+       classesData.forEach(classItem => {
+           const name = classItem.name || (classItem.data && classItem.data.name) || classItem.slug;
+           const slug = classItem.slug;
+
+           if (!slug) {
+               console.warn("Class item missing slug:", classItem);
+               return;
+           }
+
+           const classLi = document.createElement('li');
+           classLi.textContent = name;
+           classLi.dataset.slug = slug;
+           if (slug === selectedClassSlug) { // Restore selection
+               classLi.classList.add('selected-item');
+           }
+           classSelectionList.appendChild(classLi);
+       });
+
+       classListContainer.appendChild(classSelectionList);
+       classSelectionList.addEventListener('click', handleClassClick);
+    }
+
+    async function handleClassClick(event) {
+       const clickedLi = event.target.closest('li');
+       if (!clickedLi || !clickedLi.dataset || !clickedLi.dataset.slug) {
+           return;
+       }
+
+       const slug = clickedLi.dataset.slug;
+       selectedClassSlug = slug;
+
+       // Update selection styling
+       const classSelectionList = document.getElementById('class-selection-list');
+       if (classSelectionList) {
+           const currentlySelected = classSelectionList.querySelector('.selected-item');
+           if (currentlySelected) {
+               currentlySelected.classList.remove('selected-item');
+           }
+       }
+       clickedLi.classList.add('selected-item');
+
+       // Store the selected slug for persistence, actual object stored on "Next"
+       characterCreationData.step2_class_selection_slug = slug; // Temporary storage of slug
+       saveCharacterDataToSession();
+
+
+       await displayClassDetails(slug);
+    }
+
+    async function displayClassDetails(slug) {
+       const descriptionContainer = document.getElementById('class-description-container');
+       if (!descriptionContainer) {
+           console.error('Class description container not found!');
+           return;
+       }
+       descriptionContainer.innerHTML = `<p>Loading details for ${slug}...</p>`;
+
+       try {
+           const response = await fetch(`/api/v1/classes/${slug}/`);
+           if (!response.ok) {
+               throw new Error(`Failed to fetch class details for ${slug}: ${response.status}`);
+           }
+           const classData = await response.json();
+
+           let htmlContent = `<h4>${classData.name || slug}</h4>`;
+           let textSummary = `Class: ${classData.name || slug}\n`;
+
+           if (classData.desc) {
+               htmlContent += `<p>${classData.desc.replace(/\n/g, '<br>')}</p>`;
+               textSummary += `Description: ${classData.desc}\n\n`;
+           }
+
+           htmlContent += '<h5>Details</h5>';
+           if (classData.hit_die) {
+               htmlContent += `<p><strong>Hit Die:</strong> d${classData.hit_die}</p>`;
+               textSummary += `Hit Die: d${classData.hit_die}\n`;
+           }
+           if (classData.hp_at_1st_level) {
+               htmlContent += `<p><strong>HP at 1st Level:</strong> ${classData.hp_at_1st_level}</p>`;
+               textSummary += `HP at 1st Level: ${classData.hp_at_1st_level}\n`;
+           }
+
+           let proficienciesHTML = "";
+           if (classData.prof_armor && classData.prof_armor.length > 0) proficienciesHTML += `<li><strong>Armor:</strong> ${classData.prof_armor.map(p=>p.name || p).join(', ')}</li>`;
+           if (classData.prof_weapons && classData.prof_weapons.length > 0) proficienciesHTML += `<li><strong>Weapons:</strong> ${classData.prof_weapons.map(p=>p.name || p).join(', ')}</li>`;
+           if (classData.prof_tools && classData.prof_tools.length > 0) proficienciesHTML += `<li><strong>Tools:</strong> ${classData.prof_tools.map(p=>p.name || p).join(', ')}</li>`;
+           if (classData.prof_saving_throws && classData.prof_saving_throws.length > 0) proficienciesHTML += `<li><strong>Saving Throws:</strong> ${classData.prof_saving_throws.map(p=>p.name || p).join(', ')}</li>`;
+
+           if (classData.proficiencies && classData.proficiencies.length > 0) { // General proficiencies array
+                proficienciesHTML += `<li><strong>Proficiencies:</strong> ${classData.proficiencies.map(p => p.name).join(', ')}</li>`;
+           }
+
+            if (classData.proficiency_choices) {
+                classData.proficiency_choices.forEach(choice => {
+                    if (choice.desc && choice.choose_from && choice.choose_from.options) {
+                         proficienciesHTML += `<li><strong>${choice.desc}:</strong> (Choose ${choice.choose_from.count} from: ${choice.choose_from.options.map(opt => opt.item.name).join(', ')})</li>`;
+                         textSummary += `Proficiency Choice: ${choice.desc}\n`;
+                    }
+                });
+            }
+
+           if(proficienciesHTML) {
+               htmlContent += '<h6>Proficiencies:</h6><ul>' + proficienciesHTML + '</ul>';
+           }
+
+           if (classData.starting_equipment_desc) {
+               htmlContent += `<h6>Starting Equipment:</h6><div>${classData.starting_equipment_desc.replace(/\n/g, '<br>')}</div>`;
+               textSummary += `\nStarting Equipment:\n${classData.starting_equipment_desc}\n`;
+           } else if (classData.starting_equipment && classData.starting_equipment.length > 0) {
+                htmlContent += `<h6>Starting Equipment Options:</h6><ul>`;
+                classData.starting_equipment.forEach(optionSet => {
+                    if(optionSet.desc && optionSet.options) {
+                        htmlContent += `<li>${optionSet.desc}<ul>`;
+                        optionSet.options.forEach(opt => {
+                            htmlContent += `<li>${opt.desc}</li>`;
+                        });
+                        htmlContent += `</ul></li>`;
+                    }
+                });
+                htmlContent += `</ul>`;
+                textSummary += `\nStarting Equipment: Options available (see details).\n`;
+           }
+
+           if (classData.spellcasting) {
+                htmlContent += `<h6>Spellcasting</h6><p>This class has spellcasting abilities. Spellcasting Ability: ${classData.spellcasting.spellcasting_ability.name}. More details in the Spellcasting step.</p>`;
+                textSummary += `Spellcasting Ability: ${classData.spellcasting.spellcasting_ability.name}\n`;
+           }
+
+            if (classData.features && Array.isArray(classData.features) && classData.features.length > 0) {
+                htmlContent += '<h6>Key Features (may include higher level features):</h6><ul>';
+                classData.features.forEach(feature => {
+                    htmlContent += `<li><strong>${feature.name}:</strong> ${feature.desc.substring(0,150)}...</li>`;
+                    textSummary += `Feature: ${feature.name}\n`;
+                });
+                htmlContent += '</ul>';
+            }
+
+           descriptionContainer.innerHTML = htmlContent;
+           characterCreationData.step2_class_details_text = textSummary.trim();
+           saveCharacterDataToSession();
+           console.log("Class details displayed for:", slug);
+
+       } catch (error) {
+           console.error(`Error displaying class details for ${slug}:`, error);
+           descriptionContainer.innerHTML = `<p class="error">Could not load details for ${slug}. ${error.message}</p>`;
+           characterCreationData.step2_class_details_text = '';
+           saveCharacterDataToSession();
+       }
+    }
