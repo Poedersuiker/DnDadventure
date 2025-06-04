@@ -1595,9 +1595,11 @@ footer {
 /* Step 3: Ability Scores Specific Styles */
 #step-3 {
     padding: 15px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    background-color: #f9f9f9;
+    border: 2px solid #777; /* Darker, slightly thicker border */
+    border-radius: 3px; /* Slightly sharper corners */
+    background-color: #f7f3e9; /* A more parchment-like off-white/beige */
+    box-shadow: 3px 3px 5px rgba(0,0,0,0.2); /* Subtle drop shadow for depth */
+    margin-bottom: 20px; /* Ensure some space below it */
 }
 
 #step-3 h2, #step-3 h4 {
@@ -1726,47 +1728,62 @@ footer {
 
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 15px;
+    /* Adjust minmax to make individual blocks narrower, allowing more to fit.
+       The number of columns will still be responsive due to auto-fit.
+       If a fixed number of columns (e.g., 6) is always desired on larger screens,
+       this could be changed to something like:
+       grid-template-columns: repeat(6, 1fr); on a media query for larger screens,
+       and repeat(auto-fit, minmax(90px, 1fr)); for smaller ones.
+       For now, let's keep it responsive but with smaller base size.
+    */
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 10px; /* Reduced gap */
 }
 
 .stat-block {
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    background-color: #fff;
+    padding: 8px; /* Reduced padding */
+    border: 1px solid #888; /* Slightly darker border than default #ccc */
+    /* Consider a double border for a more classic feel, if it doesn't look too busy */
+    /* border-style: double; */
+    /* border-width: 3px; */
+    /* border-color: #555; */
+    /* The above double border might be too much, let's stick to a single, defined border first. */
+    border-radius: 3px; /* Sharper corners */
+    background-color: #fff; /* Keep background white for contrast */
     text-align: center;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.15); /* Slightly adjusted shadow */
+    /* Adding a bit of margin if not already handled by 'gap' in grid,
+       but 'gap' should be sufficient. */
 }
 
 .stat-name {
     font-weight: bold;
-    margin-bottom: 8px;
+    margin-bottom: 5px; /* Reduced margin */
     color: #333;
-    font-size: 1.1em;
+    font-size: 0.95em; /* Reduced font size */
+    line-height: 1.2; /* Added for better control with multi-line names */
 }
 
 .stat-assigned-value {
-    font-size: 1.8em;
+    font-size: 1.5em; /* Reduced font size */
     font-weight: bold;
-    color: #007bff; /* Blue */
-    margin-bottom: 8px;
-    padding: 5px;
+    color: #007bff;
+    margin-bottom: 5px; /* Reduced margin */
+    padding: 3px; /* Reduced padding */
     border-radius: 3px;
-    background-color: #f0f8ff; /* AliceBlue, very light blue */
-    min-height: 30px; /* Ensure it has some height even when '-' */
-    cursor: pointer; /* To indicate it's clickable for assignment/unassignment */
+    background-color: #f0f8ff;
+    min-height: 25px; /* Adjusted min-height */
+    cursor: pointer;
     transition: background-color 0.2s;
 }
 .stat-assigned-value:hover {
     background-color: #e0f0ff;
 }
 
-
 .stat-bonus {
-    font-size: 0.9em;
+    font-size: 0.8em; /* Reduced font size */
     color: #555;
-    margin: 2px 0;
+    margin: 1px 0; /* Reduced margin */
 }
 
 .stat-bonus.race-bonus {
@@ -1778,29 +1795,39 @@ footer {
 }
 
 .stat-total {
-    font-size: 1.4em;
+    font-size: 1.2em; /* Reduced font size */
     font-weight: bold;
-    color: #28a745; /* Green */
-    margin-top: 8px;
-    padding-top: 8px;
+    color: #28a745;
+    margin-top: 5px; /* Reduced margin */
+    padding-top: 5px; /* Reduced padding */
     border-top: 1px solid #eee;
 }
 
 /* Responsive adjustments for smaller screens if needed */
 @media (max-width: 768px) {
     .stats-grid {
-        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-        gap: 10px;
+        /* If base minmax is 100px, for smaller screens, we can go lower */
+        grid-template-columns: repeat(auto-fit, minmax(85px, 1fr));
+        gap: 8px;
     }
 
     .dice-value {
         padding: 6px 10px;
+        /* Font size for dice value can also be made smaller if needed */
+        /* font-size: 0.9em; */
+    }
+
+    .stat-name {
+         font-size: 0.85em; /* Adjusted from 0.95em base */
     }
 
     .stat-assigned-value {
-        font-size: 1.6em;
+        font-size: 1.3em; /* Adjusted from 1.5em base */
     }
     .stat-total {
-        font-size: 1.2em;
+        font-size: 1.1em; /* Adjusted from 1.2em base */
+    }
+    .stat-bonus {
+        font-size: 0.75em; /* Adjusted from 0.8em base */
     }
 }
