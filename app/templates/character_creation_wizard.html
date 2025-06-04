@@ -846,150 +846,165 @@
     function handleBackgroundSelection(backgroundSlug, backgroundDetails, event) {
         selectedBackgroundSlug = backgroundSlug;
 
+        // 1. Initialization
         let displayName = backgroundDetails.name || 'Unknown Background';
-        let mainDesc = (backgroundDetails.desc && backgroundDetails.desc !== "[No description provided]") ? backgroundDetails.desc : "";
+        let mainDesc = backgroundDetails.desc || "";
 
-        let skills_for_display = [];
-        let tools = [];
-        let languages = [];
-        let equipment = "";
-        let featureName = "";
-        let featureDescription = "";
-        let otherBenefits = [];
+        let extractedSkills = [];
+        let extractedTools = [];
+        let extractedLanguages = [];
+        let extractedEquipment = "";
+        let extractedFeatureName = "";
+        let extractedFeatureDesc = "";
 
+        // For UI display (can be more granular if parseProficiencyString is used later)
+        // For now, these will mirror the extracted ones for simplicity in this step.
+        let skillsForDisplay = [];
+        let toolsForDisplay = [];
+        let languagesForDisplay = [];
+        let equipmentForDisplay = "";
+        let featureNameForDisplay = "";
+        let featureDescForDisplay = "";
+        let otherBenefitsForDisplay = []; // For any extra details not fitting main categories
+
+        // 2. Primary Data Extraction from `benefits` array
         if (Array.isArray(backgroundDetails.benefits)) {
             backgroundDetails.benefits.forEach(benefit => {
                 const benefitName = benefit.name || "";
                 const benefitDesc = benefit.desc || "";
-                const benefitType = benefit.type || "";
+                const benefitType = benefit.type || ""; // Assume type exists, otherwise logic below needs more checks
 
-                if (benefitType === "skill_proficiency") {
-                    skills_for_display.push(benefitDesc || benefitName);
-                } else if (benefitType === "tool_proficiency") {
-                    tools.push(benefitDesc || benefitName);
-                } else if (benefitType === "language" || benefitName.toLowerCase().includes("language")) {
-                    languages.push(benefitDesc || benefitName);
+                if (benefitType === "feature" || benefitName.toLowerCase().includes("feature")) {
+                    if (!extractedFeatureName) { // Take the first one
+                        extractedFeatureName = benefitName;
+                        extractedFeatureDesc = benefitDesc;
+                    } else { // Capture subsequent features in otherBenefits if needed
+                        otherBenefitsForDisplay.push(`<strong>${benefitName}:</strong> ${benefitDesc}`);
+                    }
                 } else if (benefitType === "equipment") {
-                    equipment = benefitDesc; // Assuming one primary equipment string from benefits
-                } else if (benefitType === "feature" || benefitName.toLowerCase().includes("feature")) {
-                    if (!featureName) { // Take the first one as the primary feature
-                        featureName = benefitName;
-                        featureDescription = benefitDesc;
-                    } else {
-                        otherBenefits.push(`<strong>${benefitName}:</strong> ${benefitDesc}`);
-                    }
-                } else if (benefitType === "ability_score") {
-                     otherBenefits.push(`<strong>${benefitName}:</strong> ${benefitDesc}`);
-                } else if (benefitType.includes("advancement") || benefitType.includes("connection") || benefitType.includes("memento")) {
-                     otherBenefits.push(`<h5>${benefitName}</h5><p>${benefitDesc}</p>`);
-                } else {
-                    if (benefitName && benefitDesc) {
-                        otherBenefits.push(`<strong>${benefitName}:</strong> ${benefitDesc}`);
-                    } else if (benefitName) {
-                        otherBenefits.push(benefitName);
-                    } else if (benefitDesc) {
-                        otherBenefits.push(benefitDesc);
-                    }
+                    if (extractedEquipment) extractedEquipment += "; ";
+                    extractedEquipment += benefitDesc;
+                } else if (benefitType === "skill_proficiency") {
+                    if (benefitDesc) extractedSkills.push(benefitDesc);
+                    else if (benefitName) extractedSkills.push(benefitName);
+                } else if (benefitType === "tool_proficiency") {
+                    if (benefitDesc) extractedTools.push(benefitDesc);
+                    else if (benefitName) extractedTools.push(benefitName);
+                } else if (benefitType === "language") {
+                    if (benefitDesc) extractedLanguages.push(benefitDesc);
+                    else if (benefitName) extractedLanguages.push(benefitName);
+                } else if (benefitName && benefitDesc) { // Catch-all for other named benefits
+                    otherBenefitsForDisplay.push(`<strong>${benefitName}:</strong> ${benefitDesc}`);
+                } else if (benefitDesc) { // Unnamed benefits, just push description
+                     otherBenefitsForDisplay.push(benefitDesc);
                 }
             });
         }
 
-        // Fallbacks if not found in benefits array (using root-level properties)
-        if (skills_for_display.length === 0 && Array.isArray(backgroundDetails.skill_proficiencies) && backgroundDetails.skill_proficiencies.length > 0) {
-            skills_for_display = backgroundDetails.skill_proficiencies.slice(); // Use .slice() to ensure it's a copy
-        } else if (skills_for_display.length === 0 && typeof backgroundDetails.skills_text === 'string' && backgroundDetails.skills_text.trim()) {
-             skills_for_display = [backgroundDetails.skills_text];
-        }
-
-        if (tools.length === 0 && Array.isArray(backgroundDetails.tool_proficiencies) && backgroundDetails.tool_proficiencies.length > 0) {
-            tools = backgroundDetails.tool_proficiencies;
-        } else if (tools.length === 0 && backgroundDetails.tools_text) {
-            tools = [backgroundDetails.tools_text];
-        }
-
-        if (languages.length === 0) {
-            if (Array.isArray(backgroundDetails.languages) && backgroundDetails.languages.length > 0) {
-                languages = backgroundDetails.languages;
-            } else if (typeof backgroundDetails.languages === 'string' && backgroundDetails.languages) {
-                languages = [backgroundDetails.languages];
-            } else if (backgroundDetails.languages_text) {
-                 languages = [backgroundDetails.languages_text];
+        // 3. Fallbacks to Root-Level Properties
+        if (extractedSkills.length === 0) {
+            if (Array.isArray(backgroundDetails.skill_proficiencies) && backgroundDetails.skill_proficiencies.length > 0) {
+                extractedSkills = backgroundDetails.skill_proficiencies.map(s => String(s).trim()).filter(s => s);
+            } else if (typeof backgroundDetails.skills_text === 'string' && backgroundDetails.skills_text.trim()) {
+                extractedSkills = [backgroundDetails.skills_text.trim()];
             }
         }
-
-        if (!equipment && (backgroundDetails.equipment || backgroundDetails.equipment_text)) {
-            equipment = backgroundDetails.equipment || backgroundDetails.equipment_text;
+        if (extractedTools.length === 0) {
+            if (Array.isArray(backgroundDetails.tool_proficiencies) && backgroundDetails.tool_proficiencies.length > 0) {
+                extractedTools = backgroundDetails.tool_proficiencies.map(s => String(s).trim()).filter(s => s);
+            } else if (typeof backgroundDetails.tools_text === 'string' && backgroundDetails.tools_text.trim()) {
+                extractedTools = [backgroundDetails.tools_text.trim()];
+            }
+        }
+        if (extractedLanguages.length === 0) {
+            if (Array.isArray(backgroundDetails.languages) && backgroundDetails.languages.length > 0) {
+                extractedLanguages = backgroundDetails.languages.map(s => String(s).trim()).filter(s => s);
+            } else if (typeof backgroundDetails.languages_text === 'string' && backgroundDetails.languages_text.trim()) {
+                extractedLanguages = [backgroundDetails.languages_text.trim()];
+            }
+        }
+        if (!extractedEquipment) { // Check if empty string
+            extractedEquipment = backgroundDetails.equipment || backgroundDetails.equipment_text || "";
+        }
+        if (!extractedFeatureName) { // Check if empty string
+            extractedFeatureName = backgroundDetails.feature_name || backgroundDetails.feature || "";
+        }
+        if (!extractedFeatureDesc) { // Check if empty string
+            extractedFeatureDesc = backgroundDetails.feature_desc || "";
         }
 
-        if (!featureName && (backgroundDetails.feature || backgroundDetails.feature_name)) {
-            featureName = backgroundDetails.feature || backgroundDetails.feature_name;
-        }
-        if (!featureDescription && backgroundDetails.feature_desc) {
-            featureDescription = backgroundDetails.feature_desc;
-        }
+        // 4. Populate `ForDisplay` variables (Directly using extracted for now, can be refined)
+        skillsForDisplay = extractedSkills;
+        toolsForDisplay = extractedTools;
+        languagesForDisplay = extractedLanguages;
+        equipmentForDisplay = extractedEquipment;
+        featureNameForDisplay = extractedFeatureName;
+        featureDescForDisplay = extractedFeatureDesc;
+        // `mainDesc` and `displayName` are already set.
 
+        // 5. Construct the `payload` for `update_session`
+        const payload = {
+            background_slug: selectedBackgroundSlug,
+            background_name: displayName,
+            desc: mainDesc,
+            background_skill_proficiencies: [...new Set(extractedSkills.filter(s => s))], // Ensure unique and non-empty
+            background_tool_proficiencies: [...new Set(extractedTools.filter(t => t))],
+            background_languages_fixed: [...new Set(extractedLanguages.filter(l => l))],
+            background_equipment_string: extractedEquipment,
+            feature_name: extractedFeatureName,
+            feature_desc: extractedFeatureDesc
+        };
+        // console.log("Background Payload to be sent:", payload); // For debugging
 
+        // 6. UI Update (`detailsHtml`)
         let detailsHtml = `<h4>${displayName}</h4>`;
         if (mainDesc) {
             detailsHtml += `<p><em>${mainDesc}</em></p>`;
         }
-        // Use the 'display_skills' which might be more broken down by parseProficiencyString
-        // compared to payload_skills_for_session which keeps choices intact for backend.
-        // For this part of the code, it seems 'skills' was already populated based on the logic above
-        // the payload creation. We should ensure that the 'skills' variable used for display
-        // (which I renamed to skills_for_display in the payload section for clarity) is used here.
-        // The original code had 'skills' populated from benefits and then fallbacks.
-        // Let's assume 'skills_for_display' (which was 'skills' before my rename in the payload section)
-        // is the correct one for this display logic.
-        // Directly use the collected raw skill description strings for display
-        if (skills_for_display.length > 0) {
-            // Each item in skills_for_display should be a raw string like
-            // "Religion, and either Insight or Persuasion." or "Two of your choice."
-            // We can join them if there are multiple, or just display if one.
-            // Using a list format might be cleaner if multiple skill benefit lines exist.
-            detailsHtml += `<h5>Skill Proficiencies:</h5>`; // Heading
-            const skillListUl = document.createElement('ul');
-            skills_for_display.forEach(rawSkillText => {
-                const skillItemLi = document.createElement('li');
-                skillItemLi.textContent = rawSkillText; // Display the raw text
-                skillListUl.appendChild(skillItemLi);
+
+        if (skillsForDisplay.length > 0) {
+            detailsHtml += `<h5>Skill Proficiencies:</h5><ul>`;
+            skillsForDisplay.forEach(skillString => {
+                detailsHtml += `<li>${skillString}</li>`;
             });
-            // Temporarily create a div to get innerHTML of the ul
-            const tempDiv = document.createElement('div');
-            tempDiv.appendChild(skillListUl);
-            detailsHtml += tempDiv.innerHTML;
+            detailsHtml += `</ul>`;
         }
-        if (tools.length > 0) {
-            detailsHtml += `<p><strong>Tool Proficiencies:</strong> ${tools.join('; ')}</p>`;
+        if (toolsForDisplay.length > 0) {
+            // Using join for simple display; could be a list if multiple distinct tool strings
+            detailsHtml += `<p><strong>Tool Proficiencies:</strong> ${toolsForDisplay.join('; ')}</p>`;
         }
-        if (languages.length > 0) {
-            detailsHtml += `<p><strong>Languages:</strong> ${languages.join('; ')}</p>`;
+        if (languagesForDisplay.length > 0) {
+            detailsHtml += `<p><strong>Languages:</strong> ${languagesForDisplay.join('; ')}</p>`;
         }
-        if (equipment) {
-            detailsHtml += `<p><strong>Equipment:</strong> ${equipment}</p>`;
+        if (equipmentForDisplay) {
+            detailsHtml += `<p><strong>Equipment:</strong> ${equipmentForDisplay}</p>`;
         }
-        if (featureName) {
-            detailsHtml += `<h5>${featureName}</h5><p>${featureDescription || 'No description.'}</p>`;
+        if (featureNameForDisplay) {
+            detailsHtml += `<h5>${featureNameForDisplay}</h5><p>${featureDescForDisplay || 'No description.'}</p>`;
         }
-        if (otherBenefits.length > 0) {
-            // Added a simple separator style directly, but a CSS class would be better.
-            detailsHtml += `<br><h5>Other Benefits/Details</h5><div>${otherBenefits.join('<hr style="border:0; border-top:1px dashed #ccc; margin:5px 0;">')}</div>`;
+        if (otherBenefitsForDisplay.length > 0) {
+            detailsHtml += `<br><h5>Other Benefits/Details</h5><div>${otherBenefitsForDisplay.join('<hr style="border:0; border-top:1px dashed #ccc; margin:5px 0;">')}</div>`;
         }
 
         backgroundDetailsArea.innerHTML = detailsHtml;
 
+        // Highlight selected item
         const allBackgroundElements = backgroundSelectionArea.querySelectorAll('li');
         allBackgroundElements.forEach(el => el.classList.remove('selected-background'));
-
         if (event && event.currentTarget) {
             event.currentTarget.classList.add('selected-background');
         } else {
-            // Fallback if event.currentTarget is not available (should be, but good to have)
             const selectedElement = backgroundSelectionArea.querySelector(`li[data-background-slug='${backgroundSlug}']`);
             if (selectedElement) {
                 selectedElement.classList.add('selected-background');
             }
         }
+        // Store payload in a global or scoped variable if needed for 'Next' button, or pass directly.
+        // For now, this function's responsibility is UI update and preparing data.
+        // The actual sending happens in the 'Next' button's event listener, which will re-fetch this data or use a stored version.
+        // For simplicity, the 'Next' button's logic will re-construct this payload.
+        // This means this function is primarily for UI display. The payload construction for the 'Next' button
+        // should mirror this logic.
     }
     // --- END OF BACKGROUND SELECTION (STEP 4) FUNCTIONS ---
 

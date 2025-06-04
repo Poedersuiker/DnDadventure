@@ -76,7 +76,11 @@ def creation_wizard():
         # --- Begin Character Finalization (adapted from old creation_review POST) ---
         character_name = char_data.get('character_name', 'Unnamed Hero')
         alignment = char_data.get('alignment', 'True Neutral')
-        char_description = char_data.get('character_description', '')
+
+        # Determine final character description
+        char_description_from_review = char_data.get('character_description', '')
+        background_main_desc = char_data.get('desc', '') # From background
+        final_character_description = char_description_from_review if char_description_from_review.strip() else background_main_desc
 
         # Essential data checks
         # Removed 'race_id', 'class_id' from required_fields
@@ -146,16 +150,18 @@ def creation_wizard():
 
         new_char = Character(
             name=character_name,
-            description=char_description,
+            description=final_character_description,
             user_id=current_user.id,
             # race_id=race.id, # Removed
             # class_id=char_class_obj.id, # Removed
             alignment=alignment,
             background_name=char_data.get('background_name'),
-            background_proficiencies=json.dumps({ # Store only the profs granted directly by background definition
+            background_proficiencies=json.dumps({
                 "skills": char_data.get('background_skill_proficiencies', []),
                 "tools": char_data.get('background_tool_proficiencies', []),
-                "languages": char_data.get('background_languages_fixed', [])
+                "languages": char_data.get('background_languages_fixed', []),
+                "feature_name": char_data.get('background_feature_name', ''), # Corrected key
+                "feature_description": char_data.get('background_feature_desc', '') # Corrected key
             }),
             adventure_log=json.dumps([]),
             dm_allowed_level=1,
@@ -799,6 +805,7 @@ def creation_wizard_update_session():
         session['new_character_data']['background_equipment_string'] = step_payload.get('background_equipment_string', '')
         session['new_character_data']['background_feature_name'] = step_payload.get('feature_name', '')
         session['new_character_data']['background_feature_desc'] = step_payload.get('feature_desc', '')
+        session['new_character_data']['desc'] = step_payload.get('desc', '')
 
         current_app.logger.info(f"Session updated for background selection: {step_payload.get('background_name')} (Slug: {step_payload.get('background_slug')})")
 
