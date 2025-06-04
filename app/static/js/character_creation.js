@@ -112,8 +112,10 @@ let currentStep = 0; // Start at Step 0 (Introduction)
         if (stepNumber !== 1) {
             const raceListContainer = document.getElementById('race-list-container');
             const raceDescriptionContainer = document.getElementById('race-description-container');
+            const traitsDisplayContainer = document.getElementById('race-traits-display');
             if (raceListContainer) raceListContainer.innerHTML = '';
             if (raceDescriptionContainer) raceDescriptionContainer.innerHTML = '';
+            if (traitsDisplayContainer) traitsDisplayContainer.innerHTML = ''; // Clear traits when not on step 1
         }
 
         // Hide all main content wizard steps first
@@ -133,6 +135,15 @@ let currentStep = 0; // Start at Step 0 (Introduction)
                     loadRaceStepData(); // Fetch data if not already fetched
                 } else {
                     populateRaceList(allRacesData); // Repopulate if data exists
+                }
+                // Display stored traits for Step 1
+                const traitsDisplayContainer = document.getElementById('race-traits-display');
+                if (traitsDisplayContainer) {
+                    if (characterCreationData.step1_race_traits_html && characterCreationData.step1_race_traits_html.trim() !== '') {
+                        traitsDisplayContainer.innerHTML = characterCreationData.step1_race_traits_html;
+                    } else {
+                        traitsDisplayContainer.innerHTML = '<p>Select a race to see its traits.</p>'; // Default message
+                    }
                 }
             }
         } else {
@@ -340,6 +351,28 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             // Then, add to the newly clicked item
             clickedLi.classList.add('selected-item');
             console.log("Selected item displayed:", selectedRaceSlug, selectedItem.data); // For debugging
+
+            // --- Added logic for traits ---
+            let traitsHtml = '';
+            let traitsText = ''; // Initialize plain text version
+            if (selectedItem.data.traits && Array.isArray(selectedItem.data.traits)) {
+                selectedItem.data.traits.forEach(trait => {
+                    traitsHtml += `<h3>${trait.name}</h3><p>${trait.desc}</p>`;
+                    traitsText += `${trait.name}\n${trait.desc}\n\n`; // Append to plain text version
+                });
+            }
+            characterCreationData.step1_race_traits_html = traitsHtml;
+            characterCreationData.step1_race_traits_text = traitsText; // Store plain text version
+            console.log("Formatted traits HTML stored:", characterCreationData.step1_race_traits_html);
+            console.log("Formatted traits plain text stored:", characterCreationData.step1_race_traits_text); // Log plain text version
+            // --- End of added logic for traits ---
+
+            // Immediately update traits display
+            const traitsDisplayContainer = document.getElementById('race-traits-display');
+            if (traitsDisplayContainer) {
+                traitsDisplayContainer.innerHTML = characterCreationData.step1_race_traits_html || '<p>Select a race to see its traits.</p>';
+            }
+
         } else {
             console.error(`Data for slug '${slug}' not found or item.data is missing in allRacesData.`);
             descriptionContainer.textContent = 'Details not found for the selected item.';
