@@ -73,22 +73,76 @@ def creation_wizard():
         char_data = session.get('new_character_data', {})
         current_app.logger.info(f"Finalizing character with data: {char_data}")
 
+        # --- Background Data Extraction ---
+        selected_background_obj = char_data.get('step4_background_selection') # This is the full object from API
+        background_name_from_selection = "Unknown Background"
+        background_desc_from_selection = ""
+        background_equipment_string_from_selection = ""
+        background_feature_name_from_selection = ""
+        background_feature_desc_from_selection = ""
+
+        if selected_background_obj:
+            # Name
+            background_name_from_selection = selected_background_obj.get('name', background_name_from_selection)
+            if not background_name_from_selection and isinstance(selected_background_obj.get('data'), dict):
+                background_name_from_selection = selected_background_obj['data'].get('name', "Unknown Background")
+
+            # Description
+            background_desc_from_selection = selected_background_obj.get('desc', '')
+            if not background_desc_from_selection and isinstance(selected_background_obj.get('data'), dict):
+                background_desc_from_selection = selected_background_obj['data'].get('desc', '')
+
+            # Equipment String
+            background_equipment_string_from_selection = selected_background_obj.get('equipment', '')
+            if not background_equipment_string_from_selection and isinstance(selected_background_obj.get('data'), dict):
+                background_equipment_string_from_selection = selected_background_obj['data'].get('equipment', '')
+
+            # Feature Name
+            background_feature_name_from_selection = selected_background_obj.get('feature_name', '')
+            if not background_feature_name_from_selection and isinstance(selected_background_obj.get('data'), dict):
+                background_feature_name_from_selection = selected_background_obj['data'].get('feature_name', '')
+
+            # Feature Description
+            background_feature_desc_from_selection = selected_background_obj.get('feature_desc', '')
+            if not background_feature_desc_from_selection and isinstance(selected_background_obj.get('data'), dict):
+                background_feature_desc_from_selection = selected_background_obj['data'].get('feature_desc', '')
+
+            char_data['background_name'] = background_name_from_selection # Ensure this is set for Character model
+        else:
+            # Ensure default background_name is in char_data if no selection
+            char_data.setdefault('background_name', "Unknown Background")
+
         # --- Begin Character Finalization (adapted from old creation_review POST) ---
         character_name = char_data.get('character_name', 'Unnamed Hero')
         alignment = char_data.get('alignment', 'True Neutral')
 
-        # Determine final character description
+        # --- Determine final character description (modified) ---
         char_description_from_review = char_data.get('character_description', '')
-        background_main_desc = char_data.get('desc', '') # From background
-        final_character_description = char_description_from_review if char_description_from_review.strip() else background_main_desc
 
-        # Retrieve and append plain text traits
-        race_traits_text = char_data.get('step1_race_traits_text', '')
-        if race_traits_text and race_traits_text.strip():
-            if not final_character_description or not final_character_description.strip():
-                final_character_description = race_traits_text.strip()
+        final_character_description = char_description_from_review
+
+        # Append background description
+        if background_desc_from_selection.strip():
+            if not final_character_description.strip():
+                final_character_description = background_desc_from_selection.strip()
             else:
-                final_character_description += "\n\n--- Traits ---\n\n" + race_traits_text.strip()
+                final_character_description += "\n\n--- Background Story ---\n" + background_desc_from_selection.strip()
+
+        # Append race traits (existing logic, ensure it's placed after background desc if both exist)
+        race_traits_text = char_data.get('step1_race_traits_text', '') # This should be plain text
+        if race_traits_text and race_traits_text.strip():
+            if not final_character_description.strip():
+                final_character_description = "--- Racial Traits ---\n" + race_traits_text.strip()
+            else:
+                final_character_description += "\n\n--- Racial Traits ---\n" + race_traits_text.strip()
+
+        # Append background feature
+        if background_feature_name_from_selection and background_feature_desc_from_selection:
+            feature_text = f"{background_feature_name_from_selection}: {background_feature_desc_from_selection}"
+            if not final_character_description.strip():
+                final_character_description = "--- Background Feature ---\n" + feature_text
+            else:
+                final_character_description += "\n\n--- Background Feature ---\n" + feature_text
 
         # Default ability scores if not present (e.g., if step was skipped or data cleared)
         ability_scores_final = char_data.get('ability_scores', {})
@@ -102,6 +156,7 @@ def creation_wizard():
         char_data.setdefault('armor_class_base', 10) # Default AC
         char_data.setdefault('speed', 30) # Default speed
         char_data.setdefault('background_name', "Unknown Background") # Default background name
+
 
         required_fields = ['ability_scores', 'background_name', 'max_hp', 'armor_class_base', 'speed']
         missing_fields = [field for field in required_fields if field not in char_data]
@@ -128,24 +183,79 @@ def creation_wizard():
 
         current_app.logger.info(f"Final aggregated skills before saving (will be empty): {all_skill_proficiencies}")
 
-        new_char = Character(
-            name=character_name,
-            description=final_character_description,
-            user_id=current_user.id,
-            alignment=alignment, # Corrected line
-            adventure_log=json.dumps([]),
-            dm_allowed_level=1,
-            current_xp=0,
-            current_hit_dice=1,
-            player_notes=char_data.get('player_notes', "")
-        )
-        db.session.add(new_char)
-        db.session.flush()
-
         level_1_proficiencies_snapshot = {
             'skills': [], 'tools': [], 'languages': [],
             'armor': [], 'weapons': [], 'saving_throws': []
         }
+
+        if selected_background_obj:
+            background_data_dict = selected_background_obj.get('data', {}) # Prioritize 'data' sub-dictionary
+            if not background_data_dict and isinstance(selected_background_obj, dict): # Fallback if structure is flat
+                background_data_dict = selected_background_obj
+
+            # Skill Proficiencies
+            bg_skills = background_data_dict.get('skill_proficiencies', [])
+            if isinstance(bg_skills, str): # If it's a string like "Insight, Religion"
+                bg_skills = [s.strip() for s in bg_skills.split(',') if s.strip()]
+            if isinstance(bg_skills, list):
+                for skill in bg_skills:
+                    if skill and skill not in level_1_proficiencies_snapshot['skills']:
+                        level_1_proficiencies_snapshot['skills'].append(skill)
+
+            # Tool Proficiencies
+            bg_tools = background_data_dict.get('tool_proficiencies', [])
+            if isinstance(bg_tools, str): # If it's a string
+                # More complex parsing might be needed if choices are involved, e.g., "One type of artisan's tools"
+                # For now, add the string directly or split simple commas.
+                # If it's a choice string, it's better to add it as is for now.
+                if "choose one" in bg_tools.lower() or "one type of" in bg_tools.lower() or "two of your choice" in bg_tools.lower(): # Crude choice check
+                    if bg_tools not in level_1_proficiencies_snapshot['tools']:
+                         level_1_proficiencies_snapshot['tools'].append(bg_tools)
+                else:
+                    tool_list = [t.strip() for t in bg_tools.split(',') if t.strip()]
+                    for tool in tool_list:
+                        if tool and tool not in level_1_proficiencies_snapshot['tools']:
+                            level_1_proficiencies_snapshot['tools'].append(tool)
+            elif isinstance(bg_tools, list):
+                for tool in bg_tools:
+                    if tool and tool not in level_1_proficiencies_snapshot['tools']:
+                        level_1_proficiencies_snapshot['tools'].append(tool)
+
+            # Languages
+            bg_languages = background_data_dict.get('languages', [])
+            if isinstance(bg_languages, str): # e.g., "Two of your choice" or "Common, Elvish"
+                # If it's a choice string, add it directly. Otherwise, split.
+                if "choice" in bg_languages.lower() or "any " in bg_languages.lower():
+                     if bg_languages not in level_1_proficiencies_snapshot['languages']:
+                        level_1_proficiencies_snapshot['languages'].append(bg_languages)
+                else:
+                    lang_list = [l.strip() for l in bg_languages.split(',') if l.strip()]
+                    for lang in lang_list:
+                        if lang and lang not in level_1_proficiencies_snapshot['languages']:
+                            level_1_proficiencies_snapshot['languages'].append(lang)
+            elif isinstance(bg_languages, list): # Should ideally be a list of strings
+                for lang in bg_languages:
+                    if lang and lang not in level_1_proficiencies_snapshot['languages']:
+                        level_1_proficiencies_snapshot['languages'].append(lang)
+
+            current_app.logger.info(f"Updated level 1 proficiencies from background: {level_1_proficiencies_snapshot}")
+
+        new_char = Character(
+            name=character_name,
+            description=final_character_description, # Updated description
+            user_id=current_user.id,
+            alignment=alignment,
+            adventure_log=json.dumps([]),
+            dm_allowed_level=1,
+            current_xp=0,
+            current_hit_dice=1, # Should be 1 for a new L1 character
+            player_notes=char_data.get('player_notes', ""),
+            background_name=char_data['background_name'] # Uses the name from selection or default
+        )
+        db.session.add(new_char)
+        db.session.flush()
+
+        # level_1_proficiencies_snapshot is now initialized and populated above new_char creation
 
         spell_slots_L1 = {}
 
@@ -163,7 +273,7 @@ def creation_wizard():
             max_hp=char_data.get('max_hp', 10), # Use defaulted HP
             armor_class=char_data.get('armor_class_base', 10), # Use defaulted AC
             hit_dice_rolled="Max HP at L1 (defaulted)",
-            proficiencies=json.dumps(level_1_proficiencies_snapshot),
+            proficiencies=json.dumps(level_1_proficiencies_snapshot), # Ensure this uses the updated snapshot
             features_gained=json.dumps(class_features_list + race_trait_names),
             spells_known_ids=json.dumps(chosen_cantrip_ids + chosen_level_1_spell_ids),
             spells_prepared_ids=json.dumps([]),
@@ -189,32 +299,76 @@ def creation_wizard():
 
         db.session.add(new_char_level_1)
 
-        # Process Equipment and Coinage from 'final_equipment_objects'
-        final_equipment_objects = char_data.get('final_equipment_objects', [])
+        # --- Equipment Processing ---
+        parsed_coinage = { 'gp': 0, 'sp': 0, 'cp': 0 }
 
-        # Handle coinage (often part of background equipment string but should be separated if possible)
-        # For simplicity, assuming 'final_equipment_objects' might contain coin-like entries or a dedicated 'coinage' field in char_data
+        # Existing coinage from char_data (e.g. if class equipment gave specific gold amounts)
+        if 'coinage_gp' in char_data and isinstance(char_data['coinage_gp'], (int, float)) and char_data['coinage_gp'] > 0:
+            parsed_coinage['gp'] += int(char_data['coinage_gp'])
+        # Add similar for sp, cp if they are in char_data from other steps
 
-        # Example: if char_data contains a specific 'coinage_gp' field:
-        if 'coinage_gp' in char_data and char_data['coinage_gp'] > 0:
-             db.session.add(Coinage(name="Gold Pieces", quantity=char_data['coinage_gp'], character_id=new_char.id))
-        # Similar for SP, CP etc. Or parse from a general equipment string if necessary.
+        all_final_items_to_add = [] # List of dicts for Item creation
 
-        # Simplified item processing:
-        for item_obj in final_equipment_objects:
+        # Items from class equipment choices (existing)
+        final_equipment_objects_from_class = char_data.get('final_equipment_objects', [])
+        for item_obj in final_equipment_objects_from_class:
             if item_obj.get('name') and item_obj.get('quantity', 0) > 0:
-                # Basic parsing for gold from item name string (if not handled separately)
-                if "gp" in item_obj['name'].lower() or "gold piece" in item_obj['name'].lower():
-                    # This is a basic example. A more robust parser for "15 gp" etc. would be needed.
-                    # For now, let's assume specific coinage fields or that items are distinct from raw currency.
-                    pass # Skip adding raw gold string as an "item" if handled by dedicated coinage fields
-                else:
-                    db.session.add(Item(
-                        name=item_obj['name'].strip().title(),
-                        quantity=item_obj['quantity'],
-                        description=item_obj.get('description', "Starting equipment"),
-                        character_id=new_char.id
-                    ))
+                all_final_items_to_add.append({
+                    'name': item_obj['name'].strip().title(),
+                    'quantity': item_obj['quantity'],
+                    'description': item_obj.get('description', "Starting equipment from class")
+                })
+
+        # Parse and add items/coinage from background_equipment_string_from_selection
+        if background_equipment_string_from_selection:
+            # Simple gold parsing
+            gold_match = re.search(r'(\d+)\s*gp', background_equipment_string_from_selection, re.IGNORECASE)
+            if gold_match:
+                parsed_coinage['gp'] += int(gold_match.group(1))
+
+            silver_match = re.search(r'(\d+)\s*sp', background_equipment_string_from_selection, re.IGNORECASE)
+            if silver_match:
+                parsed_coinage['sp'] += int(silver_match.group(1))
+
+            copper_match = re.search(r'(\d+)\s*cp', background_equipment_string_from_selection, re.IGNORECASE)
+            if copper_match:
+                parsed_coinage['cp'] += int(copper_match.group(1))
+
+            # Add the raw background equipment string as a single descriptive item
+            # More robust parsing into individual items can be a future enhancement
+            cleaned_equipment_desc = background_equipment_string_from_selection.strip()
+            if cleaned_equipment_desc:
+                all_final_items_to_add.append({
+                    'name': f"{background_name_from_selection} Equipment Set",
+                    'quantity': 1,
+                    'description': cleaned_equipment_desc
+                })
+
+        # Ensure new_char.id is available before adding Coinage and Items
+        # db.session.add(new_char) # new_char is already added
+        db.session.flush() # This will assign an ID to new_char if it wasn't already (it was from previous flush)
+
+        # Add collected coinage to DB
+        if parsed_coinage['gp'] > 0:
+            db.session.add(Coinage(name="Gold Pieces", quantity=parsed_coinage['gp'], character_id=new_char.id))
+        if parsed_coinage['sp'] > 0:
+            db.session.add(Coinage(name="Silver Pieces", quantity=parsed_coinage['sp'], character_id=new_char.id))
+        if parsed_coinage['cp'] > 0:
+            db.session.add(Coinage(name="Copper Pieces", quantity=parsed_coinage['cp'], character_id=new_char.id))
+
+        # Add collected items to DB
+        for item_data in all_final_items_to_add:
+            # Basic check to avoid adding raw currency strings as items if already handled by Coinage
+            name_lower = item_data['name'].lower()
+            if not (("gold piece" in name_lower or " gp" in name_lower and "gold pieces" not in name_lower) or \
+                    ("silver piece" in name_lower or " sp" in name_lower and "silver pieces" not in name_lower) or \
+                    ("copper piece" in name_lower or " cp" in name_lower and "copper pieces" not in name_lower)):
+                db.session.add(Item(
+                    name=item_data['name'],
+                    quantity=item_data['quantity'],
+                    description=item_data['description'],
+                    character_id=new_char.id
+                ))
 
         db.session.commit()
         session.pop('new_character_data', None)

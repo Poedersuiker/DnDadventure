@@ -4,6 +4,7 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     // Global variables for character creation
     let allRacesData = null;
     let allClassesData = null; // Added for Step 2
+    let allBackgroundsData = null;
     let characterCreationData;
     try {
         const storedData = sessionStorage.getItem('characterCreationData');
@@ -38,6 +39,10 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     characterCreationData.step3_dice_rolled_once = characterCreationData.step3_dice_rolled_once || false;
     characterCreationData.step3_selected_dice_value = characterCreationData.step3_selected_dice_value || null; // To store the currently clicked dice from the pool
     characterCreationData.step3_ability_scores = characterCreationData.step3_ability_scores || ["STR", "DEX", "CON", "INT", "WIS", "CHA"];
+    // Step 4 keys
+    characterCreationData.step4_selected_background_slug = characterCreationData.step4_selected_background_slug || null;
+    characterCreationData.step4_background_selection = characterCreationData.step4_background_selection || null;
+    characterCreationData.step4_background_details_text = characterCreationData.step4_background_details_text || '';
 
     let selectedRaceSlug = null;
     let selectedClassOrArchetypeSlug = null; // Renamed from selectedClassSlug
@@ -88,7 +93,7 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             <p><strong>Ability Modifiers:</strong> Each ability score has a modifier, derived from the score and ranging from -5 (for an ability score of 1) to +10 (for a score of 30). The formula is (Score - 10) / 2, rounded down.
             <br>Example Modifiers: Score 1 (-5), 2-3 (-4), 4-5 (-3), 6-7 (-2), 8-9 (-1), 10-11 (+0), 12-13 (+1), 14-15 (+2), 16-17 (+3), 18-19 (+4), 20-21 (+5).</p>
             <p>After assigning scores, apply any racial ability score increases.</p>`,
-        4: `<h3>4. Describe Your Character</h3>
+        4: `<h3>4. Choose a Background</h3>
             <p>Your character's background describes where you came from, your original occupation, and your place in the D&D world. Your DM might offer additional backgrounds beyond those in the PHB.</p>
             <p>A background usually provides:
             <br> - Skill Proficiencies
@@ -97,7 +102,7 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             <br> - Starting Equipment
             <br> - A special background feature</p>
             <p>It also offers suggestions for personality traits, ideals, bonds, and flaws. These are roleplaying cues that help you bring your character to life.</p>
-            <p>Other details to consider: Name, Sex, Height and Weight, Alignment, Personal Characteristics (appearance, mannerisms).</p>`,
+            <p>When you choose a background, it will grant you certain benefits and provide roleplaying hooks. Select a background from the list to see its details and what it offers your character.</p>`,
         5: `<h3>5. Skills and Proficiencies</h3>
             <p><strong>Skills:</strong> Each ability covers a broad range of capabilities, including skills that a character or a monster can be proficient in. A skill represents a specific aspect of an ability score, and a character's proficiency in a skill demonstrates a focus on that aspect. Your character gains skill proficiencies from their class, background, and sometimes race.</p>
             <p>The information out of the open5e API gives multiple options for how these are gained:</p>
@@ -182,6 +187,12 @@ let currentStep = 0; // Start at Step 0 (Introduction)
            if (classListContainer) classListContainer.innerHTML = '';
            if (classDescriptionContainer) classDescriptionContainer.innerHTML = '';
        }
+        if (stepNumber !== 4) {
+            const backgroundListContainer = document.getElementById('background-list-container');
+            const backgroundDescriptionContainer = document.getElementById('background-description-container');
+            if (backgroundListContainer) backgroundListContainer.innerHTML = '';
+            if (backgroundDescriptionContainer) backgroundDescriptionContainer.innerHTML = '';
+        }
 
         // Hide all main content wizard steps first
         document.querySelectorAll('.wizard-step').forEach(step => {
@@ -231,6 +242,15 @@ let currentStep = 0; // Start at Step 0 (Introduction)
                }
             } else if (stepNumber === 3) {
                 loadStep3Logic(); // Call a new function to handle Step 3's specific logic
+            } else if (stepNumber === 4) {
+                if (!allBackgroundsData) {
+                    loadBackgroundStepData();
+                } else {
+                    populateBackgroundList(allBackgroundsData);
+                }
+                if (characterCreationData.step4_selected_background_slug) {
+                    displayBackgroundDetails(characterCreationData.step4_selected_background_slug);
+                }
            }
         } else {
             // For step 0 (Introduction)
@@ -392,6 +412,19 @@ let currentStep = 0; // Start at Step 0 (Introduction)
                 return; // Prevent moving to next step
             }
         }
+        // Logic for Step 4: Background Selection
+        else if (currentStep === 4) {
+            if (!characterCreationData.step4_selected_background_slug) {
+                alert("Please select a background before proceeding.");
+                return;
+            }
+            // Data (step4_background_selection and step4_background_details_text)
+            // should already be saved by displayBackgroundDetails when a background is selected.
+            // Log to confirm.
+            console.log("Proceeding from Step 4. Background data:", characterCreationData.step4_background_selection);
+            saveCharacterDataToSession(); // Ensure latest state is saved, though likely redundant
+        }
+
 
         if (currentStep < totalSteps) {
             currentStep++;
@@ -1107,6 +1140,228 @@ function loadStep3Logic() {
 
 // END STEP 3 LOGIC
 // =====================================================================================================================
+
+// --- New Functions for Step 4: Background Selection ---
+async function loadBackgroundStepData() {
+    const backgroundListContainer = document.getElementById('background-list-container');
+    if (!backgroundListContainer) {
+        console.error("Background list container not found for step 4!");
+        return;
+    }
+    backgroundListContainer.innerHTML = '<p>Loading backgrounds...</p>';
+    allBackgroundsData = []; // Initialize or clear previous data
+
+    let nextUrl = '/api/v2/backgrounds/?limit=50'; // Using a reasonable limit
+
+    try {
+        while (nextUrl) {
+            const response = await fetch(nextUrl);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status} while fetching ${nextUrl}`);
+            }
+            const pageData = await response.json();
+            if (pageData && pageData.results && Array.isArray(pageData.results)) {
+                allBackgroundsData = allBackgroundsData.concat(pageData.results);
+            } else {
+                console.warn("No results found in page data or results is not an array:", pageData);
+            }
+            nextUrl = pageData.next; // Update nextUrl, will be null/undefined if no more pages
+        }
+        console.log("All backgrounds loaded:", allBackgroundsData);
+        populateBackgroundList(allBackgroundsData);
+    } catch (error) {
+        console.error("Could not load background data:", error);
+        if (backgroundListContainer) {
+            backgroundListContainer.innerHTML = `<p class="error">Error loading backgrounds: ${error.message}. Please try refreshing or try again later.</p>`;
+        }
+        allBackgroundsData = []; // Ensure it's an empty array on error
+    }
+}
+
+function populateBackgroundList(backgroundsData) {
+    const backgroundListContainer = document.getElementById('background-list-container');
+    if (!backgroundListContainer) {
+        console.error("Background list container #background-list-container not found in populateBackgroundList!");
+        return;
+    }
+    backgroundListContainer.innerHTML = ''; // Clear previous content
+
+    if (!backgroundsData || backgroundsData.length === 0) {
+        backgroundListContainer.innerHTML = '<p>No backgrounds available or error in loading.</p>';
+        return;
+    }
+
+    const backgroundSelectionList = document.createElement('ul');
+    backgroundSelectionList.id = 'background-selection-list';
+
+    backgroundsData.forEach(item => {
+        // Assuming item structure is { slug: "...", data: { name: "..." } }
+        // or just { slug: "...", name: "..." } directly from some APIs.
+        // The API /api/v2/backgrounds/ provides { slug: "...", name: "...", desc: "..." }
+        // The list from /api/v2/backgrounds/?limit=50 gives { slug: "slug", document__slug: "slug", document__name: "Name", ... }
+        // Let's adjust to the paginated list structure.
+        const name = item.document__name || item.name || item.slug;
+        const slug = item.slug || item.document__slug;
+
+        if (!slug) {
+            console.warn("Background item missing slug:", item);
+            return; // Skip item if it doesn't have a slug
+        }
+
+        const li = document.createElement('li');
+        li.textContent = name;
+        li.dataset.slug = slug;
+
+        if (slug === characterCreationData.step4_selected_background_slug) {
+            li.classList.add('selected-item');
+        }
+        backgroundSelectionList.appendChild(li);
+    });
+
+    backgroundListContainer.appendChild(backgroundSelectionList);
+    // Add event listener to the new list
+    backgroundSelectionList.addEventListener('click', handleBackgroundClick);
+}
+
+async function handleBackgroundClick(event) {
+    const clickedLi = event.target.closest('li');
+    if (!clickedLi || !clickedLi.dataset || !clickedLi.dataset.slug) {
+        console.log("Clicked element is not a valid background LI or has no slug.");
+        return; // Click was not on a valid list item
+    }
+
+    const slug = clickedLi.dataset.slug;
+    characterCreationData.step4_selected_background_slug = slug;
+
+    // Update selection styling
+    const backgroundSelectionList = document.getElementById('background-selection-list');
+    if (backgroundSelectionList) {
+        const currentlySelected = backgroundSelectionList.querySelector('.selected-item');
+        if (currentlySelected) {
+            currentlySelected.classList.remove('selected-item');
+        }
+    }
+    clickedLi.classList.add('selected-item');
+
+    // Display details for the selected background
+    await displayBackgroundDetails(slug); // This function will also save to session storage
+    // saveCharacterDataToSession(); // Called within displayBackgroundDetails
+    console.log("Background selected:", slug);
+}
+
+async function displayBackgroundDetails(slug) {
+    const descriptionContainer = document.getElementById('background-description-container');
+    if (!descriptionContainer) {
+        console.error('Background description container #background-description-container not found!');
+        return;
+    }
+    descriptionContainer.innerHTML = `<p>Loading details for ${slug}...</p>`;
+
+    try {
+        const response = await fetch(`/api/v2/backgrounds/${slug}/`);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch background details for ${slug}: ${response.status}`);
+        }
+        const backgroundDetails = await response.json();
+
+        if (!backgroundDetails || !backgroundDetails.name) { // Basic check for valid data
+            throw new Error(`Incomplete data received for background ${slug}.`);
+        }
+
+        // Store the full background object
+        characterCreationData.step4_background_selection = backgroundDetails;
+
+        let htmlContent = `<h4>${backgroundDetails.name}</h4>`;
+        let textSummary = `Background: ${backgroundDetails.name}\n`;
+
+        if (backgroundDetails.desc) {
+            htmlContent += `<h5>Description</h5><p>${backgroundDetails.desc.replace(/\n/g, '<br>')}</p>`;
+            textSummary += `Description: ${backgroundDetails.desc}\n\n`;
+        }
+
+        htmlContent += '<h5>Provided Benefits:</h5><ul>';
+
+        // Skill Proficiencies
+        // The API provides skill_proficiencies as a string like "Persuasion, Deception"
+        if (backgroundDetails.data && backgroundDetails.data.skill_proficiencies) {
+            htmlContent += `<li><strong>Skill Proficiencies:</strong> ${backgroundDetails.data.skill_proficiencies}</li>`;
+            textSummary += `Skill Proficiencies: ${backgroundDetails.data.skill_proficiencies}\n`;
+        } else if (backgroundDetails.skill_proficiencies) { // Some backgrounds might have it at top level
+             htmlContent += `<li><strong>Skill Proficiencies:</strong> ${backgroundDetails.skill_proficiencies}</li>`;
+            textSummary += `Skill Proficiencies: ${backgroundDetails.skill_proficiencies}\n`;
+        }
+
+
+        // Tool Proficiencies
+        // API provides tool_proficiencies as a string like "Thieves' tools, one type of gaming set"
+        if (backgroundDetails.data && backgroundDetails.data.tool_proficiencies) {
+            htmlContent += `<li><strong>Tool Proficiencies:</strong> ${backgroundDetails.data.tool_proficiencies}</li>`;
+            textSummary += `Tool Proficiencies: ${backgroundDetails.data.tool_proficiencies}\n`;
+        } else if (backgroundDetails.tool_proficiencies) {
+            htmlContent += `<li><strong>Tool Proficiencies:</strong> ${backgroundDetails.tool_proficiencies}</li>`;
+            textSummary += `Tool Proficiencies: ${backgroundDetails.tool_proficiencies}\n`;
+        }
+
+        // Languages
+        // API provides languages as a string like "Two of your choice"
+        if (backgroundDetails.data && backgroundDetails.data.languages) {
+            htmlContent += `<li><strong>Languages:</strong> ${backgroundDetails.data.languages}</li>`;
+            textSummary += `Languages: ${backgroundDetails.data.languages}\n`;
+        } else if (backgroundDetails.languages) {
+             htmlContent += `<li><strong>Languages:</strong> ${backgroundDetails.languages}</li>`;
+            textSummary += `Languages: ${backgroundDetails.languages}\n`;
+        }
+
+
+        // Equipment
+        // API provides equipment as a block string
+        if (backgroundDetails.data && backgroundDetails.data.equipment) {
+            htmlContent += `<li><strong>Starting Equipment:</strong><br>${backgroundDetails.data.equipment.replace(/\n/g, '<br>')}</li>`;
+            textSummary += `Starting Equipment:\n${backgroundDetails.data.equipment}\n`;
+        } else if (backgroundDetails.equipment) { // check top level as well
+            htmlContent += `<li><strong>Starting Equipment:</strong><br>${backgroundDetails.equipment.replace(/\n/g, '<br>')}</li>`;
+            textSummary += `Starting Equipment:\n${backgroundDetails.equipment}\n`;
+        }
+
+
+        // Feature
+        if (backgroundDetails.data && backgroundDetails.data.feature_name && backgroundDetails.data.feature_desc) {
+            htmlContent += `<li><strong>Feature: ${backgroundDetails.data.feature_name}</strong><br>${backgroundDetails.data.feature_desc.replace(/\n/g, '<br>')}</li>`;
+            textSummary += `Feature: ${backgroundDetails.data.feature_name}\n${backgroundDetails.data.feature_desc}\n`;
+        } else if (backgroundDetails.feature_name && backgroundDetails.feature_desc) { // check top level
+            htmlContent += `<li><strong>Feature: ${backgroundDetails.feature_name}</strong><br>${backgroundDetails.feature_desc.replace(/\n/g, '<br>')}</li>`;
+            textSummary += `Feature: ${backgroundDetails.feature_name}\n${backgroundDetails.feature_desc}\n`;
+        }
+
+
+        htmlContent += '</ul>';
+
+        // Suggested Characteristics (often a large block of text or structured)
+        // For simplicity, just show if present as a string. Could be parsed further if needed.
+        if (backgroundDetails.data && backgroundDetails.data.suggested_characteristics) {
+            htmlContent += `<h5>Suggested Characteristics</h5><div>${backgroundDetails.data.suggested_characteristics.replace(/\n/g, '<br>')}</div>`;
+            textSummary += `\nSuggested Characteristics:\n${backgroundDetails.data.suggested_characteristics}\n`;
+        } else if (backgroundDetails.suggested_characteristics) {
+             htmlContent += `<h5>Suggested Characteristics</h5><div>${backgroundDetails.suggested_characteristics.replace(/\n/g, '<br>')}</div>`;
+            textSummary += `\nSuggested Characteristics:\n${backgroundDetails.suggested_characteristics}\n`;
+        }
+
+
+        descriptionContainer.innerHTML = htmlContent;
+        characterCreationData.step4_background_details_text = textSummary.trim();
+        saveCharacterDataToSession();
+        console.log("Background details displayed and stored for:", slug);
+
+    } catch (error) {
+        console.error(`Error displaying background details for ${slug}:`, error);
+        descriptionContainer.innerHTML = `<p class="error">Could not load details for ${slug}. ${error.message}</p>`;
+        // Clear stored data if loading fails
+        characterCreationData.step4_selected_background_slug = null;
+        characterCreationData.step4_background_selection = null;
+        characterCreationData.step4_background_details_text = '';
+        saveCharacterDataToSession();
+    }
+}
 
 // Initialize first step
 showStep(currentStep);
