@@ -1336,6 +1336,19 @@ async function displayBackgroundDetails(slug) {
 
         htmlContent += '</ul>';
 
+        // Benefits from API
+        if (backgroundDetails.benefits && Array.isArray(backgroundDetails.benefits) && backgroundDetails.benefits.length > 0) {
+            htmlContent += `<h5>Benefits</h5>`;
+            textSummary += `Benefits:\n`;
+            backgroundDetails.benefits.forEach(benefit => {
+                if (benefit.name && benefit.desc) {
+                    htmlContent += `<h6>${benefit.name}</h6><p>${benefit.desc.replace(/\n/g, '<br>')}</p>`;
+                    textSummary += `${benefit.name}: ${benefit.desc}\n`;
+                }
+            });
+            textSummary += `\n`; // Add a newline after all benefits in textSummary
+        }
+
         // Suggested Characteristics (often a large block of text or structured)
         // For simplicity, just show if present as a string. Could be parsed further if needed.
         if (backgroundDetails.data && backgroundDetails.data.suggested_characteristics) {
