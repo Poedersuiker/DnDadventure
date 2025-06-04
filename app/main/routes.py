@@ -454,8 +454,8 @@ def creation_wizard_update_session():
 
     # Specific handling for 'class' step, replacing the old logic
 
-        # Payload contains max_hp, ac_base. Speed is already from race.
-        pass
+    # Payload contains max_hp, ac_base. Speed is already from race.
+    pass
 
     elif step_key == "equipment":
         # Payload contains 'final_equipment_objects' which is a list of {name, quantity, description}
