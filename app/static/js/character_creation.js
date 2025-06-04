@@ -254,46 +254,74 @@ let currentStep = 0; // Start at Step 0 (Introduction)
         }
     }
 
-    function populateRaceList(races) {
+    function getSlugFromUrl(url) {
+        if (!url || typeof url !== 'string') return null;
+        // Example: "/api/v2/races/human/" -> "human"
+        // Handles potential trailing slashes as well
+        const parts = url.split('/').filter(part => part.length > 0);
+        return parts.pop() || null; // Returns the last significant part
+    }
+
+    function populateRaceList(racesData) { // racesData is allRacesData
         const raceListContainer = document.getElementById('race-list-container');
-        if (!raceListContainer) return;
+        if (!raceListContainer) {
+            console.error("Race list container not found!");
+            return;
+        }
         raceListContainer.innerHTML = ''; // Clear previous content
 
-        const ul = document.createElement('ul');
-        ul.id = 'race-selection-list'; // Add an ID for the UL for easier event delegation
+        const parentRaces = [];
+        const subracesByParentSlug = {};
 
-        races.forEach(race => {
-            // Assuming race object structure is: { slug: "...", data: { name: "...", subraces: [...] } }
-            const raceLi = document.createElement('li');
-            if (race.data && race.data.name) {
-                raceLi.textContent = race.data.name;
+        // Segregate races and subraces
+        racesData.forEach(raceItem => {
+            if (raceItem.data && raceItem.data.subrace_of && typeof raceItem.data.subrace_of === 'string' && raceItem.data.subrace_of.trim() !== '') {
+                const parentSlug = getSlugFromUrl(raceItem.data.subrace_of);
+                if (parentSlug) {
+                    if (!subracesByParentSlug[parentSlug]) {
+                        subracesByParentSlug[parentSlug] = [];
+                    }
+                    subracesByParentSlug[parentSlug].push(raceItem);
+                } else {
+                    // Could be a parent race if subrace_of is present but invalid, or log warning
+                    console.warn(`Could not extract parent slug from subrace_of URL: ${raceItem.data.subrace_of} for item ${raceItem.slug}`);
+                    parentRaces.push(raceItem); // Treat as parent if slug extraction fails but field exists
+                }
             } else {
-                raceLi.textContent = race.slug; // Fallback if name is not found
-                console.warn(`Race name not found for slug: ${race.slug}. Displaying slug instead.`);
-            }
-            raceLi.dataset.slug = race.slug;
-            ul.appendChild(raceLi);
-
-            // Check for subraces within race.data
-            if (race.data && race.data.subraces && race.data.subraces.length > 0) {
-                const subUl = document.createElement('ul');
-                subUl.classList.add('subrace-list');
-                race.data.subraces.forEach(subrace => {
-                    // Assuming subrace object structure is: { name: "...", slug: "..." }
-                    const subLi = document.createElement('li');
-                    subLi.textContent = subrace.name; // Subraces usually have direct properties
-                    subLi.dataset.slug = subrace.slug;
-                    subLi.dataset.parentRaceSlug = race.slug; // Parent's slug
-                    subLi.classList.add('subrace-item');
-                    subUl.appendChild(subLi);
-                });
-                raceLi.appendChild(subUl); // Append sublist to race's LI
+                parentRaces.push(raceItem);
             }
         });
-        raceListContainer.appendChild(ul);
 
-        // Add event listener to the UL for clicks on LIs
-        ul.addEventListener('click', handleRaceOrSubraceClick);
+        const raceSelectionList = document.createElement('ul');
+        raceSelectionList.id = 'race-selection-list';
+
+        // Populate parent races and their subraces
+        parentRaces.forEach(parentRaceItem => {
+            const raceLi = document.createElement('li');
+            raceLi.textContent = (parentRaceItem.data && parentRaceItem.data.name) ? parentRaceItem.data.name : parentRaceItem.slug;
+            raceLi.dataset.slug = parentRaceItem.slug;
+            raceSelectionList.appendChild(raceLi);
+
+            const currentSubraces = subracesByParentSlug[parentRaceItem.slug];
+            if (currentSubraces && currentSubraces.length > 0) {
+                const subraceUl = document.createElement('ul');
+                subraceUl.className = 'subrace-list'; // For styling indentation
+
+                currentSubraces.forEach(subraceItem => {
+                    const subLi = document.createElement('li');
+                    subLi.textContent = (subraceItem.data && subraceItem.data.name) ? subraceItem.data.name : subraceItem.slug;
+                    subLi.dataset.slug = subraceItem.slug;
+                    subLi.dataset.parentRaceSlug = parentRaceItem.slug; // Set parent slug
+                    subLi.classList.add('subrace-item'); // For styling
+                    subraceUl.appendChild(subLi);
+                });
+                raceLi.appendChild(subraceUl); // Append subrace list to parent race's li
+            }
+        });
+
+        raceListContainer.appendChild(raceSelectionList);
+        // Re-attach event listener to the new list
+        raceSelectionList.addEventListener('click', handleRaceOrSubraceClick);
     }
 
     function handleRaceOrSubraceClick(event) {
