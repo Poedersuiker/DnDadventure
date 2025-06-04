@@ -82,6 +82,14 @@ def creation_wizard():
         background_main_desc = char_data.get('desc', '') # From background
         final_character_description = char_description_from_review if char_description_from_review.strip() else background_main_desc
 
+        # Retrieve and append plain text traits
+        race_traits_text = char_data.get('step1_race_traits_text', '')
+        if race_traits_text and race_traits_text.strip():
+            if not final_character_description or not final_character_description.strip():
+                final_character_description = race_traits_text.strip()
+            else:
+                final_character_description += "\n\n--- Traits ---\n\n" + race_traits_text.strip()
+
         # Default ability scores if not present (e.g., if step was skipped or data cleared)
         ability_scores_final = char_data.get('ability_scores', {})
         for ability_abbr in ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']:

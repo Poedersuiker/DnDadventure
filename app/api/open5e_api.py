@@ -167,7 +167,19 @@ def get_condition(slug):
 # --- Races Endpoints ---
 @open5e_bp.route('/v2/races/', methods=['GET'])
 def list_races():
-    return jsonify(get_paginated_results('races', request.path))
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT slug, data FROM races")
+        rows = cursor.fetchall()
+        results_list = [{'slug': row['slug'], 'data': json.loads(row['data'])} for row in rows]
+        return jsonify(results_list)
+    except Exception as e:
+        # Log the error e
+        print(f"Error fetching races: {e}") # Or use proper logging
+        abort(500, description="An error occurred while fetching races.")
+    finally:
+        conn.close()
 
 @open5e_bp.route('/v2/races/<string:slug>/', methods=['GET'])
 def get_race(slug):
