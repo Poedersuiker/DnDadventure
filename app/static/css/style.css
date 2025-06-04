@@ -1538,3 +1538,127 @@ footer {
     color: white;
     border-color: #5D4037; /* Darker brown border for selected */
 }
+
+/* === Step 2: Class Selection Layout and List Styling === */
+
+/* Two-column layout for class list and description */
+.list-detail-layout-container {
+    display: flex;
+    flex-wrap: wrap; /* Allow wrapping if screen is too narrow, primarily for desktop */
+    gap: 20px; /* Space between list and description */
+}
+
+#class-list-container {
+    flex: 1 1 300px; /* Grow, shrink, basis of 300px. Adjust basis as needed. */
+    min-width: 280px; /* Minimum width before wrapping or squishing too much */
+    /* border: 1px solid #ddd; */ /* Optional: for visual separation */
+    padding: 10px;
+    background-color: #f9f9f9; /* Light background for the list area */
+    border-radius: 4px;
+    max-height: 600px; /* Or a height relative to viewport */
+    overflow-y: auto; /* Scroll if content exceeds max-height */
+}
+
+#class-description-container {
+    flex: 2 1 400px; /* Grow more, shrink, basis of 400px. Takes up more space. */
+    min-width: 300px;
+    /* border: 1px solid #ddd; */ /* Optional */
+    padding: 15px;
+    background-color: #fff;
+    border-radius: 4px;
+    max-height: 600px; /* Match list container or adjust */
+    overflow-y: auto; /* Scroll if content exceeds max-height */
+}
+
+/* Styling for the class selection list itself */
+#class-selection-list {
+    list-style-type: none;
+    padding-left: 0;
+    margin: 0;
+}
+
+#class-selection-list > li { /* Target direct children for base classes */
+    padding: 8px 12px;
+    margin-bottom: 4px;
+    border: 1px solid #eee;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+}
+
+#class-selection-list > li:hover {
+    background-color: #e9e9e9;
+    border-color: #ccc;
+}
+
+/* Styling for selected item in the class list (base classes) */
+#class-selection-list > li.selected-item {
+    background-color: #007bff; /* Example primary color */
+    color: white;
+    border-color: #0056b3;
+    font-weight: bold;
+}
+
+/* Styling for nested archetype lists */
+#class-selection-list ul.archetype-list {
+    list-style-type: none;
+    padding-left: 20px; /* Indent archetypes */
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+
+/* Styling for archetype list items */
+#class-selection-list ul.archetype-list li.archetype-item {
+    padding: 6px 10px; /* Slightly smaller padding for archetypes */
+    margin-bottom: 3px;
+    border: 1px solid #f0f0f0; /* Lighter border for archetypes */
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+    /* font-style: italic; */ /* Optional: to differentiate further */
+}
+
+#class-selection-list ul.archetype-list li.archetype-item:hover {
+    background-color: #e9e9e9;
+    border-color: #ccc;
+}
+
+/* Ensure the selected item style overrides hover for archetypes too */
+#class-selection-list ul.archetype-list li.archetype-item.selected-item {
+    background-color: #007bff;
+    color: white;
+    border-color: #0056b3;
+    font-weight: bold; /* Ensure it's still bold if archetype-item had a different font-weight */
+}
+
+/* Minor reset/style for headings within description if needed */
+#class-description-container h4 {
+    margin-top: 0;
+    color: #333;
+}
+#class-description-container h5 {
+    margin-top: 15px;
+    color: #555;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+}
+#class-description-container h6 {
+    margin-top: 10px;
+    color: #666;
+    font-weight: bold;
+}
+
+#class-description-container p,
+#class-description-container ul, /* Covers lists within descriptions too */
+#class-description-container div { /* For equipment desc or other divs */
+    margin-bottom: 10px;
+    line-height: 1.6;
+}
+
+#class-description-container ul:not(.archetype-list):not(#class-selection-list) { /* Target ULs inside description, not the main/archetype lists */
+    padding-left: 20px;
+}
+
+#class-description-container strong { /* Make sure bold stands out */
+    font-weight: 600;
+}
