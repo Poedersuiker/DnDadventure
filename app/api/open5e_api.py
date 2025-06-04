@@ -179,7 +179,8 @@ def list_races():
         print(f"Error fetching races: {e}") # Or use proper logging
         abort(500, description="An error occurred while fetching races.")
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 @open5e_bp.route('/v2/races/<string:slug>/', methods=['GET'])
 def get_race(slug):
@@ -188,7 +189,20 @@ def get_race(slug):
 # --- Classes Endpoints ---
 @open5e_bp.route('/v1/classes/', methods=['GET'])
 def list_classes():
-    return jsonify(get_paginated_results('classes', request.path))
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT slug, data FROM classes")
+        rows = cursor.fetchall()
+        results_list = [{'slug': row['slug'], 'data': json.loads(row['data'])} for row in rows]
+        return jsonify(results_list)
+    except Exception as e:
+        # Log the error e (e.g., print(f"Error fetching classes: {e}") or use proper logging)
+        print(f"Error fetching classes: {e}")
+        abort(500, description="An error occurred while fetching classes.")
+    finally:
+        if conn:
+            conn.close()
 
 @open5e_bp.route('/v1/classes/<string:slug>/', methods=['GET'])
 def get_class(slug):
