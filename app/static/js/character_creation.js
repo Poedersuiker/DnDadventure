@@ -312,7 +312,7 @@ let currentStep = 0; // Start at Step 0 (Introduction)
         raceSelectionList.addEventListener('click', handleRaceOrSubraceClick);
     }
 
-    function handleRaceOrSubraceClick(event) {
+    async function handleRaceOrSubraceClick(event) { // Made async
         const clickedLi = event.target.closest('li'); // Get the actual LI that was clicked or contains the click target
 
         if (!clickedLi || !clickedLi.dataset || !clickedLi.dataset.slug) {
@@ -347,7 +347,7 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             if (mainDesc) {
                 traitsText += `Description:\n${mainDesc}\n\n`;
             }
-            traitsText += 'Traits:\n';
+            traitsText += 'Traits:\n'; // This will be for the selected race/subrace
 
             if (selectedItem.data.traits && Array.isArray(selectedItem.data.traits)) {
                 selectedItem.data.traits.forEach(trait => {
@@ -355,7 +355,44 @@ let currentStep = 0; // Start at Step 0 (Introduction)
                     traitsText += `${trait.name}\n${trait.desc}\n\n`;
                 });
             }
+
+            // --- Parent Race Trait Handling ---
+            const parentRaceSlug = clickedLi.dataset.parentRaceSlug;
+            if (parentRaceSlug) {
+                try {
+                    const response = await fetch(`/api/v2/races/${parentRaceSlug}/`);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status} for parent race ${parentRaceSlug}`);
+                    }
+                    const parentRaceFullData = await response.json();
+                    console.log("Fetched parentRaceFullData:", parentRaceFullData); // Log 1
+                    // const parentRaceData = parentRaceFullData.data; // Original
+                    const parentRaceData = parentRaceFullData; // Attempted Fix
+                    console.log("Using parentRaceData:", parentRaceData); // Log 3
+
+                    if (parentRaceData && parentRaceData.traits && Array.isArray(parentRaceData.traits)) {
+                        console.log("Parent race traits found:", parentRaceData.traits); // Log 4a
+                        newHtmlContent += `<h5>Parent race traits (${parentRaceData.name || parentRaceSlug})</h5>`;
+                        traitsText += `Parent Race Traits (${parentRaceData.name || parentRaceSlug}):\n`;
+                        parentRaceData.traits.forEach(trait => {
+                            console.log("Processing parent trait - Name:", trait.name, "Desc:", trait.desc); // Log 4b
+                            newHtmlContent += `<h6>${trait.name}</h6><p>${trait.desc}</p>`;
+                            traitsText += `${trait.name}\n${trait.desc}\n\n`;
+                        });
+                    }
+                } catch (error) {
+                    console.error("Could not load parent race data:", error);
+                    newHtmlContent += `<p class="error">Error loading parent race traits: ${error.message}</p>`;
+                    traitsText += `Error loading parent race traits: ${error.message}\n\n`;
+                }
+                console.log("newHtmlContent after parent traits:", newHtmlContent); // Log 5a
+                console.log("traitsText after parent traits:", traitsText); // Log 5b
+            }
+            // --- End Parent Race Trait Handling ---
+
+            console.log("Final newHtmlContent before DOM update:", newHtmlContent); // Log 6
             descriptionContainer.innerHTML = newHtmlContent;
+            console.log("Final traitsText before storing:", traitsText); // Log 7
             characterCreationData.step1_race_traits_text = traitsText.trim();
 
             // Update .selected-item class
