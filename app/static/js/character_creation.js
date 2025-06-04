@@ -112,8 +112,10 @@ let currentStep = 0; // Start at Step 0 (Introduction)
         if (stepNumber !== 1) {
             const raceListContainer = document.getElementById('race-list-container');
             const raceDescriptionContainer = document.getElementById('race-description-container');
+            // const traitsDisplayContainer = document.getElementById('race-traits-display'); // Removed
             if (raceListContainer) raceListContainer.innerHTML = '';
-            if (raceDescriptionContainer) raceDescriptionContainer.innerHTML = '';
+            if (raceDescriptionContainer) raceDescriptionContainer.innerHTML = ''; // This now also clears traits if they were in race-description-container
+            // if (traitsDisplayContainer) traitsDisplayContainer.innerHTML = ''; // Removed
         }
 
         // Hide all main content wizard steps first
@@ -134,6 +136,10 @@ let currentStep = 0; // Start at Step 0 (Introduction)
                 } else {
                     populateRaceList(allRacesData); // Repopulate if data exists
                 }
+                // Removed logic for displaying traits in a separate #race-traits-display.
+                // handleRaceOrSubraceClick is now responsible for updating #race-description-container.
+                // If no race is selected when step 1 loads, #race-description-container will be empty
+                // or show a default message set by populateRaceList/handleRaceOrSubraceClick if applicable.
             }
         } else {
             // For step 0 (Introduction)
@@ -340,6 +346,29 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             // Then, add to the newly clicked item
             clickedLi.classList.add('selected-item');
             console.log("Selected item displayed:", selectedRaceSlug, selectedItem.data); // For debugging
+
+            // --- Added logic for traits ---
+            let traitsHtml = '';
+            let traitsText = ''; // Initialize plain text version
+            if (selectedItem.data.traits && Array.isArray(selectedItem.data.traits)) {
+                selectedItem.data.traits.forEach(trait => {
+                    traitsHtml += `<h3>${trait.name}</h3><p>${trait.desc}</p>`;
+                    traitsText += `${trait.name}\n${trait.desc}\n\n`; // Append to plain text version
+                });
+            }
+            characterCreationData.step1_race_traits_html = traitsHtml;
+            characterCreationData.step1_race_traits_text = traitsText; // Store plain text version
+            console.log("Formatted traits HTML stored:", characterCreationData.step1_race_traits_html);
+            console.log("Formatted traits plain text stored:", characterCreationData.step1_race_traits_text); // Log plain text version
+            // --- End of added logic for traits ---
+
+            // If traits HTML was generated, display it in the descriptionContainer, overwriting the JSON.
+            // Otherwise, the JSON representation (set earlier) remains.
+            if (descriptionContainer && characterCreationData.step1_race_traits_html && characterCreationData.step1_race_traits_html.trim() !== '') {
+                descriptionContainer.innerHTML = characterCreationData.step1_race_traits_html;
+            }
+            // No 'else' here, as we want the JSON to persist if traitsHtml is empty.
+
         } else {
             console.error(`Data for slug '${slug}' not found or item.data is missing in allRacesData.`);
             descriptionContainer.textContent = 'Details not found for the selected item.';
