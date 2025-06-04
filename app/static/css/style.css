@@ -1591,3 +1591,216 @@ footer {
 }
 
 /* Removed the specific Step 2 CSS block that was here */
+
+/* Step 3: Ability Scores Specific Styles */
+#step-3 {
+    padding: 15px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+}
+
+#step-3 h2, #step-3 h4 {
+    color: #333;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+#vital-stats-container {
+    background-color: #e7f3fe;
+    border: 1px solid #cce0f1;
+    padding: 10px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+}
+
+#vital-stats-container h4 {
+    margin-top: 0;
+    color: #00529B;
+}
+
+#vital-stats-display {
+    font-weight: bold;
+    color: #00529B;
+}
+
+#dice-roll-line {
+    margin-bottom: 20px;
+    padding: 10px;
+    background-color: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+#dice-roll-line #standard-array-display,
+#dice-roll-line #rolled-dice-display {
+    margin-bottom: 10px;
+}
+
+#dice-roll-line #standard-array-display span,
+#dice-roll-line #rolled-dice-values span {
+    font-weight: bold;
+    margin-right: 5px;
+    padding: 3px 6px;
+    background-color: #fff;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+}
+
+#roll-dice-button {
+    background-color: #4CAF50; /* Green */
+    color: white;
+    padding: 8px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1em;
+}
+
+#roll-dice-button:disabled {
+    background-color: #aaa;
+    cursor: not-allowed;
+}
+
+#roll-dice-button:hover:not(:disabled) {
+    background-color: #45a049;
+}
+
+.warning-text {
+    color: #D8000C; /* Red */
+    background-color: #FFD2D2; /* Light red */
+    padding: 5px;
+    border-radius: 3px;
+    font-size: 0.9em;
+    margin-top: 5px;
+}
+
+
+#assignable-dice-pool-container {
+    margin-bottom: 20px;
+    padding: 10px;
+    background-color: #e9e9e9;
+    border: 1px solid #dcdcdc;
+    border-radius: 4px;
+}
+
+#assignable-dice-pool {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 10px; /* Added margin for spacing before the instruction paragraph */
+}
+
+.dice-value {
+    padding: 8px 12px;
+    border: 1px solid #aaa;
+    background-color: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.dice-value:hover {
+    background-color: #d4eaff; /* Light blue on hover */
+    border-color: #90c9ef;
+}
+
+.dice-value.selected {
+    background-color: #007bff; /* Blue */
+    color: white;
+    border-color: #0056b3;
+}
+
+.dice-value.used { /* This class can be used if we want to visually distinguish used dice beyond just not being there */
+    background-color: #d3d3d3; /* Light grey */
+    color: #777;
+    cursor: not-allowed;
+    text-decoration: line-through;
+}
+
+
+#stats-display-container {
+    margin-top: 20px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 15px;
+}
+
+.stat-block {
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    background-color: #fff;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.stat-name {
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #333;
+    font-size: 1.1em;
+}
+
+.stat-assigned-value {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: #007bff; /* Blue */
+    margin-bottom: 8px;
+    padding: 5px;
+    border-radius: 3px;
+    background-color: #f0f8ff; /* AliceBlue, very light blue */
+    min-height: 30px; /* Ensure it has some height even when '-' */
+    cursor: pointer; /* To indicate it's clickable for assignment/unassignment */
+    transition: background-color 0.2s;
+}
+.stat-assigned-value:hover {
+    background-color: #e0f0ff;
+}
+
+
+.stat-bonus {
+    font-size: 0.9em;
+    color: #555;
+    margin: 2px 0;
+}
+
+.stat-bonus.race-bonus {
+    color: #28a745; /* Green for race bonus */
+}
+
+.stat-bonus.class-bonus {
+    color: #17a2b8; /* Teal for class bonus */
+}
+
+.stat-total {
+    font-size: 1.4em;
+    font-weight: bold;
+    color: #28a745; /* Green */
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #eee;
+}
+
+/* Responsive adjustments for smaller screens if needed */
+@media (max-width: 768px) {
+    .stats-grid {
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+        gap: 10px;
+    }
+
+    .dice-value {
+        padding: 6px 10px;
+    }
+
+    .stat-assigned-value {
+        font-size: 1.6em;
+    }
+    .stat-total {
+        font-size: 1.2em;
+    }
+}
