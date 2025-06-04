@@ -22,12 +22,14 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     characterCreationData.step1_race_selection = characterCreationData.step1_race_selection || null;
     characterCreationData.step1_parent_race_selection = characterCreationData.step1_parent_race_selection || null;
     characterCreationData.step1_race_traits_text = characterCreationData.step1_race_traits_text || '';
-    characterCreationData.step2_class_selection = characterCreationData.step2_class_selection || null;
-    characterCreationData.step2_class_details_text = characterCreationData.step2_class_details_text || '';
+    // New Step 2 keys
+    characterCreationData.step2_selected_base_class = characterCreationData.step2_selected_base_class || null;
+    characterCreationData.step2_selected_archetype = characterCreationData.step2_selected_archetype || null;
+    characterCreationData.step2_selection_details_text = characterCreationData.step2_selection_details_text || '';
     // ... any other steps ...
 
     let selectedRaceSlug = null;
-    let selectedClassSlug = null; // Added for Step 2
+    let selectedClassOrArchetypeSlug = null; // Renamed from selectedClassSlug
 
     const prevButton = document.getElementById('prev-button'); // This ID is now in wizard-top-controls
     const nextButton = document.getElementById('next-button'); // This ID is now in wizard-top-controls
@@ -199,14 +201,14 @@ let currentStep = 0; // Start at Step 0 (Introduction)
                    loadClassStepData();
                } else {
                    populateClassList(allClassesData);
-                   if (selectedClassSlug) {
-                       // Ensure details are displayed if a class was already selected
+                   if (selectedClassOrArchetypeSlug) { // Renamed
+                       // Ensure details are displayed if a class/archetype was already selected
                        const classDescContainer = document.getElementById('class-description-container');
                        if (classDescContainer && (classDescContainer.innerHTML === '' || classDescContainer.innerHTML.includes('Loading details for'))) {
-                            displayClassDetails(selectedClassSlug);
-                       } else if (classDescContainer && selectedClassSlug && !classDescContainer.innerHTML.includes(selectedClassSlug)) {
+                            displayClassDetails(selectedClassOrArchetypeSlug); // Renamed
+                       } else if (classDescContainer && selectedClassOrArchetypeSlug && !classDescContainer.innerHTML.includes(selectedClassOrArchetypeSlug)) { // Renamed
                            // If a different class's details are showing, or it's empty but a slug is selected
-                           displayClassDetails(selectedClassSlug);
+                           displayClassDetails(selectedClassOrArchetypeSlug); // Renamed
                        }
                    }
                }
@@ -310,29 +312,65 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             alert("Please select a race before proceeding.");
             return;
         }
-        // ADD THIS BLOCK FOR STEP 2:
+        // Logic for Step 2: Class/Archetype Selection
         else if (currentStep === 2) {
-            if (selectedClassSlug) {
-                try {
-                    // Fetch full class data again to ensure it's the latest
-                    const classResponse = await fetch(`/api/v1/classes/${selectedClassSlug}/`);
-                    if (!classResponse.ok) {
-                        throw new Error(`Failed to fetch full class data for ${selectedClassSlug}: ${classResponse.status}`);
+            if (!selectedClassOrArchetypeSlug) {
+                alert("Please select a class or archetype before proceeding.");
+                return;
+            }
+
+            const selectedLi = document.querySelector(`#class-selection-list li[data-slug='${selectedClassOrArchetypeSlug}']`);
+            if (!selectedLi) {
+                console.error("Selected LI element not found for slug:", selectedClassOrArchetypeSlug);
+                alert("An error occurred with your selection. Please try selecting again.");
+                return;
+            }
+
+            let isArchetypeSelected = false;
+            let parentClassSlugForArchetype = null;
+
+            if (selectedLi.dataset.parentClassSlug) {
+                isArchetypeSelected = true;
+                parentClassSlugForArchetype = selectedLi.dataset.parentClassSlug;
+            }
+
+            try {
+                if (isArchetypeSelected) {
+                    const baseClassResponse = await fetch(`/api/v1/classes/${parentClassSlugForArchetype}/`);
+                    if (!baseClassResponse.ok) {
+                        throw new Error(`Failed to fetch base class data for ${parentClassSlugForArchetype}: ${baseClassResponse.status}`);
                     }
-                    const classData = await classResponse.json();
-                    characterCreationData.step2_class_selection = classData;
-                    // step2_class_details_text is already saved by displayClassDetails
-                    console.log("Updated characterCreationData after step 2 with full class object:", characterCreationData);
-                    saveCharacterDataToSession();
-                    // Fall through to proceed to next step
-                } catch (error) {
-                    console.error("Error processing class selection on next:", error);
-                    alert(`Error saving class selection: ${error.message}. Please try again or reselect the class.`);
-                    return; // Prevent moving to next step
+                    const baseClassData = await baseClassResponse.json();
+                    characterCreationData.step2_selected_base_class = baseClassData;
+
+                    let foundArchetype = null;
+                    if (baseClassData.archetypes && Array.isArray(baseClassData.archetypes)) {
+                        foundArchetype = baseClassData.archetypes.find(arch => arch.slug === selectedClassOrArchetypeSlug);
+                    }
+
+                    if (foundArchetype) {
+                        characterCreationData.step2_selected_archetype = foundArchetype;
+                    } else {
+                        throw new Error(`Selected archetype '${selectedClassOrArchetypeSlug}' details not found within the base class '${parentClassSlugForArchetype}'.`);
+                    }
+                } else { // Base class was selected
+                    const baseClassResponse = await fetch(`/api/v1/classes/${selectedClassOrArchetypeSlug}/`);
+                    if (!baseClassResponse.ok) {
+                        throw new Error(`Failed to fetch class data for ${selectedClassOrArchetypeSlug}: ${baseClassResponse.status}`);
+                    }
+                    const baseClassData = await baseClassResponse.json();
+                    characterCreationData.step2_selected_base_class = baseClassData;
+                    characterCreationData.step2_selected_archetype = null; // Ensure archetype is cleared
                 }
-            } else {
-                alert("Please select a class before proceeding.");
-                return; // Stay on step 2
+
+                // step2_selection_details_text is already saved by displayClassDetails
+                console.log("Updated characterCreationData after step 2:", characterCreationData);
+                saveCharacterDataToSession();
+                // Fall through to proceed to next step
+            } catch (error) {
+                console.error("Error processing class/archetype selection on next:", error);
+                alert(`Error saving selection: ${error.message}. Please try again.`);
+                return; // Prevent moving to next step
             }
         }
 
@@ -589,7 +627,7 @@ let currentStep = 0; // Start at Step 0 (Introduction)
            console.error("Class list container not found in populateClassList!");
            return;
        }
-       classListContainer.innerHTML = '';
+       classListContainer.innerHTML = ''; // Clear previous content
 
        if (!classesData || classesData.length === 0) {
            classListContainer.innerHTML = '<p>No classes available or error in loading.</p>';
@@ -600,35 +638,68 @@ let currentStep = 0; // Start at Step 0 (Introduction)
        classSelectionList.id = 'class-selection-list';
 
        classesData.forEach(classItem => {
-           const name = classItem.name || (classItem.data && classItem.data.name) || classItem.slug;
-           const slug = classItem.slug;
+           // Assuming classItem.slug and classItem.data are present
+           // and classItem.data.name and classItem.data.archetypes might be present
+           const baseClassName = (classItem.data && classItem.data.name) ? classItem.data.name : classItem.slug;
+           const baseClassSlug = classItem.slug;
 
-           if (!slug) {
-               console.warn("Class item missing slug:", classItem);
+           if (!baseClassSlug) {
+               console.warn("Base class item missing slug:", classItem);
                return;
            }
 
-           const classLi = document.createElement('li');
-           classLi.textContent = name;
-           classLi.dataset.slug = slug;
-           if (slug === selectedClassSlug) { // Restore selection
-               classLi.classList.add('selected-item');
+           const parentLi = document.createElement('li');
+           parentLi.textContent = baseClassName;
+           parentLi.dataset.slug = baseClassSlug;
+           if (baseClassSlug === selectedClassOrArchetypeSlug) {
+               parentLi.classList.add('selected-item');
            }
-           classSelectionList.appendChild(classLi);
+           classSelectionList.appendChild(parentLi);
+
+           // Check for and display archetypes
+           if (classItem.data && classItem.data.archetypes && Array.isArray(classItem.data.archetypes) && classItem.data.archetypes.length > 0) {
+               const archetypeUl = document.createElement('ul');
+               archetypeUl.className = 'archetype-list'; // For styling (e.g., indentation)
+
+               classItem.data.archetypes.forEach(archetype => {
+                   const archetypeSlug = archetype.slug; // Assuming archetype has a slug
+                   const archetypeName = archetype.name || archetypeSlug; // Assuming archetype has a name
+
+                   if (!archetypeSlug) {
+                       console.warn("Archetype item missing slug:", archetype);
+                       return;
+                   }
+
+                   const childLi = document.createElement('li');
+                   childLi.textContent = archetypeName;
+                   childLi.dataset.slug = archetypeSlug;
+                   childLi.dataset.parentClassSlug = baseClassSlug; // Store parent class slug
+                   childLi.classList.add('archetype-item'); // For styling & event handling differentiation
+
+                   if (archetypeSlug === selectedClassOrArchetypeSlug) {
+                       childLi.classList.add('selected-item');
+                       // Also ensure parent is visually distinct if a child is selected, if desired by CSS.
+                       // For now, only the actual selected item gets 'selected-item'.
+                   }
+                   archetypeUl.appendChild(childLi);
+               });
+               parentLi.appendChild(archetypeUl);
+           }
        });
 
        classListContainer.appendChild(classSelectionList);
-       classSelectionList.addEventListener('click', handleClassClick);
+       classSelectionList.addEventListener('click', handleClassOrArchetypeClick); // Renamed listener call
     }
 
-    async function handleClassClick(event) {
+    async function handleClassOrArchetypeClick(event) { // Renamed function
        const clickedLi = event.target.closest('li');
        if (!clickedLi || !clickedLi.dataset || !clickedLi.dataset.slug) {
            return;
        }
 
        const slug = clickedLi.dataset.slug;
-       selectedClassSlug = slug;
+       const parentClassSlug = clickedLi.dataset.parentClassSlug; // Will be undefined for base classes
+       selectedClassOrArchetypeSlug = slug;
 
        // Update selection styling
        const classSelectionList = document.getElementById('class-selection-list');
@@ -640,76 +711,118 @@ let currentStep = 0; // Start at Step 0 (Introduction)
        }
        clickedLi.classList.add('selected-item');
 
-       // Store the selected slug for persistence, actual object stored on "Next"
-       characterCreationData.step2_class_selection_slug = slug; // Temporary storage of slug
+       // Temporary storage of actual clicked slug, parent will be used by displayClassDetails to fetch base class
+       characterCreationData.step2_selected_slug_temp = slug;
        saveCharacterDataToSession();
 
-
-       await displayClassDetails(slug);
+       await displayClassDetails(slug, parentClassSlug); // Pass both slugs
     }
 
-    async function displayClassDetails(slug) {
+    async function displayClassDetails(selectionSlug, parentClassSlug) { // Modified signature
        const descriptionContainer = document.getElementById('class-description-container');
        if (!descriptionContainer) {
            console.error('Class description container not found!');
            return;
        }
-       descriptionContainer.innerHTML = `<p>Loading details for ${slug}...</p>`;
+       descriptionContainer.innerHTML = `<p>Loading details for ${selectionSlug}...</p>`;
+
+       let htmlContent = '';
+       let textSummary = '';
+       let fetchUrl;
+
+       if (parentClassSlug) { // An archetype was selected
+           fetchUrl = `/api/v1/classes/${parentClassSlug}/`;
+       } else { // A base class was selected
+           fetchUrl = `/api/v1/classes/${selectionSlug}/`;
+       }
 
        try {
-           const response = await fetch(`/api/v1/classes/${slug}/`);
+           const response = await fetch(fetchUrl);
            if (!response.ok) {
-               throw new Error(`Failed to fetch class details for ${slug}: ${response.status}`);
+               throw new Error(`Failed to fetch details from ${fetchUrl}: ${response.status}`);
            }
-           const classData = await response.json();
+           const baseClassData = await response.json(); // This is always the base class data
 
-           let htmlContent = `<h4>${classData.name || slug}</h4>`;
-           let textSummary = `Class: ${classData.name || slug}\n`;
+           let selectedArchetypeData = null;
+           if (parentClassSlug) { // Archetype was selected, find it in the baseClassData
+               if (baseClassData.archetypes && Array.isArray(baseClassData.archetypes)) {
+                   selectedArchetypeData = baseClassData.archetypes.find(arch => arch.slug === selectionSlug);
+               }
 
-           if (classData.desc) {
-               htmlContent += `<p>${classData.desc.replace(/\n/g, '<br>')}</p>`;
-               textSummary += `Description: ${classData.desc}\n\n`;
+               if (selectedArchetypeData) {
+                   htmlContent += `<h4>${selectedArchetypeData.name} <span class="archetype-parent-class">(${baseClassData.name} Archetype)</span></h4>`;
+                   textSummary += `Archetype: ${selectedArchetypeData.name} (${baseClassData.name})\n`;
+                   if (selectedArchetypeData.desc) {
+                       htmlContent += `<h5>Archetype Description & Features</h5><div class="archetype-description">${selectedArchetypeData.desc.replace(/\n/g, '<br>')}</div>`;
+                       textSummary += `Archetype Description: ${selectedArchetypeData.desc}\n\n`;
+                   }
+                    // Placeholder for more structured archetype features if available later
+                    if (selectedArchetypeData.features && selectedArchetypeData.features.length > 0) {
+                        htmlContent += `<h6>Key Archetype Features:</h6><ul>`;
+                        selectedArchetypeData.features.forEach(feature => {
+                             htmlContent += `<li><strong>${feature.name}:</strong> ${feature.desc.substring(0,150)}...</li>`; // Example
+                             textSummary += `Archetype Feature: ${feature.name}\n`;
+                        });
+                        htmlContent += `</ul>`;
+                    }
+                   htmlContent += '<hr>'; // Separator
+               } else {
+                   descriptionContainer.innerHTML = `<p class="error">Could not find archetype details for ${selectionSlug} within ${baseClassData.name}.</p>`;
+                   return;
+               }
            }
+
+           // Display Base Class Information
+           htmlContent += `<h4>${baseClassData.name} (Base Class)</h4>`;
+           textSummary += `Base Class: ${baseClassData.name}\n`;
+
+           if (baseClassData.desc && !parentClassSlug) { // Show base class desc only if no archetype was selected, or it's very general
+                htmlContent += `<h5>Class Description</h5><p>${baseClassData.desc.replace(/\n/g, '<br>')}</p>`;
+                textSummary += `Base Class Description: ${baseClassData.desc}\n\n`;
+           } else if (baseClassData.desc && parentClassSlug) {
+                htmlContent += `<h5>Parent Class Core Info</h5><p><em>Core description of ${baseClassData.name} is available if selected directly.</em></p>`;
+           }
+
 
            htmlContent += '<h5>Details</h5>';
-           if (classData.hit_die) {
-               htmlContent += `<p><strong>Hit Die:</strong> d${classData.hit_die}</p>`;
-               textSummary += `Hit Die: d${classData.hit_die}\n`;
+           if (baseClassData.hit_die) {
+               htmlContent += `<p><strong>Hit Die:</strong> d${baseClassData.hit_die}</p>`;
+               textSummary += `Hit Die: d${baseClassData.hit_die}\n`;
            }
-           if (classData.hp_at_1st_level) {
-               htmlContent += `<p><strong>HP at 1st Level:</strong> ${classData.hp_at_1st_level}</p>`;
-               textSummary += `HP at 1st Level: ${classData.hp_at_1st_level}\n`;
+           if (baseClassData.hp_at_1st_level) {
+               htmlContent += `<p><strong>HP at 1st Level:</strong> ${baseClassData.hp_at_1st_level}</p>`;
+               textSummary += `HP at 1st Level: ${baseClassData.hp_at_1st_level}\n`;
            }
 
            let proficienciesHTML = "";
-           if (classData.prof_armor && classData.prof_armor.length > 0) proficienciesHTML += `<li><strong>Armor:</strong> ${classData.prof_armor.map(p=>p.name || p).join(', ')}</li>`;
-           if (classData.prof_weapons && classData.prof_weapons.length > 0) proficienciesHTML += `<li><strong>Weapons:</strong> ${classData.prof_weapons.map(p=>p.name || p).join(', ')}</li>`;
-           if (classData.prof_tools && classData.prof_tools.length > 0) proficienciesHTML += `<li><strong>Tools:</strong> ${classData.prof_tools.map(p=>p.name || p).join(', ')}</li>`;
-           if (classData.prof_saving_throws && classData.prof_saving_throws.length > 0) proficienciesHTML += `<li><strong>Saving Throws:</strong> ${classData.prof_saving_throws.map(p=>p.name || p).join(', ')}</li>`;
+           if (baseClassData.prof_armor && baseClassData.prof_armor.length > 0) proficienciesHTML += `<li><strong>Armor:</strong> ${baseClassData.prof_armor.map(p=>p.name || p).join(', ')}</li>`;
+           if (baseClassData.prof_weapons && baseClassData.prof_weapons.length > 0) proficienciesHTML += `<li><strong>Weapons:</strong> ${baseClassData.prof_weapons.map(p=>p.name || p).join(', ')}</li>`;
+           if (baseClassData.prof_tools && baseClassData.prof_tools.length > 0) proficienciesHTML += `<li><strong>Tools:</strong> ${baseClassData.prof_tools.map(p=>p.name || p).join(', ')}</li>`;
+           if (baseClassData.prof_saving_throws && baseClassData.prof_saving_throws.length > 0) proficienciesHTML += `<li><strong>Saving Throws:</strong> ${baseClassData.prof_saving_throws.map(p=>p.name || p).join(', ')}</li>`;
 
-           if (classData.proficiencies && classData.proficiencies.length > 0) { // General proficiencies array
-                proficienciesHTML += `<li><strong>Proficiencies:</strong> ${classData.proficiencies.map(p => p.name).join(', ')}</li>`;
+           if (baseClassData.proficiencies && baseClassData.proficiencies.length > 0) { // General proficiencies array
+                proficienciesHTML += `<li><strong>Proficiencies:</strong> ${baseClassData.proficiencies.map(p => p.name).join(', ')}</li>`;
            }
 
-            if (classData.proficiency_choices) {
-                classData.proficiency_choices.forEach(choice => {
+            if (baseClassData.proficiency_choices) {
+                baseClassData.proficiency_choices.forEach(choice => {
                     if (choice.desc && choice.choose_from && choice.choose_from.options) {
                          proficienciesHTML += `<li><strong>${choice.desc}:</strong> (Choose ${choice.choose_from.count} from: ${choice.choose_from.options.map(opt => opt.item.name).join(', ')})</li>`;
-                         textSummary += `Proficiency Choice: ${choice.desc}\n`;
+                         textSummary += `Base Class Proficiency Choice: ${choice.desc}\n`; // Clarified source
                     }
                 });
             }
 
            if(proficienciesHTML) {
-               htmlContent += '<h6>Proficiencies:</h6><ul>' + proficienciesHTML + '</ul>';
+               htmlContent += '<h6>Base Class Proficiencies:</h6><ul>' + proficienciesHTML + '</ul>'; // Clarified source
            }
 
-           if (classData.starting_equipment_desc) {
-               htmlContent += `<h6>Starting Equipment:</h6><div>${classData.starting_equipment_desc.replace(/\n/g, '<br>')}</div>`;
-               textSummary += `\nStarting Equipment:\n${classData.starting_equipment_desc}\n`;
-           } else if (classData.starting_equipment && classData.starting_equipment.length > 0) {
+           if (baseClassData.starting_equipment_desc) {
+               htmlContent += `<h6>Starting Equipment:</h6><div>${baseClassData.starting_equipment_desc.replace(/\n/g, '<br>')}</div>`;
+               textSummary += `\nBase Class Starting Equipment:\n${baseClassData.starting_equipment_desc}\n`; // Clarified
+           } else if (baseClassData.starting_equipment && baseClassData.starting_equipment.length > 0) {
                 htmlContent += `<h6>Starting Equipment Options:</h6><ul>`;
-                classData.starting_equipment.forEach(optionSet => {
+                baseClassData.starting_equipment.forEach(optionSet => {
                     if(optionSet.desc && optionSet.options) {
                         htmlContent += `<li>${optionSet.desc}<ul>`;
                         optionSet.options.forEach(opt => {
@@ -719,32 +832,39 @@ let currentStep = 0; // Start at Step 0 (Introduction)
                     }
                 });
                 htmlContent += `</ul>`;
-                textSummary += `\nStarting Equipment: Options available (see details).\n`;
+                textSummary += `\nBase Class Starting Equipment: Options available (see details).\n`; // Clarified
            }
 
-           if (classData.spellcasting) {
-                htmlContent += `<h6>Spellcasting</h6><p>This class has spellcasting abilities. Spellcasting Ability: ${classData.spellcasting.spellcasting_ability.name}. More details in the Spellcasting step.</p>`;
-                textSummary += `Spellcasting Ability: ${classData.spellcasting.spellcasting_ability.name}\n`;
+           if (baseClassData.spellcasting) { // Spellcasting is typically a base class feature
+                htmlContent += `<h6>Spellcasting</h6><p>This class has spellcasting abilities. Spellcasting Ability: ${baseClassData.spellcasting.spellcasting_ability.name}. More details in the Spellcasting step.</p>`;
+                textSummary += `Spellcasting Ability: ${baseClassData.spellcasting.spellcasting_ability.name}\n`;
            }
 
-            if (classData.features && Array.isArray(classData.features) && classData.features.length > 0) {
-                htmlContent += '<h6>Key Features (may include higher level features):</h6><ul>';
-                classData.features.forEach(feature => {
-                    htmlContent += `<li><strong>${feature.name}:</strong> ${feature.desc.substring(0,150)}...</li>`;
-                    textSummary += `Feature: ${feature.name}\n`;
+            // Displaying base class features if not an archetype or if archetype doesn't cover them all
+            // This part might need refinement based on how features are structured and duplicated (or not) in archetypes
+            if (baseClassData.features && Array.isArray(baseClassData.features) && baseClassData.features.length > 0) {
+                htmlContent += '<h6>Key Base Class Features (may include higher level features):</h6><ul>';
+                baseClassData.features.forEach(feature => {
+                    // Avoid duplicating features if already shown by archetype, if slugs match or names match.
+                    // This is a simple check; more robust de-duplication might be needed.
+                    if (!selectedArchetypeData || !selectedArchetypeData.features || !selectedArchetypeData.features.find(archFeature => archFeature.slug === feature.slug || archFeature.name === feature.name)) {
+                        htmlContent += `<li><strong>${feature.name}:</strong> ${feature.desc.substring(0,150)}...</li>`;
+                        textSummary += `Base Class Feature: ${feature.name}\n`; // Clarified
+                    }
                 });
                 htmlContent += '</ul>';
             }
 
+
            descriptionContainer.innerHTML = htmlContent;
-           characterCreationData.step2_class_details_text = textSummary.trim();
+           characterCreationData.step2_selection_details_text = textSummary.trim();
            saveCharacterDataToSession();
-           console.log("Class details displayed for:", slug);
+           console.log("Details displayed for selection:", selectionSlug, "using base class:", baseClassData.slug);
 
        } catch (error) {
-           console.error(`Error displaying class details for ${slug}:`, error);
-           descriptionContainer.innerHTML = `<p class="error">Could not load details for ${slug}. ${error.message}</p>`;
-           characterCreationData.step2_class_details_text = '';
+           console.error(`Error displaying details for ${selectionSlug}:`, error);
+           descriptionContainer.innerHTML = `<p class="error">Could not load details for ${selectionSlug}. ${error.message}</p>`;
+           characterCreationData.step2_selection_details_text = '';
            saveCharacterDataToSession();
        }
     }
