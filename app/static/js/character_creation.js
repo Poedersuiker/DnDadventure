@@ -1,6 +1,11 @@
 let currentStep = 0; // Start at Step 0 (Introduction)
     const totalSteps = 9; // Last actual step number for choices
 
+    // Global variables for character creation
+    let allRacesData = null;
+    let characterCreationData = {};
+    let selectedRaceSlug = null;
+
     const prevButton = document.getElementById('prev-button'); // This ID is now in wizard-top-controls
     const nextButton = document.getElementById('next-button'); // This ID is now in wizard-top-controls
     const cancelButton = document.getElementById('cancel-button'); // This ID is now in wizard-top-controls
@@ -103,6 +108,14 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     };
 
     function showStep(stepNumber) {
+        // Clear race-specific content when leaving step 1
+        if (stepNumber !== 1) {
+            const raceListContainer = document.getElementById('race-list-container');
+            const raceDescriptionContainer = document.getElementById('race-description-container');
+            if (raceListContainer) raceListContainer.innerHTML = '';
+            if (raceDescriptionContainer) raceDescriptionContainer.innerHTML = '';
+        }
+
         // Hide all main content wizard steps first
         document.querySelectorAll('.wizard-step').forEach(step => {
             step.style.display = 'none';
@@ -114,9 +127,16 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             if (currentStepContent) {
                 currentStepContent.style.display = 'block';
             }
+            // Special handling for Step 1 (Race Selection)
+            if (stepNumber === 1) {
+                if (!allRacesData) {
+                    loadRaceStepData(); // Fetch data if not already fetched
+                } else {
+                    populateRaceList(allRacesData); // Repopulate if data exists
+                }
+            }
         } else {
-            // For step 0 (Introduction), we might want to show a specific welcome message
-            // or just rely on the PHB description area. For now, ensure step-0 div is shown if it exists.
+            // For step 0 (Introduction)
             const stepZeroContent = document.getElementById('step-0');
             if (stepZeroContent) {
                 stepZeroContent.style.display = 'block';
@@ -163,16 +183,149 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     });
 
     nextButton.addEventListener('click', async () => {
+        // Store data if moving from Step 1
+        if (currentStep === 1 && selectedRaceSlug) {
+            let selectedData = null;
+            if (allRacesData) {
+                for (const race of allRacesData) {
+                    if (race.slug === selectedRaceSlug) {
+                        selectedData = race;
+                        break;
+                    }
+                    if (race.subraces) {
+                        for (const subrace of race.subraces) {
+                            if (subrace.slug === selectedRaceSlug) {
+                                selectedData = subrace; // Storing the subrace object directly
+                                // Optionally, add parent race info if needed: selectedData.parent_race_slug = race.slug;
+                                break;
+                            }
+                        }
+                    }
+                    if (selectedData) break;
+                }
+            }
+            if (selectedData) {
+                characterCreationData.step1_race = selectedData;
+                console.log("Race selected:", characterCreationData.step1_race); // For debugging
+            } else {
+                // console.warn("Selected race/subrace slug not found in allRacesData:", selectedRaceSlug);
+                // Optionally, prevent moving to next step if selection is critical and not found
+                // alert("Please select a valid race or subrace.");
+                // return;
+            }
+        }
+
+
         if (currentStep < totalSteps) {
             currentStep++;
             showStep(currentStep);
         } else {
-            // Handle Finish action (original logic)
+            // Handle Finish action
             alert('Character creation finished! (Review/Finalize placeholder)');
-            // finalizeCharacter(); // Comment out or remove if not defined/needed
+            console.log("Final Character Data:", characterCreationData);
+            // finalizeCharacter();
         }
     });
 
+    // --- New Functions for Step 1: Race Selection ---
+
+    async function loadRaceStepData() {
+        const raceListContainer = document.getElementById('race-list-container');
+        try {
+            const response = await fetch('/api/v2/races/');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            allRacesData = await response.json();
+            if (allRacesData && allRacesData.results) { // Adjusting based on typical DRF pagination
+                allRacesData = allRacesData.results; // Assuming results contains the array of races
+                populateRaceList(allRacesData);
+            } else if (Array.isArray(allRacesData)) { // If the API directly returns an array
+                 populateRaceList(allRacesData);
+            } else {
+                 console.error('Fetched race data is not in the expected format:', allRacesData);
+                 if(raceListContainer) raceListContainer.innerHTML = '<p>Error: Race data is not in the expected format.</p>';
+                 allRacesData = []; // Ensure it's an array to prevent errors later
+            }
+        } catch (error) {
+            console.error('Failed to load race data:', error);
+            if(raceListContainer) raceListContainer.innerHTML = '<p>Error loading races. Please try refreshing.</p>';
+            allRacesData = []; // Ensure it's an array
+        }
+    }
+
+    function populateRaceList(races) {
+        const raceListContainer = document.getElementById('race-list-container');
+        if (!raceListContainer) return;
+        raceListContainer.innerHTML = ''; // Clear previous content
+
+        const ul = document.createElement('ul');
+        ul.id = 'race-selection-list'; // Add an ID for the UL for easier event delegation
+
+        races.forEach(race => {
+            const raceLi = document.createElement('li');
+            raceLi.textContent = race.name;
+            raceLi.dataset.slug = race.slug;
+            ul.appendChild(raceLi);
+
+            if (race.subraces && race.subraces.length > 0) {
+                const subUl = document.createElement('ul');
+                subUl.classList.add('subrace-list');
+                race.subraces.forEach(subrace => {
+                    const subLi = document.createElement('li');
+                    subLi.textContent = subrace.name;
+                    subLi.dataset.slug = subrace.slug;
+                    subLi.dataset.parentRaceSlug = race.slug;
+                    subLi.classList.add('subrace-item');
+                    subUl.appendChild(subLi);
+                });
+                raceLi.appendChild(subUl); // Append sublist to race's LI
+            }
+        });
+        raceListContainer.appendChild(ul);
+
+        // Add event listener to the UL for clicks on LIs
+        ul.addEventListener('click', handleRaceOrSubraceClick);
+    }
+
+    function handleRaceOrSubraceClick(event) {
+        const targetLi = event.target.closest('li'); // Ensure we get the LI even if a nested element is clicked
+        if (!targetLi || !targetLi.dataset.slug) return; // Clicked outside an LI or LI has no slug
+
+        selectedRaceSlug = targetLi.dataset.slug;
+        const parentSlug = targetLi.dataset.parentRaceSlug;
+
+        let itemData = null;
+        if (allRacesData) {
+            if (parentSlug) {
+                const parentRace = allRacesData.find(r => r.slug === parentSlug);
+                if (parentRace && parentRace.subraces) {
+                    itemData = parentRace.subraces.find(sr => sr.slug === selectedRaceSlug);
+                }
+            } else {
+                itemData = allRacesData.find(r => r.slug === selectedRaceSlug);
+            }
+        }
+
+        const descriptionContainer = document.getElementById('race-description-container');
+        if (descriptionContainer) {
+            if (itemData) {
+                descriptionContainer.textContent = JSON.stringify(itemData, null, 2);
+
+                // Remove 'selected' class from previously selected item
+                const currentlySelected = document.querySelector('#race-selection-list .selected-item');
+                if (currentlySelected) {
+                    currentlySelected.classList.remove('selected-item');
+                }
+                // Add 'selected' class to the clicked item
+                targetLi.classList.add('selected-item');
+
+            } else {
+                descriptionContainer.textContent = 'Details not found for the selected item.';
+            }
+        }
+        console.log("Selected item:", selectedRaceSlug, itemData); // For debugging
+    }
 
     // Initialize first step
     showStep(currentStep);
