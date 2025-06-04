@@ -39,6 +39,7 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     characterCreationData.step3_dice_rolled_once = characterCreationData.step3_dice_rolled_once || false;
     characterCreationData.step3_selected_dice_value = characterCreationData.step3_selected_dice_value || null; // To store the currently clicked dice from the pool
     characterCreationData.step3_ability_scores = characterCreationData.step3_ability_scores || ["STR", "DEX", "CON", "INT", "WIS", "CHA"];
+    characterCreationData.ability_scores = characterCreationData.ability_scores || {}; // For final calculated scores
     // Step 4 keys
     characterCreationData.step4_selected_background_slug = characterCreationData.step4_selected_background_slug || null;
     characterCreationData.step4_background_selection = characterCreationData.step4_background_selection || null;
@@ -411,6 +412,12 @@ let currentStep = 0; // Start at Step 0 (Introduction)
                 alert(`Error saving selection: ${error.message}. Please try again.`);
                 return; // Prevent moving to next step
             }
+        }
+        // Logic for Step 3: Ensure final ability scores are updated before leaving
+        else if (currentStep === 3) {
+            updateAndSaveFinalAbilityScores(); // This also calls saveCharacterDataToSession()
+            console.log("Proceeding from Step 3. Final ability_scores:", characterCreationData.ability_scores);
+            // No specific validation here currently, assuming stats are handled or defaulted.
         }
         // Logic for Step 4: Background Selection
         else if (currentStep === 4) {
@@ -987,7 +994,8 @@ function handleRollDiceClick() {
 
         console.log("Dice rolled:", characterCreationData.step3_rolled_stats);
         loadStep3Logic(); // Reload/re-render Step 3 UI with new dice
-        saveCharacterDataToSession();
+        // saveCharacterDataToSession(); // loadStep3Logic calls save and also calls updateAndSaveFinalAbilityScores
+        updateAndSaveFinalAbilityScores(); // Explicitly call here to ensure scores are reset based on new empty assignments
     }
 }
 
@@ -1050,6 +1058,7 @@ function handleStatAssignmentClick(event) {
     renderAssignableDicePool(currentStatsToUse);
     renderMainStatDisplay();
     saveCharacterDataToSession();
+    updateAndSaveFinalAbilityScores(); // Update final scores after stat assignment changes
 }
 
 function loadStep3Logic() {
@@ -1136,10 +1145,39 @@ function loadStep3Logic() {
 
     console.log("Step 3 characterCreationData:", JSON.parse(JSON.stringify(characterCreationData)));
     saveCharacterDataToSession();
+    updateAndSaveFinalAbilityScores(); // Update final scores after Step 3 logic is loaded
 }
 
 // END STEP 3 LOGIC
 // =====================================================================================================================
+
+function updateAndSaveFinalAbilityScores() {
+    console.log("Updating and saving final ability scores...");
+    const abilities = characterCreationData.step3_ability_scores; // ["STR", "DEX", ...]
+    if (!characterCreationData.ability_scores) {
+        characterCreationData.ability_scores = {};
+    }
+
+    abilities.forEach(stat => {
+        let baseValue = characterCreationData.step3_assigned_stats[stat];
+        if (baseValue === null || baseValue === undefined || isNaN(parseInt(baseValue))) {
+            baseValue = 10; // Default to 10 if not assigned or not a number
+        } else {
+            baseValue = parseInt(baseValue);
+        }
+
+        const raceBonus = (characterCreationData.step3_stat_bonuses[stat] && characterCreationData.step3_stat_bonuses[stat].race) ?
+            parseInt(characterCreationData.step3_stat_bonuses[stat].race) : 0;
+
+        const classBonus = (characterCreationData.step3_stat_bonuses[stat] && characterCreationData.step3_stat_bonuses[stat].class) ?
+            parseInt(characterCreationData.step3_stat_bonuses[stat].class) : 0;
+
+        characterCreationData.ability_scores[stat] = baseValue + raceBonus + classBonus;
+    });
+
+    console.log("Final ability_scores calculated:", characterCreationData.ability_scores);
+    saveCharacterDataToSession();
+}
 
 // --- New Functions for Step 4: Background Selection ---
 async function loadBackgroundStepData() {
