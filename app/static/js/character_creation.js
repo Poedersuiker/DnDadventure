@@ -650,52 +650,72 @@ function getStatBonuses() {
         "intelligence": "INT", "wisdom": "WIS", "charisma": "CHA"
     };
 
-    const raceData = characterCreationData.step1_race_selection;
-    // const parentRaceData = characterCreationData.step1_parent_race_selection; // For subraces, if needed for more complex bonus logic
-
-    // Process race bonuses
-    // This assumes raceData (which could be a subrace) contains the definitive list of racial bonuses.
-    // Open5e API usually structures subraces to include all applicable bonuses.
-    if (raceData && raceData.ability_score_bonuses && Array.isArray(raceData.ability_score_bonuses)) {
-        raceData.ability_score_bonuses.forEach(bonus => {
-            const statName = bonus.ability_score.name.toLowerCase();
-            const statAbbr = abilityScoreMap[statName];
-            if (statAbbr) {
-                bonuses[statAbbr].race += bonus.bonus;
-            }
-        });
+    function parseAbilityScoreIncrease(description) {
+        if (typeof description !== 'string') return []; // Return empty array for non-string input
+        const matches = [];
+        const regex = /Your (\w+) score increases by (\d+)/gi; // Added global flag
+        let match;
+        while ((match = regex.exec(description)) !== null) {
+            matches.push({
+                abilityName: match[1].toLowerCase(),
+                bonusValue: parseInt(match[2], 10)
+            });
+        }
+        // Handle cases like "Choose any +2; choose any other +1" or "All of your ability scores increase by 1."
+        // For now, this parser only handles "Your X score increases by Y".
+        // More complex parsing can be added here if needed for other formats.
+        return matches; // Return array of matches
     }
 
-    // Add bonuses from parent race if they are stored separately and not already included in subrace data
-    // This logic depends heavily on how step1_race_selection and step1_parent_race_selection are populated
-    // and whether subrace data is cumulative or absolute.
-    // For now, we assume step1_race_selection (if it's a subrace) already has the final combined bonuses.
-    // If step1_parent_race_selection exists AND the bonuses are meant to be additive and distinct,
-    // you would iterate through parentRaceData.ability_score_bonuses here as well.
-    // Example (if parent bonuses are separate and additive):
-    /*
-    if (parentRaceData && parentRaceData.ability_score_bonuses && Array.isArray(parentRaceData.ability_score_bonuses)) {
-        parentRaceData.ability_score_bonuses.forEach(bonus => {
-            const statName = bonus.ability_score.name.toLowerCase();
-            const statAbbr = abilityScoreMap[statName];
-            if (statAbbr) {
-                // Only add if not already counted or if logic implies distinct addition
-                // This part is tricky without knowing the exact API data structure for parent/subraces
-                // For safety, assuming subrace data is complete.
-            }
-        });
+    function processTraits(traits, type) { // type is 'race' or 'class'
+        if (traits && Array.isArray(traits)) {
+            traits.forEach(trait => {
+                if (trait.name === "Ability Score Increase" && trait.desc) {
+                    const parsedBonusesArray = parseAbilityScoreIncrease(trait.desc); // Returns an array
+                    if (parsedBonusesArray.length > 0) {
+                        parsedBonusesArray.forEach(parsedBonus => { // Iterate over each found bonus
+                            const statAbbr = abilityScoreMap[parsedBonus.abilityName];
+                            if (statAbbr) {
+                                if (type === 'race') {
+                                    bonuses[statAbbr].race += parsedBonus.bonusValue;
+                                } else if (type === 'class') {
+                                    bonuses[statAbbr].class += parsedBonus.bonusValue;
+                                }
+                            } else {
+                                console.warn(`Unknown ability name: ${parsedBonus.abilityName} from trait: ${trait.name} in description: "${trait.desc}"`);
+                            }
+                        });
+                    } else {
+                        // This console log can be noisy if many traits don't match the simple pattern.
+                        // console.log(`Could not parse any ASI from description: "${trait.desc}" in trait: ${trait.name}`);
+                    }
+                }
+            });
+        }
     }
-    */
 
-    // Class bonuses at level 1 are rare as direct stat increases.
-    // They usually come from features that might grant situational advantages or alternative calculations.
-    // const classData = characterCreationData.step2_selected_base_class;
-    // if (classData && classData.features) {
-    //     // TODO: Parse classData.features for any direct stat bonuses if API provides structured data.
-    //     // This would be complex and require detailed knowledge of feature descriptions.
-    // }
+    // Process Race Bonuses from traits
+    if (characterCreationData.step1_race_selection && characterCreationData.step1_race_selection.traits) {
+        processTraits(characterCreationData.step1_race_selection.traits, 'race');
+    }
+    if (characterCreationData.step1_parent_race_selection && characterCreationData.step1_parent_race_selection.traits) {
+        processTraits(characterCreationData.step1_parent_race_selection.traits, 'race');
+    }
 
-    console.log("Calculated Stat Bonuses:", JSON.parse(JSON.stringify(bonuses)));
+    // Process Class Bonuses from traits
+    if (characterCreationData.step2_selected_base_class && characterCreationData.step2_selected_base_class.traits) {
+        processTraits(characterCreationData.step2_selected_base_class.traits, 'class');
+    }
+    if (characterCreationData.step2_selected_archetype && characterCreationData.step2_selected_archetype.traits) {
+        processTraits(characterCreationData.step2_selected_archetype.traits, 'class');
+    }
+
+    // The old logic for raceData.ability_score_bonuses is now replaced by parsing traits.
+    // If the API also provides structured bonuses in `ability_score_bonuses` AND these are meant to be
+    // *additional* to what's in traits, then that logic would need to be reinstated or merged carefully.
+    // Based on the task, parsing traits is the primary source now.
+
+    console.log("Calculated Stat Bonuses from traits:", JSON.parse(JSON.stringify(bonuses)));
     return bonuses;
 }
 
