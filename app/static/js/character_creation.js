@@ -1198,22 +1198,25 @@ function populateBackgroundList(backgroundsData) {
         // Assuming item structure is { slug: "...", data: { name: "..." } }
         // or just { slug: "...", name: "..." } directly from some APIs.
         // The API /api/v2/backgrounds/ provides { slug: "...", name: "...", desc: "..." }
-        // The list from /api/v2/backgrounds/?limit=50 gives { slug: "slug", document__slug: "slug", document__name: "Name", ... }
-        // Let's adjust to the paginated list structure.
-        // Prioritize item.name for display, then item.slug as fallback. De-prioritize document__name.
-        const name = item.name || item.slug;
-        const slug = item.slug || item.document__slug;
+        // The list from /api/v2/backgrounds/?limit=50 gives { slug: "slug", data: {name:"...", slug:"..."} }
+        // Ensure we are using item.data.slug for API calls and item.data.name for display.
 
-        if (!slug) {
-            console.warn("Background item missing slug:", item);
-            return; // Skip item if it doesn't have a slug
+        // Determine the correct slug to use for API calls, prioritizing item.data.slug
+        const trueApiSlug = (item.data && item.data.slug) ? item.data.slug : item.slug;
+
+        if (!trueApiSlug) {
+            console.warn("Background item missing a usable slug:", item);
+            return; // Skip item if it doesn't have a usable slug
         }
 
-        const li = document.createElement('li');
-        li.textContent = name;
-        li.dataset.slug = slug;
+        // Determine the display name, prioritizing item.data.name, then trueApiSlug as fallback
+        const displayName = (item.data && item.data.name) ? item.data.name : trueApiSlug;
 
-        if (slug === characterCreationData.step4_selected_background_slug) {
+        const li = document.createElement('li');
+        li.textContent = displayName;
+        li.dataset.slug = trueApiSlug; // Use the reliably sourced trueApiSlug
+
+        if (trueApiSlug === characterCreationData.step4_selected_background_slug) {
             li.classList.add('selected-item');
         }
         backgroundSelectionList.appendChild(li);
