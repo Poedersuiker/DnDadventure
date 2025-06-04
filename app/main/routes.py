@@ -115,22 +115,22 @@ def creation_wizard():
 
         # Background skills:
         # Fixed background skills (extracted from the original background_skill_proficiencies list)
-        raw_bg_skills = char_data.get('background_skill_proficiencies', [])
-        if isinstance(raw_bg_skills, list):
-            for item in raw_bg_skills:
-                if isinstance(item, str) and not item.lower().startswith('choose ') and not ' or ' in item.lower():
-                    # This is a simple check; assumes fixed skills don't use "choose" or "or"
-                    # Multiple fixed skills in one string e.g. "Skill1, Skill2"
-                    fixed_in_item = [s.strip().title() for s in item.split(',') if s.strip()]
-                    for s_fixed in fixed_in_item:
-                        all_skill_proficiencies.add(s_fixed)
+        # raw_bg_skills = char_data.get('background_skill_proficiencies', [])
+        # if isinstance(raw_bg_skills, list):
+        #     for item in raw_bg_skills:
+        #         if isinstance(item, str) and not item.lower().startswith('choose ') and not ' or ' in item.lower():
+        #             # This is a simple check; assumes fixed skills don't use "choose" or "or"
+        #             # Multiple fixed skills in one string e.g. "Skill1, Skill2"
+        #             fixed_in_item = [s.strip().title() for s in item.split(',') if s.strip()]
+        #             for s_fixed in fixed_in_item:
+        #                 all_skill_proficiencies.add(s_fixed)
 
         # Chosen background skills (from dropdowns/radio selections in Step 5)
-        chosen_bg_skills_list = char_data.get('chosen_background_skills', [])
-        if isinstance(chosen_bg_skills_list, list):
-            for skill in chosen_bg_skills_list:
-                if isinstance(skill, str) and skill.strip():
-                    all_skill_proficiencies.add(skill.strip().title())
+        # chosen_bg_skills_list = char_data.get('chosen_background_skills', [])
+        # if isinstance(chosen_bg_skills_list, list):
+        #     for skill in chosen_bg_skills_list:
+        #         if isinstance(skill, str) and skill.strip():
+        #             all_skill_proficiencies.add(skill.strip().title())
 
         current_app.logger.info(f"Final aggregated skills before saving: {all_skill_proficiencies}")
 
@@ -543,36 +543,10 @@ def creation_wizard_step_data(step_name):
         if data['num_class_skills_to_choose'] == 0:
             data['class_skill_options'] = []
 
-        # 3. Background Skills
-        #    session['new_character_data']['background_skill_proficiencies']
-        #    This is expected to be a list, potentially mixed: e.g., ["Religion", "Choose one from Insight, Persuasion"]
-        bg_skills_raw_list = char_data_session.get('background_skill_proficiencies', [])
-
-        # The helper function expects a list of strings.
-        # If bg_skills_raw_list contains non-strings (e.g. already parsed dicts by mistake), filter them or log.
-        valid_bg_skill_strings = [item for item in bg_skills_raw_list if isinstance(item, str)]
-
-        aggregated_fixed_bg_skills = set()
-        aggregated_bg_choice_groups = []
-        choice_group_counter = 0 # To ensure unique IDs if multiple choice strings are parsed
-
-        for skill_desc_str in valid_bg_skill_strings:
-            # The modified parse_skill_proficiencies now expects a single string and a prefix
-            # It was renamed in place, but its logic is that of parse_one_background_skill_desc
-            # The choice_group_id_prefix argument is part of the new function's signature.
-            fixed_skills_from_item, choice_groups_from_item = parse_skill_proficiencies(skill_desc_str, choice_group_id_prefix=f"bg_choice_outer_{choice_group_counter}_")
-            for fs in fixed_skills_from_item:
-                aggregated_fixed_bg_skills.add(fs)
-            # Adjust IDs from the inner parser to be globally unique if necessary, though the prefix might handle it.
-            for cg in choice_groups_from_item:
-                # Example of further ID adjustment if the parser's internal IDs aren't unique across calls:
-                # cg['id'] = f"bg_choice_overall_{choice_group_counter}_{cg['id']}"
-                # However, the current parser uses choice_group_id_prefix which should be sufficient if passed correctly.
-                aggregated_bg_choice_groups.append(cg)
-            choice_group_counter +=1
-
-        data['background_fixed_skills'] = list(aggregated_fixed_bg_skills)
-        data['background_skill_choices'] = aggregated_bg_choice_groups
+        # 3. Background Skills - REMOVED
+        # No longer processing background skills for selection in the wizard.
+        data['background_fixed_skills'] = []
+        data['background_skill_choices'] = []
 
         # Log the data being sent for the skills step
         current_app.logger.info(f"Data prepared for skills step (5): {data}")
@@ -830,19 +804,14 @@ def creation_wizard_update_session():
 
     elif step_key == "skills":
         chosen_class_skills = step_payload.get('chosen_class_skills', [])
-        chosen_background_skills = step_payload.get('chosen_background_skills', []) # These are the resolved choices
 
         if not isinstance(chosen_class_skills, list):
             current_app.logger.warning(f"Received non-list for chosen_class_skills: {chosen_class_skills}")
             # Optionally return an error or try to recover if possible, for now, log and use empty
             chosen_class_skills = []
-        if not isinstance(chosen_background_skills, list):
-            current_app.logger.warning(f"Received non-list for chosen_background_skills: {chosen_background_skills}")
-            chosen_background_skills = []
 
         session['new_character_data']['chosen_class_skills'] = chosen_class_skills
-        session['new_character_data']['chosen_background_skills'] = chosen_background_skills
-        current_app.logger.info(f"Session updated for skills step. Chosen class skills: {chosen_class_skills}, Chosen background skills: {chosen_background_skills}")
+        current_app.logger.info(f"Session updated for skills step. Chosen class skills: {chosen_class_skills}")
 
     elif step_key == "hp": # When HP is calculated
         # Payload contains max_hp, ac_base. Speed is already from race.
