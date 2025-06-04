@@ -236,21 +236,21 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            allRacesData = await response.json();
-            if (allRacesData && allRacesData.results) { // Adjusting based on typical DRF pagination
-                allRacesData = allRacesData.results; // Assuming results contains the array of races
-                populateRaceList(allRacesData);
-            } else if (Array.isArray(allRacesData)) { // If the API directly returns an array
-                 populateRaceList(allRacesData);
-            } else {
-                 console.error('Fetched race data is not in the expected format:', allRacesData);
-                 if(raceListContainer) raceListContainer.innerHTML = '<p>Error: Race data is not in the expected format.</p>';
-                 allRacesData = []; // Ensure it's an array to prevent errors later
+            const data = await response.json(); // data is now the array itself
+            allRacesData = data; // Assign the array directly
+
+            if (!Array.isArray(allRacesData)) {
+                console.warn('Race data is not an array after fetch:', allRacesData);
+                // Display error in UI as this is an unexpected format from the API
+                if(raceListContainer) raceListContainer.innerHTML = '<p>Error: Race data is not in the expected format.</p>';
+                allRacesData = []; // Initialize to empty array if the response is not as expected
             }
+
+            populateRaceList(allRacesData); // Pass the array to the population function
         } catch (error) {
-            console.error('Failed to load race data:', error);
-            if(raceListContainer) raceListContainer.innerHTML = '<p>Error loading races. Please try refreshing.</p>';
-            allRacesData = []; // Ensure it's an array
+            console.error("Could not load race data:", error);
+            if(raceListContainer) raceListContainer.innerHTML = '<p>Error loading races. Please try again later.</p>';
+            allRacesData = []; // Ensure it's an empty array on error to prevent further issues
         }
     }
 
