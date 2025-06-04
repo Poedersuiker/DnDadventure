@@ -3,7 +3,20 @@ let currentStep = 0; // Start at Step 0 (Introduction)
 
     // Global variables for character creation
     let allRacesData = null;
-    let characterCreationData = {};
+    let characterCreationData;
+    try {
+        const storedData = sessionStorage.getItem('characterCreationData');
+        if (storedData) {
+            characterCreationData = JSON.parse(storedData);
+            console.log("Loaded characterCreationData from session storage:", characterCreationData);
+        } else {
+            characterCreationData = {};
+            console.log("Initialized new characterCreationData.");
+        }
+    } catch (e) {
+        console.error("Error loading character creation data from session storage:", e);
+        characterCreationData = {};
+    }
     let selectedRaceSlug = null;
 
     const prevButton = document.getElementById('prev-button'); // This ID is now in wizard-top-controls
@@ -107,6 +120,15 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             <p>This is your chance to ensure all mechanical choices are recorded and your character concept is clear, ready for adventure!</p>`
     };
 
+    function saveCharacterDataToSession() {
+        try {
+            sessionStorage.setItem('characterCreationData', JSON.stringify(characterCreationData));
+            console.log("Character data saved to session storage.");
+        } catch (e) {
+            console.error("Error saving character data to session storage:", e);
+        }
+    }
+
     function showStep(stepNumber) {
         // Clear race-specific content when leaving step 1
         if (stepNumber !== 1) {
@@ -191,16 +213,50 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     nextButton.addEventListener('click', async () => {
         // Store data if moving from Step 1
         if (currentStep === 1 && selectedRaceSlug) {
-            const selectedItem = allRacesData ? allRacesData.find(item => item.slug === selectedRaceSlug) : null;
+            try {
+                // 1. Fetch the complete data for the selectedRaceSlug
+                const raceResponse = await fetch(`/api/v2/races/${selectedRaceSlug}/`);
+                if (!raceResponse.ok) {
+                    throw new Error(`Failed to fetch race data for ${selectedRaceSlug}: ${raceResponse.status}`);
+                }
+                const raceData = await raceResponse.json();
 
-            if (selectedItem && selectedItem.data) {
-                characterCreationData.step1_race = selectedItem.data; // Store the 'data' object
-                console.log("Race/Subrace selected and stored in characterCreationData:", characterCreationData.step1_race);
-            } else {
-                console.warn("Selected race/subrace slug not found in allRacesData or item.data is missing for storage:", selectedRaceSlug);
-                // Optionally, prevent moving to next step if selection is critical
-                // alert("Please select a valid race or subrace before proceeding.");
-                // return;
+                // 2. Store this fetched data in characterCreationData.step1_race_selection
+                characterCreationData.step1_race_selection = raceData;
+
+                // 3. Check if the fetched data has a subrace_of field
+                if (raceData.subrace_of) {
+                    // 4.a Extract the parent race slug
+                    const parentRaceUrlParts = raceData.subrace_of.split('/').filter(part => part);
+                    const parentRaceSlug = parentRaceUrlParts.pop();
+
+                    if (parentRaceSlug) {
+                        // 4.b Fetch the complete data for the parent race
+                        const parentRaceResponse = await fetch(`/api/v2/races/${parentRaceSlug}/`);
+                        if (!parentRaceResponse.ok) {
+                            throw new Error(`Failed to fetch parent race data for ${parentRaceSlug}: ${parentRaceResponse.status}`);
+                        }
+                        const parentRaceData = await parentRaceResponse.json();
+                        // 4.c Store this parent race data
+                        characterCreationData.step1_parent_race_selection = parentRaceData;
+                    } else {
+                        console.warn("Could not extract parent race slug from:", raceData.subrace_of);
+                        characterCreationData.step1_parent_race_selection = null;
+                    }
+                } else {
+                    // 4.d If it's not a subrace, ensure step1_parent_race_selection is cleared
+                    characterCreationData.step1_parent_race_selection = null;
+                }
+
+                // 5. Log the characterCreationData object
+                console.log("Updated characterCreationData:", characterCreationData);
+                saveCharacterDataToSession(); // Save after Step 1 data processing
+
+            } catch (error) {
+                console.error("Error processing race selection:", error);
+                // Optionally, display an error to the user and/or prevent moving to the next step
+                // alert(`Error: ${error.message}. Please try again.`);
+                // return; // Prevent moving to next step
             }
         }
 
@@ -211,6 +267,7 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             // Handle Finish action
             alert('Character creation finished! (Review/Finalize placeholder)');
             console.log("Final Character Data:", characterCreationData);
+            saveCharacterDataToSession(); // Save on finish
             // finalizeCharacter();
         }
     });
@@ -394,6 +451,7 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             descriptionContainer.innerHTML = newHtmlContent;
             console.log("Final traitsText before storing:", traitsText); // Log 7
             characterCreationData.step1_race_traits_text = traitsText.trim();
+            saveCharacterDataToSession(); // Save after updating traits text
 
             // Update .selected-item class
             // First, remove from any previously selected item
