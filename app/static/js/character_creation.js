@@ -112,10 +112,10 @@ let currentStep = 0; // Start at Step 0 (Introduction)
         if (stepNumber !== 1) {
             const raceListContainer = document.getElementById('race-list-container');
             const raceDescriptionContainer = document.getElementById('race-description-container');
-            const traitsDisplayContainer = document.getElementById('race-traits-display');
+            // const traitsDisplayContainer = document.getElementById('race-traits-display'); // Removed
             if (raceListContainer) raceListContainer.innerHTML = '';
-            if (raceDescriptionContainer) raceDescriptionContainer.innerHTML = '';
-            if (traitsDisplayContainer) traitsDisplayContainer.innerHTML = ''; // Clear traits when not on step 1
+            if (raceDescriptionContainer) raceDescriptionContainer.innerHTML = ''; // This now also clears traits if they were in race-description-container
+            // if (traitsDisplayContainer) traitsDisplayContainer.innerHTML = ''; // Removed
         }
 
         // Hide all main content wizard steps first
@@ -136,15 +136,10 @@ let currentStep = 0; // Start at Step 0 (Introduction)
                 } else {
                     populateRaceList(allRacesData); // Repopulate if data exists
                 }
-                // Display stored traits for Step 1
-                const traitsDisplayContainer = document.getElementById('race-traits-display');
-                if (traitsDisplayContainer) {
-                    if (characterCreationData.step1_race_traits_html && characterCreationData.step1_race_traits_html.trim() !== '') {
-                        traitsDisplayContainer.innerHTML = characterCreationData.step1_race_traits_html;
-                    } else {
-                        traitsDisplayContainer.innerHTML = '<p>Select a race to see its traits.</p>'; // Default message
-                    }
-                }
+                // Removed logic for displaying traits in a separate #race-traits-display.
+                // handleRaceOrSubraceClick is now responsible for updating #race-description-container.
+                // If no race is selected when step 1 loads, #race-description-container will be empty
+                // or show a default message set by populateRaceList/handleRaceOrSubraceClick if applicable.
             }
         } else {
             // For step 0 (Introduction)
@@ -367,11 +362,12 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             console.log("Formatted traits plain text stored:", characterCreationData.step1_race_traits_text); // Log plain text version
             // --- End of added logic for traits ---
 
-            // Immediately update traits display
-            const traitsDisplayContainer = document.getElementById('race-traits-display');
-            if (traitsDisplayContainer) {
-                traitsDisplayContainer.innerHTML = characterCreationData.step1_race_traits_html || '<p>Select a race to see its traits.</p>';
+            // If traits HTML was generated, display it in the descriptionContainer, overwriting the JSON.
+            // Otherwise, the JSON representation (set earlier) remains.
+            if (descriptionContainer && characterCreationData.step1_race_traits_html && characterCreationData.step1_race_traits_html.trim() !== '') {
+                descriptionContainer.innerHTML = characterCreationData.step1_race_traits_html;
             }
+            // No 'else' here, as we want the JSON to persist if traitsHtml is empty.
 
         } else {
             console.error(`Data for slug '${slug}' not found or item.data is missing in allRacesData.`);
