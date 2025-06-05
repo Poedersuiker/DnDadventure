@@ -21,39 +21,66 @@ def general_settings():
         abort(403)
 
     if request.method == 'POST':
+        # Handle DEFAULT_GEMINI_MODEL
         new_model = request.form.get('gemini_model')
         if new_model:
-            # Validate if new_model is one of the available models to prevent arbitrary values
-            available_models_check = list_gemini_models() # Potentially re-fetch or pass from a session/cache
+            available_models_check = list_gemini_models()
             if new_model in available_models_check:
                 try:
                     db_setting = Setting.query.filter_by(key='DEFAULT_GEMINI_MODEL').first()
                     if db_setting:
                         db_setting.value = new_model
                     else:
-                        # This case should ideally be handled by app/__init__.py on startup
                         db_setting = Setting(key='DEFAULT_GEMINI_MODEL', value=new_model)
                         db.session.add(db_setting)
-                    
-                    db.session.commit()
-                    current_app.config['DEFAULT_GEMINI_MODEL'] = new_model # Update live config
-                    flash(f"Default Gemini Model updated to {new_model} and saved persistently.", 'success')
+                    current_app.config['DEFAULT_GEMINI_MODEL'] = new_model
+                    flash(f"Default Gemini Model updated to {new_model}.", 'success')
                 except Exception as e:
                     db.session.rollback()
-                    current_app.logger.error(f"Error saving DEFAULT_GEMINI_MODEL to database: {str(e)}")
-                    flash(f"Error saving setting to database: {str(e)}", 'danger')
+                    current_app.logger.error(f"Error updating DEFAULT_GEMINI_MODEL in database: {str(e)}")
+                    flash(f"Error saving Gemini model setting to database: {str(e)}", 'danger')
+                    return redirect(url_for('admin.general_settings')) # Early redirect on specific error
             else:
-                flash("Invalid model selected.", 'danger')
-        else:
-            flash("No model selected or invalid submission.", 'danger')
+                flash("Invalid Gemini model selected.", 'danger')
+
+        # Handle CHARACTER_CREATION_DEBUG_MODE
+        debug_mode_is_on_from_form = request.form.get('character_creation_debug_mode') == 'on' # Boolean
+        debug_mode_db_string = str(debug_mode_is_on_from_form) # Convert to 'True' or 'False' for DB
+
+        try:
+            debug_setting_db = Setting.query.filter_by(key='CHARACTER_CREATION_DEBUG_MODE').first()
+            if debug_setting_db:
+                debug_setting_db.value = debug_mode_db_string
+            else:
+                debug_setting_db = Setting(key='CHARACTER_CREATION_DEBUG_MODE', value=debug_mode_db_string)
+                db.session.add(debug_setting_db)
+
+            current_app.config['CHARACTER_CREATION_DEBUG_MODE'] = debug_mode_is_on_from_form # Update live config with boolean
+            flash('Character Creation Debug Mode updated.', 'success')
+        except Exception as e:
+            db.session.rollback() # Rollback only for debug mode error if gemini model was fine
+            current_app.logger.error(f"Error saving CHARACTER_CREATION_DEBUG_MODE to database: {str(e)}")
+            flash(f"Error saving debug mode setting to database: {str(e)}", 'danger')
+            return redirect(url_for('admin.general_settings')) # Early redirect on specific error
+
+        try:
+            db.session.commit() # Commit all changes (Gemini model and/or Debug mode)
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error committing settings to database: {str(e)}")
+            flash(f"Error committing settings to database: {str(e)}", 'danger')
+
         return redirect(url_for('admin.general_settings'))
 
-    # GET request
+    # GET request handling
     available_models = list_gemini_models()
     current_model = current_app.config.get('DEFAULT_GEMINI_MODEL')
+    current_debug_mode_bool = current_app.config.get('CHARACTER_CREATION_DEBUG_MODE', True) # Expect boolean from app.config
+
     return render_template('admin/general_settings.html', 
                            available_models=available_models, 
-                           current_model=current_model)
+                           current_model=current_model,
+                           current_debug_mode=current_debug_mode_bool)
 
 @admin_bp.route('/users')
 @login_required

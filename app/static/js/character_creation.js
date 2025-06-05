@@ -54,6 +54,8 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     let selectedRaceSlug = null;
     let selectedClassOrArchetypeSlug = null; // Renamed from selectedClassSlug
 
+let asiDebugTextsCollection = []; // To store texts for debug display
+
 const GLOBAL_ABILITY_SCORE_MAP = {
     "strength": "STR", "dexterity": "DEX", "constitution": "CON",
     "intelligence": "INT", "wisdom": "WIS", "charisma": "CHA",
@@ -191,6 +193,30 @@ const GLOBAL_ABILITY_SCORE_MAP = {
             characterCreationData.step3_background_data_loaded = false; // Reset on intro step
             saveCharacterDataToSession();
         }
+
+        // Handle ASI Debug Texts visibility and initialization
+        if (stepNumber === 4) { // This is the ASI step (currently handled by loadStep3Logic)
+            asiDebugTextsCollection = []; // Clear previous texts when entering the step
+            if (IS_CHARACTER_CREATION_DEBUG_ACTIVE) {
+                const debugContainer = document.getElementById('asi-debug-texts-container');
+                if (debugContainer) {
+                    debugContainer.style.display = 'block'; // Ensure it's visible
+                }
+                const debugOutputEl = document.getElementById('asi-debug-output');
+                if (debugOutputEl) {
+                    debugOutputEl.textContent = 'Collecting ASI processing texts...'; // Initial message
+                }
+            }
+            // loadStep3Logic(); // This function will now populate the debug texts - called later in showStep
+        } else if (IS_CHARACTER_CREATION_DEBUG_ACTIVE) { // Hide debug container if not on step 4
+            const debugContainer = document.getElementById('asi-debug-texts-container');
+            if (debugContainer) {
+                // debugContainer.style.display = 'none'; // Jinja handles initial rendering, JS might not need to explicitly hide.
+                                                       // If JS *did* show it for step 4, then it should hide it here.
+                                                       // For now, let's assume Jinja handles initial state and JS only shows for step 4.
+            }
+        }
+
         // Clear race-specific content when leaving step 1
         if (stepNumber !== 1) {
             const raceListContainer = document.getElementById('race-list-container');
@@ -729,6 +755,12 @@ function parseAbilityList(str, abilityScoreMap) {
 
 
 function identifyASIs(descriptionText, sourceName, abilityScoreMap) {
+    if (IS_CHARACTER_CREATION_DEBUG_ACTIVE && descriptionText) {
+        asiDebugTextsCollection.push({
+            source: sourceName,
+            text: descriptionText
+        });
+    }
     const identified = {
         fixed: [], // { abilityName: "STR", bonusValue: 1 }
         choices: [] // { id, source, description, number_of_abilities_to_choose, points_per_ability, total_points_to_allocate, options: ["STR", "DEX", ...] }
@@ -1535,6 +1567,24 @@ function loadStep3Logic() {
     } else {
         rollDiceButton.disabled = false;
         rollDiceWarning.style.display = 'none'; // Hide warning if not yet rolled
+    }
+
+    // Display ASI Debug Texts if active
+    if (IS_CHARACTER_CREATION_DEBUG_ACTIVE) {
+        const debugOutputEl = document.getElementById('asi-debug-output');
+        if (debugOutputEl) {
+            if (asiDebugTextsCollection.length > 0) {
+                let formattedDebugText = "";
+                asiDebugTextsCollection.forEach(item => {
+                    formattedDebugText += `Source: ${item.source}\n`;
+                    formattedDebugText += `Text Processed:\n${item.text}\n\n`;
+                    formattedDebugText += "------------------------------------\n";
+                });
+                debugOutputEl.textContent = formattedDebugText;
+            } else {
+                debugOutputEl.textContent = "No specific ASI-related texts were processed (or debug collection failed).";
+            }
+        }
     }
 
     // Remove existing listener to prevent multiple attachments if loadStep3Logic is called again

@@ -26,6 +26,19 @@
         {% endif %}
       </select>
     </div>
+
+   <div class="mb-3">
+     <label class="form-label">Character Creation Debug Mode</label>
+     <div class="form-check form-switch">
+       <input class="form-check-input" type="checkbox" role="switch"
+              id="character_creation_debug_mode" name="character_creation_debug_mode"
+              {% if current_debug_mode %}checked{% endif %}>
+       <label class="form-check-label" for="character_creation_debug_mode">Enable debug information for ASI processing (Character Creation Step 4)</label>
+     </div>
+     <small class="form-text text-muted">
+       If enabled, detailed text descriptions used for Ability Score Improvement (ASI) parsing will be shown on step 4 of the character creation wizard.
+     </small>
+   </div>
     <button type="submit" class="btn btn-primary">Save Settings</button>
   </form>
 {% endblock %}
