@@ -1221,8 +1221,8 @@ footer {
 
 /* Step 1: Race Selection Specific Styles */
 #step-1-content,
-#step-2-content, /* Added #step-2-content */
-#step-4-content { /* Added #step-4-content */
+#step-2-content,
+#step-3-content { /* Changed from #step-4-content to #step-3-content */
     display: flex;
     gap: 20px; /* Space between list and description */
     margin-top: 15px; /* Space above the flex container */
