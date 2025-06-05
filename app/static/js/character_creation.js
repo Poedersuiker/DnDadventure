@@ -943,7 +943,6 @@ function identifyASIs(descriptionText, sourceName, abilityScoreMap) {
 
 
 function getStatBonuses() {
-    console.log("[DEBUG] Entering getStatBonuses.");
     // Clear existing choices here as per plan, so it's fresh for this calculation run
     characterCreationData.step4_asi_choices = [];
     const bonuses = {
@@ -1439,7 +1438,6 @@ function handleStatAssignmentClick(event) {
         // The renderAssignableDicePool will handle making it visible if it's part of the current source array.
         const oldValue = characterCreationData.step4_assigned_stats[targetStat];
         if (oldValue !== null && oldValue !== undefined) {
-            console.log(`Stat ${targetStat} had value ${oldValue}, which is now available again.`);
         }
 
         // Check if the selected dice value is already assigned to another stat
