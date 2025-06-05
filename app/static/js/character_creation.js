@@ -794,6 +794,36 @@ function identifyASIs(descriptionText, sourceName, abilityScoreMap) {
         return identified; // Successfully parsed as a compound, return to avoid other regexes
     }
 
+    // New: Handle Half-Elf-like compound pattern: "Your Charisma score increases by 2, and two other ability scores of your choice increase by 1."
+    const halfElfLikeCompoundRegex = /Your (\w+) score increases by (\d+),\s*and\s*(one|two|three|four|five|six)\s+other\s+ability\s+scores(?:\s+of\s+your\s+choice)?\s+increase\s+by\s+(\d+)/i;
+    let halfElfMatch = descriptionText.match(halfElfLikeCompoundRegex);
+
+    if (halfElfMatch) {
+        // Fixed Part
+        const fixedAbilityNameFull = halfElfMatch[1].toLowerCase();
+        const fixedBonusValue = parseInt(halfElfMatch[2], 10);
+        if (abilityScoreMap[fixedAbilityNameFull]) {
+            identified.fixed.push({ abilityName: abilityScoreMap[fixedAbilityNameFull], bonusValue: fixedBonusValue });
+        }
+
+        // Choice Part
+        const numScoresToChoose = parseWordToNumber(halfElfMatch[3].toLowerCase());
+        const choiceBonusValue = parseInt(halfElfMatch[4], 10);
+
+        if (numScoresToChoose > 0 && choiceBonusValue > 0) {
+            identified.choices.push({
+                id: `choice_${sourceName.replace(/[^a-zA-Z0-9]/g, '_')}_halfelf_${identified.choices.length}`,
+                source: sourceName,
+                description: halfElfMatch[0], // Full matched string for description
+                number_of_abilities_to_choose: numScoresToChoose,
+                points_per_ability: choiceBonusValue,
+                total_points_to_allocate: numScoresToChoose * choiceBonusValue,
+                options: uniqueAbilityCodes
+            });
+        }
+        return identified; // Successfully parsed, return early
+    }
+
     // New Regex for patterns like "+1 to Dexterity" (if not part of the compound pattern handled above)
     const plusValueToAbilityRegex = /([+-]\d+)\s+to\s+([\w\s]+)/gi;
     let matchPlusValue;
@@ -1196,10 +1226,10 @@ function renderASIChoicesUI() {
         if (pointsRemainingForThis <= 0) {
             li.classList.add('choice-completed');
         }
-        choiceListUl.appendChild(li);
+        asiChoiceListEl.appendChild(li);
     });
 
-    totalRemainingPointsSpan.textContent = characterCreationData.step4_unallocated_asi_points;
+    totalRemainingPointsEl.textContent = characterCreationData.step4_unallocated_asi_points;
 
     // Update displayed choice bonuses on stats
     characterCreationData.step4_ability_scores.forEach(stat => {
