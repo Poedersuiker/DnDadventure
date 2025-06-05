@@ -28,22 +28,22 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     characterCreationData.step2_selected_archetype = characterCreationData.step2_selected_archetype || null;
     characterCreationData.step2_selection_details_text = characterCreationData.step2_selection_details_text || '';
     // ... any other steps ...
-    characterCreationData.step3_standard_stats = characterCreationData.step3_standard_stats || [15, 14, 13, 12, 10, 8];
-    characterCreationData.step3_rolled_stats = characterCreationData.step3_rolled_stats || null;
-    characterCreationData.step3_assigned_stats = characterCreationData.step3_assigned_stats || {}; // e.g., { STR: null, DEX: null, ... }
-    characterCreationData.step3_stat_bonuses = characterCreationData.step3_stat_bonuses || {
+    characterCreationData.step4_standard_stats = characterCreationData.step4_standard_stats || [15, 14, 13, 12, 10, 8];
+    characterCreationData.step4_rolled_stats = characterCreationData.step4_rolled_stats || null;
+    characterCreationData.step4_assigned_stats = characterCreationData.step4_assigned_stats || {}; // e.g., { STR: null, DEX: null, ... }
+    characterCreationData.step4_stat_bonuses = characterCreationData.step4_stat_bonuses || {
         STR: { race: 0, class: 0 }, DEX: { race: 0, class: 0 }, CON: { race: 0, class: 0 },
         INT: { race: 0, class: 0 }, WIS: { race: 0, class: 0 }, CHA: { race: 0, class: 0 }
     };
-    characterCreationData.step3_vital_stats = characterCreationData.step3_vital_stats || []; // e.g., ["STR", "CON"]
-    characterCreationData.step3_dice_rolled_once = characterCreationData.step3_dice_rolled_once || false;
-    characterCreationData.step3_selected_dice_value = characterCreationData.step3_selected_dice_value || null; // To store the currently clicked dice from the pool
-    characterCreationData.step3_ability_scores = characterCreationData.step3_ability_scores || ["STR", "DEX", "CON", "INT", "WIS", "CHA"];
+    characterCreationData.step4_vital_stats = characterCreationData.step4_vital_stats || []; // e.g., ["STR", "CON"]
+    characterCreationData.step4_dice_rolled_once = characterCreationData.step4_dice_rolled_once || false;
+    characterCreationData.step4_selected_dice_value = characterCreationData.step4_selected_dice_value || null; // To store the currently clicked dice from the pool
+    characterCreationData.step4_ability_scores = characterCreationData.step4_ability_scores || ["STR", "DEX", "CON", "INT", "WIS", "CHA"];
     characterCreationData.ability_scores = characterCreationData.ability_scores || {}; // For final calculated scores
     // Step 4 keys
-    characterCreationData.step4_selected_background_slug = characterCreationData.step4_selected_background_slug || null;
-    characterCreationData.step4_background_selection = characterCreationData.step4_background_selection || null;
-    characterCreationData.step4_background_details_text = characterCreationData.step4_background_details_text || '';
+    characterCreationData.step3_selected_background_slug = characterCreationData.step3_selected_background_slug || null;
+    characterCreationData.step3_background_selection = characterCreationData.step3_background_selection || null;
+    characterCreationData.step3_background_details_text = characterCreationData.step3_background_details_text || '';
 
     let selectedRaceSlug = null;
     let selectedClassOrArchetypeSlug = null; // Renamed from selectedClassSlug
@@ -79,7 +79,17 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     <li><strong>Class Features:</strong> Special abilities, such as a fighter’s Action Surge or a wizard’s Spellcasting, that define your class. Many classes gain more features as they level up.</li>
 </ul>
 <p>Consider how your choice of class will complement your chosen race and your desired play style. The information presented here is typically from the Player's Handbook (PHB) or other official sources available through the API.</p>`,
-        3: `<h3>3. Determine Ability Scores</h3>
+        3: `<h3>3. Choose a Background</h3>
+            <p>Your character's background describes where you came from, your original occupation, and your place in the D&D world. Your DM might offer additional backgrounds beyond those in the PHB.</p>
+            <p>A background usually provides:
+            <br> - Skill Proficiencies
+            <br> - Tool Proficiencies
+            <br> - Languages
+            <br> - Starting Equipment
+            <br> - A special background feature</p>
+            <p>It also offers suggestions for personality traits, ideals, bonds, and flaws. These are roleplaying cues that help you bring your character to life.</p>
+            <p>When you choose a background, it will grant you certain benefits and provide roleplaying hooks. Select a background from the list to see its details and what it offers your character.</p>`,
+        4: `<h3>4. Determine Ability Scores</h3>
             <p>Six abilities provide a quick description of every creature’s physical and mental characteristics:
             <br> - <strong>Strength (STR):</strong> Natural athleticism, bodily power.
             <br> - <strong>Dexterity (DEX):</strong> Physical agility, reflexes, balance, poise.
@@ -94,16 +104,6 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             <p><strong>Ability Modifiers:</strong> Each ability score has a modifier, derived from the score and ranging from -5 (for an ability score of 1) to +10 (for a score of 30). The formula is (Score - 10) / 2, rounded down.
             <br>Example Modifiers: Score 1 (-5), 2-3 (-4), 4-5 (-3), 6-7 (-2), 8-9 (-1), 10-11 (+0), 12-13 (+1), 14-15 (+2), 16-17 (+3), 18-19 (+4), 20-21 (+5).</p>
             <p>After assigning scores, apply any racial ability score increases.</p>`,
-        4: `<h3>4. Choose a Background</h3>
-            <p>Your character's background describes where you came from, your original occupation, and your place in the D&D world. Your DM might offer additional backgrounds beyond those in the PHB.</p>
-            <p>A background usually provides:
-            <br> - Skill Proficiencies
-            <br> - Tool Proficiencies
-            <br> - Languages
-            <br> - Starting Equipment
-            <br> - A special background feature</p>
-            <p>It also offers suggestions for personality traits, ideals, bonds, and flaws. These are roleplaying cues that help you bring your character to life.</p>
-            <p>When you choose a background, it will grant you certain benefits and provide roleplaying hooks. Select a background from the list to see its details and what it offers your character.</p>`,
         5: `<h3>5. Skills and Proficiencies</h3>
             <p><strong>Skills:</strong> Each ability covers a broad range of capabilities, including skills that a character or a monster can be proficient in. A skill represents a specific aspect of an ability score, and a character's proficiency in a skill demonstrates a focus on that aspect. Your character gains skill proficiencies from their class, background, and sometimes race.</p>
             <p>The information out of the open5e API gives multiple options for how these are gained:</p>
@@ -168,9 +168,9 @@ let currentStep = 0; // Start at Step 0 (Introduction)
 
     function showStep(stepNumber) {
         if (stepNumber === 0) {
-            characterCreationData.step3_assigned_stats = {};
-            characterCreationData.step3_dice_rolled_once = false;
-            characterCreationData.step3_rolled_stats = null;
+            characterCreationData.step4_assigned_stats = {};
+            characterCreationData.step4_dice_rolled_once = false;
+            characterCreationData.step4_rolled_stats = null;
             saveCharacterDataToSession();
         }
         // Clear race-specific content when leaving step 1
@@ -188,7 +188,7 @@ let currentStep = 0; // Start at Step 0 (Introduction)
            if (classListContainer) classListContainer.innerHTML = '';
            if (classDescriptionContainer) classDescriptionContainer.innerHTML = '';
        }
-        if (stepNumber !== 4) {
+        if (stepNumber !== 3) {
             const backgroundListContainer = document.getElementById('background-list-container');
             const backgroundDescriptionContainer = document.getElementById('background-description-container');
             if (backgroundListContainer) backgroundListContainer.innerHTML = '';
@@ -241,16 +241,16 @@ let currentStep = 0; // Start at Step 0 (Introduction)
                        }
                    }
                }
-            } else if (stepNumber === 3) {
-                loadStep3Logic(); // Call a new function to handle Step 3's specific logic
             } else if (stepNumber === 4) {
+                loadStep3Logic(); // Call a new function to handle Step 3's specific logic
+            } else if (stepNumber === 3) {
                 if (!allBackgroundsData) {
                     loadBackgroundStepData();
                 } else {
                     populateBackgroundList(allBackgroundsData);
                 }
-                if (characterCreationData.step4_selected_background_slug) {
-                    displayBackgroundDetails(characterCreationData.step4_selected_background_slug);
+                if (characterCreationData.step3_selected_background_slug) {
+                    displayBackgroundDetails(characterCreationData.step3_selected_background_slug);
                 }
            }
         } else {
@@ -414,21 +414,21 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             }
         }
         // Logic for Step 3: Ensure final ability scores are updated before leaving
-        else if (currentStep === 3) {
+        else if (currentStep === 4) {
             updateAndSaveFinalAbilityScores(); // This also calls saveCharacterDataToSession()
             console.log("Proceeding from Step 3. Final ability_scores:", characterCreationData.ability_scores);
             // No specific validation here currently, assuming stats are handled or defaulted.
         }
         // Logic for Step 4: Background Selection
-        else if (currentStep === 4) {
-            if (!characterCreationData.step4_selected_background_slug) {
+        else if (currentStep === 3) {
+            if (!characterCreationData.step3_selected_background_slug) {
                 alert("Please select a background before proceeding.");
                 return;
             }
-            // Data (step4_background_selection and step4_background_details_text)
+            // Data (step3_background_selection and step3_background_details_text)
             // should already be saved by displayBackgroundDetails when a background is selected.
             // Log to confirm.
-            console.log("Proceeding from Step 4. Background data:", characterCreationData.step4_background_selection);
+            console.log("Proceeding from Step 4. Background data:", characterCreationData.step3_background_selection);
             saveCharacterDataToSession(); // Ensure latest state is saved, though likely redundant
         }
 
@@ -881,30 +881,30 @@ function generate4d6DropLowest() {
 }
 
 function updateDisplayedBonuses() {
-    characterCreationData.step3_ability_scores.forEach(stat => {
+    characterCreationData.step4_ability_scores.forEach(stat => {
         const raceBonusEl = document.querySelector(`.stat-bonus.race-bonus[data-stat='${stat}']`);
         const classBonusEl = document.querySelector(`.stat-bonus.class-bonus[data-stat='${stat}']`);
 
         if (raceBonusEl) {
-            raceBonusEl.textContent = `+${characterCreationData.step3_stat_bonuses[stat].race || 0}`;
+            raceBonusEl.textContent = `+${characterCreationData.step4_stat_bonuses[stat].race || 0}`;
         }
         if (classBonusEl) {
-            classBonusEl.textContent = `+${characterCreationData.step3_stat_bonuses[stat].class || 0}`;
+            classBonusEl.textContent = `+${characterCreationData.step4_stat_bonuses[stat].class || 0}`;
         }
     });
 }
 
 function renderMainStatDisplay() {
-    characterCreationData.step3_ability_scores.forEach(stat => {
+    characterCreationData.step4_ability_scores.forEach(stat => {
         const assignedValueEl = document.querySelector(`.stat-assigned-value[data-stat='${stat}']`);
         const totalEl = document.querySelector(`.stat-total[data-stat='${stat}']`);
 
-        const assignedValue = characterCreationData.step3_assigned_stats[stat] || '-';
+        const assignedValue = characterCreationData.step4_assigned_stats[stat] || '-';
         assignedValueEl.textContent = assignedValue;
 
         if (assignedValue !== '-') {
-            const raceBonus = characterCreationData.step3_stat_bonuses[stat].race || 0;
-            const classBonus = characterCreationData.step3_stat_bonuses[stat].class || 0;
+            const raceBonus = characterCreationData.step4_stat_bonuses[stat].race || 0;
+            const classBonus = characterCreationData.step4_stat_bonuses[stat].class || 0;
             totalEl.textContent = parseInt(assignedValue) + raceBonus + classBonus;
         } else {
             totalEl.textContent = '-';
@@ -919,7 +919,7 @@ function renderAssignableDicePool(diceValues) {
     assignableDicePool.innerHTML = ''; // Clear existing dice
 
     // Create a frequency map of assigned dice values
-    const assignedValues = Object.values(characterCreationData.step3_assigned_stats);
+    const assignedValues = Object.values(characterCreationData.step4_assigned_stats);
     const assignedCounts = {};
     assignedValues.forEach(val => {
         if (val !== null) { // only count actual assigned values
@@ -945,7 +945,7 @@ function renderAssignableDicePool(diceValues) {
             const diceDiv = document.createElement('div');
             diceDiv.classList.add('dice-value');
             diceDiv.textContent = value;
-            if (characterCreationData.step3_selected_dice_value === value && i === 0 && numberToDisplay > 0) { // Highlight only one instance if multiple are same value
+            if (characterCreationData.step4_selected_dice_value === value && i === 0 && numberToDisplay > 0) { // Highlight only one instance if multiple are same value
                 // This simple selection highlight might need refinement if multiple identical values are present
                 // and one is selected. For now, highlights the first available one that matches.
                 diceDiv.classList.add('selected');
@@ -956,7 +956,7 @@ function renderAssignableDicePool(diceValues) {
     });
     // Add placeholders for any dice that were assigned but now the source (standard/rolled) has changed
     // or if a value was assigned that's not in the current diceValues (should ideally not happen with proper logic)
-    Object.entries(characterCreationData.step3_assigned_stats).forEach(([stat, value]) => {
+    Object.entries(characterCreationData.step4_assigned_stats).forEach(([stat, value]) => {
         if (value !== null && !diceValues.includes(value)) {
             // This indicates a mismatch, possibly log an error or handle gracefully
             // For now, we assume assigned_stats are cleared if dice source changes.
@@ -966,7 +966,7 @@ function renderAssignableDicePool(diceValues) {
 
 function handleDicePoolClick(event) {
     const clickedValue = parseInt(event.target.textContent);
-    characterCreationData.step3_selected_dice_value = clickedValue;
+    characterCreationData.step4_selected_dice_value = clickedValue;
 
     // Update visual selection in the pool
     document.querySelectorAll('#assignable-dice-pool .dice-value').forEach(el => el.classList.remove('selected'));
@@ -978,21 +978,21 @@ function handleDicePoolClick(event) {
 
 function handleRollDiceClick() {
     const rollDiceWarning = document.getElementById('roll-dice-warning'); // Get warning element again
-    if (characterCreationData.step3_dice_rolled_once) {
+    if (characterCreationData.step4_dice_rolled_once) {
         alert("You have already rolled the dice. You cannot roll again.");
         return;
     }
 
     if (confirm("Warning: Rolling dice will override the standard array values and can only be done once. Are you sure you want to proceed?")) {
-        characterCreationData.step3_rolled_stats = generate4d6DropLowest();
-        characterCreationData.step3_dice_rolled_once = true;
-        characterCreationData.step3_assigned_stats = {}; // Clear assignments
-        characterCreationData.step3_selected_dice_value = null; // Clear selected dice from pool
+        characterCreationData.step4_rolled_stats = generate4d6DropLowest();
+        characterCreationData.step4_dice_rolled_once = true;
+        characterCreationData.step4_assigned_stats = {}; // Clear assignments
+        characterCreationData.step4_selected_dice_value = null; // Clear selected dice from pool
 
         document.getElementById('roll-dice-button').disabled = true;
         rollDiceWarning.style.display = 'block'; // Show warning text permanently after roll
 
-        console.log("Dice rolled:", characterCreationData.step3_rolled_stats);
+        console.log("Dice rolled:", characterCreationData.step4_rolled_stats);
         loadStep3Logic(); // Reload/re-render Step 3 UI with new dice
         // saveCharacterDataToSession(); // loadStep3Logic calls save and also calls updateAndSaveFinalAbilityScores
         updateAndSaveFinalAbilityScores(); // Explicitly call here to ensure scores are reset based on new empty assignments
@@ -1003,21 +1003,21 @@ function handleStatAssignmentClick(event) {
     const targetStat = event.target.dataset.stat;
     if (!targetStat) return; // Clicked somewhere else in the block
 
-    const selectedDiceValue = characterCreationData.step3_selected_dice_value;
+    const selectedDiceValue = characterCreationData.step4_selected_dice_value;
 
     if (selectedDiceValue === null) {
         // If a stat is clicked without a dice value selected, and that stat currently has a value,
         // make that value available again in the pool.
-        if (characterCreationData.step3_assigned_stats[targetStat] !== null && characterCreationData.step3_assigned_stats[targetStat] !== undefined) {
-            console.log(`Unassigning ${characterCreationData.step3_assigned_stats[targetStat]} from ${targetStat}`);
-            characterCreationData.step3_assigned_stats[targetStat] = null;
+        if (characterCreationData.step4_assigned_stats[targetStat] !== null && characterCreationData.step4_assigned_stats[targetStat] !== undefined) {
+            console.log(`Unassigning ${characterCreationData.step4_assigned_stats[targetStat]} from ${targetStat}`);
+            characterCreationData.step4_assigned_stats[targetStat] = null;
         } else {
             alert("Please select a dice roll from the 'Available Rolls' pool first.");
         }
     } else {
         // If there was a value previously assigned to this stat, make it available again ( conceptually)
         // The renderAssignableDicePool will handle making it visible if it's part of the current source array.
-        const oldValue = characterCreationData.step3_assigned_stats[targetStat];
+        const oldValue = characterCreationData.step4_assigned_stats[targetStat];
         if (oldValue !== null && oldValue !== undefined) {
             console.log(`Stat ${targetStat} had value ${oldValue}, which is now available again.`);
         }
@@ -1026,12 +1026,12 @@ function handleStatAssignmentClick(event) {
         // This simple check prevents direct assignment if already used.
         // More complex logic could allow swapping. For now, user must unassign first.
         let valueAlreadyAssignedElsewhere = false;
-        for (const stat in characterCreationData.step3_assigned_stats) {
-            if (characterCreationData.step3_assigned_stats[stat] === selectedDiceValue && stat !== targetStat) {
+        for (const stat in characterCreationData.step4_assigned_stats) {
+            if (characterCreationData.step4_assigned_stats[stat] === selectedDiceValue && stat !== targetStat) {
                 // A simple count check for available vs assigned of this value
-                const sourceStats = characterCreationData.step3_rolled_stats || characterCreationData.step3_standard_stats;
+                const sourceStats = characterCreationData.step4_rolled_stats || characterCreationData.step4_standard_stats;
                 const countInSource = sourceStats.filter(s => s === selectedDiceValue).length;
-                const countAssigned = Object.values(characterCreationData.step3_assigned_stats).filter(s => s === selectedDiceValue).length;
+                const countAssigned = Object.values(characterCreationData.step4_assigned_stats).filter(s => s === selectedDiceValue).length;
 
                 if (countAssigned >= countInSource) {
                     valueAlreadyAssignedElsewhere = true;
@@ -1045,16 +1045,16 @@ function handleStatAssignmentClick(event) {
             return;
         }
 
-        characterCreationData.step3_assigned_stats[targetStat] = selectedDiceValue;
+        characterCreationData.step4_assigned_stats[targetStat] = selectedDiceValue;
         console.log(`Assigned ${selectedDiceValue} to ${targetStat}`);
 
         // Optional: Clear selected dice from pool after assignment, requiring re-selection for next assignment
-        // characterCreationData.step3_selected_dice_value = null;
+        // characterCreationData.step4_selected_dice_value = null;
         // document.querySelectorAll('#assignable-dice-pool .dice-value.selected').forEach(el => el.classList.remove('selected'));
     }
 
     // Re-render displays
-    let currentStatsToUse = characterCreationData.step3_rolled_stats || characterCreationData.step3_standard_stats;
+    let currentStatsToUse = characterCreationData.step4_rolled_stats || characterCreationData.step4_standard_stats;
     renderAssignableDicePool(currentStatsToUse);
     renderMainStatDisplay();
     saveCharacterDataToSession();
@@ -1081,35 +1081,35 @@ function loadStep3Logic() {
     // Calculate and store/update bonuses and vital stats
     // Ensure raceData and classData are available in characterCreationData as expected by helper functions
     if (characterCreationData.step1_race_selection && characterCreationData.step2_selected_base_class) {
-        characterCreationData.step3_stat_bonuses = getStatBonuses(); // Uses data from characterCreationData
-        characterCreationData.step3_vital_stats = getVitalStats();   // Uses data from characterCreationData
+        characterCreationData.step4_stat_bonuses = getStatBonuses(); // Uses data from characterCreationData
+        characterCreationData.step4_vital_stats = getVitalStats();   // Uses data from characterCreationData
     } else {
         // Fallback if race/class data not yet fully loaded or selected
         console.warn("Race or Class data not fully available for Step 3 calculations. Using defaults.");
-        characterCreationData.step3_stat_bonuses = { STR: { race: 0, class: 0 }, DEX: { race: 0, class: 0 }, CON: { race: 0, class: 0 }, INT: { race: 0, class: 0 }, WIS: { race: 0, class: 0 }, CHA: { race: 0, class: 0 } };
-        characterCreationData.step3_vital_stats = ["CON"]; // Default vital stat
+        characterCreationData.step4_stat_bonuses = { STR: { race: 0, class: 0 }, DEX: { race: 0, class: 0 }, CON: { race: 0, class: 0 }, INT: { race: 0, class: 0 }, WIS: { race: 0, class: 0 }, CHA: { race: 0, class: 0 } };
+        characterCreationData.step4_vital_stats = ["CON"]; // Default vital stat
     }
     saveCharacterDataToSession(); // Save after calculating these
 
     // Display vital stats
     if (vitalStatsDisplay) {
-        if (characterCreationData.step3_vital_stats && characterCreationData.step3_vital_stats.length > 0) {
-            vitalStatsDisplay.textContent = characterCreationData.step3_vital_stats.join(', ');
+        if (characterCreationData.step4_vital_stats && characterCreationData.step4_vital_stats.length > 0) {
+            vitalStatsDisplay.textContent = characterCreationData.step4_vital_stats.join(', ');
         } else {
             vitalStatsDisplay.textContent = "None specific (General: CON)";
         }
     }
 
     // Display stat bonuses (now using the calculated ones)
-    updateDisplayedBonuses(); // This function should read from characterCreationData.step3_stat_bonuses
+    updateDisplayedBonuses(); // This function should read from characterCreationData.step4_stat_bonuses
 
     // The rest of loadStep3Logic (rendering dice pool, main stat display, button states) follows...
     // Determine which set of stats to use (standard or rolled)
-    let currentStatsToDisplay = characterCreationData.step3_rolled_stats || characterCreationData.step3_standard_stats;
+    let currentStatsToDisplay = characterCreationData.step4_rolled_stats || characterCreationData.step4_standard_stats;
 
-    if (characterCreationData.step3_rolled_stats) {
+    if (characterCreationData.step4_rolled_stats) {
         standardArrayDisplay.style.display = 'none';
-        rolledDiceValues.textContent = characterCreationData.step3_rolled_stats.join(', ');
+        rolledDiceValues.textContent = characterCreationData.step4_rolled_stats.join(', ');
         rolledDiceDisplay.style.display = 'block';
     } else {
         standardArrayDisplay.style.display = 'block';
@@ -1123,7 +1123,7 @@ function loadStep3Logic() {
     renderMainStatDisplay();
 
     // Roll Dice Button state and event listener
-    if (characterCreationData.step3_dice_rolled_once) {
+    if (characterCreationData.step4_dice_rolled_once) {
         rollDiceButton.disabled = true;
         rollDiceWarning.style.display = 'block'; // Show warning if dice already rolled
     } else {
@@ -1153,24 +1153,24 @@ function loadStep3Logic() {
 
 function updateAndSaveFinalAbilityScores() {
     console.log("Updating and saving final ability scores...");
-    const abilities = characterCreationData.step3_ability_scores; // ["STR", "DEX", ...]
+    const abilities = characterCreationData.step4_ability_scores; // ["STR", "DEX", ...]
     if (!characterCreationData.ability_scores) {
         characterCreationData.ability_scores = {};
     }
 
     abilities.forEach(stat => {
-        let baseValue = characterCreationData.step3_assigned_stats[stat];
+        let baseValue = characterCreationData.step4_assigned_stats[stat];
         if (baseValue === null || baseValue === undefined || isNaN(parseInt(baseValue))) {
             baseValue = 10; // Default to 10 if not assigned or not a number
         } else {
             baseValue = parseInt(baseValue);
         }
 
-        const raceBonus = (characterCreationData.step3_stat_bonuses[stat] && characterCreationData.step3_stat_bonuses[stat].race) ?
-            parseInt(characterCreationData.step3_stat_bonuses[stat].race) : 0;
+        const raceBonus = (characterCreationData.step4_stat_bonuses[stat] && characterCreationData.step4_stat_bonuses[stat].race) ?
+            parseInt(characterCreationData.step4_stat_bonuses[stat].race) : 0;
 
-        const classBonus = (characterCreationData.step3_stat_bonuses[stat] && characterCreationData.step3_stat_bonuses[stat].class) ?
-            parseInt(characterCreationData.step3_stat_bonuses[stat].class) : 0;
+        const classBonus = (characterCreationData.step4_stat_bonuses[stat] && characterCreationData.step4_stat_bonuses[stat].class) ?
+            parseInt(characterCreationData.step4_stat_bonuses[stat].class) : 0;
 
         characterCreationData.ability_scores[stat] = baseValue + raceBonus + classBonus;
     });
@@ -1254,7 +1254,7 @@ function populateBackgroundList(backgroundsData) {
         li.textContent = displayName;
         li.dataset.slug = trueApiSlug; // Use the reliably sourced trueApiSlug
 
-        if (trueApiSlug === characterCreationData.step4_selected_background_slug) {
+        if (trueApiSlug === characterCreationData.step3_selected_background_slug) {
             li.classList.add('selected-item');
         }
         backgroundSelectionList.appendChild(li);
@@ -1273,7 +1273,7 @@ async function handleBackgroundClick(event) {
     }
 
     const slug = clickedLi.dataset.slug;
-    characterCreationData.step4_selected_background_slug = slug;
+    characterCreationData.step3_selected_background_slug = slug;
 
     // Update selection styling
     const backgroundSelectionList = document.getElementById('background-selection-list');
@@ -1311,7 +1311,7 @@ async function displayBackgroundDetails(slug) {
         }
 
         // Store the full background object
-        characterCreationData.step4_background_selection = backgroundDetails;
+        characterCreationData.step3_background_selection = backgroundDetails;
 
         let htmlContent = `<h4>${backgroundDetails.name}</h4>`;
         let textSummary = `Background: ${backgroundDetails.name}\n`;
@@ -1403,7 +1403,7 @@ async function displayBackgroundDetails(slug) {
 
 
         descriptionContainer.innerHTML = htmlContent;
-        characterCreationData.step4_background_details_text = textSummary.trim();
+        characterCreationData.step3_background_details_text = textSummary.trim();
         saveCharacterDataToSession();
         console.log("Background details displayed and stored for:", slug);
 
@@ -1411,9 +1411,9 @@ async function displayBackgroundDetails(slug) {
         console.error(`Error displaying background details for ${slug}:`, error);
         descriptionContainer.innerHTML = `<p class="error">Could not load details for ${slug}. ${error.message}</p>`;
         // Clear stored data if loading fails
-        characterCreationData.step4_selected_background_slug = null;
-        characterCreationData.step4_background_selection = null;
-        characterCreationData.step4_background_details_text = '';
+        characterCreationData.step3_selected_background_slug = null;
+        characterCreationData.step3_background_selection = null;
+        characterCreationData.step3_background_details_text = '';
         saveCharacterDataToSession();
     }
 }

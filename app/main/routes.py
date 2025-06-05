@@ -74,7 +74,7 @@ def creation_wizard():
         current_app.logger.info(f"Finalizing character with data: {char_data}")
 
         # --- Background Data Extraction ---
-        selected_background_obj = char_data.get('step4_background_selection') # This is the full object from API
+        selected_background_obj = char_data.get('step3_background_selection') # This is the full object from API
         background_name_from_selection = "Unknown Background"
         background_desc_from_selection = ""
         background_equipment_string_from_selection = ""
