@@ -44,10 +44,12 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     characterCreationData.step4_allocated_choice_bonuses = characterCreationData.step4_allocated_choice_bonuses || { STR: 0, DEX: 0, CON: 0, INT: 0, WIS: 0, CHA: 0 };
     characterCreationData.step4_unallocated_asi_points = characterCreationData.step4_unallocated_asi_points || 0;
     characterCreationData.step4_asi_choice_details_for_ui = characterCreationData.step4_asi_choice_details_for_ui || [];
-    // Step 4 keys
+    // Step 3 (Background) data state
     characterCreationData.step3_selected_background_slug = characterCreationData.step3_selected_background_slug || null;
     characterCreationData.step3_background_selection = characterCreationData.step3_background_selection || null;
     characterCreationData.step3_background_details_text = characterCreationData.step3_background_details_text || '';
+    characterCreationData.step3_background_data_loaded = characterCreationData.step3_background_data_loaded || false;
+
 
     let selectedRaceSlug = null;
     let selectedClassOrArchetypeSlug = null; // Renamed from selectedClassSlug
@@ -186,6 +188,7 @@ const GLOBAL_ABILITY_SCORE_MAP = {
             characterCreationData.step4_allocated_choice_bonuses = { STR: 0, DEX: 0, CON: 0, INT: 0, WIS: 0, CHA: 0 };
             characterCreationData.step4_unallocated_asi_points = 0;
             characterCreationData.step4_asi_choice_details_for_ui = [];
+            characterCreationData.step3_background_data_loaded = false; // Reset on intro step
             saveCharacterDataToSession();
         }
         // Clear race-specific content when leaving step 1
@@ -208,6 +211,7 @@ const GLOBAL_ABILITY_SCORE_MAP = {
             const backgroundDescriptionContainer = document.getElementById('background-description-container');
             if (backgroundListContainer) backgroundListContainer.innerHTML = '';
             if (backgroundDescriptionContainer) backgroundDescriptionContainer.innerHTML = '';
+            characterCreationData.step3_background_data_loaded = false; // Reset if not on background step
         }
 
         // Hide all main content wizard steps first
@@ -435,16 +439,20 @@ const GLOBAL_ABILITY_SCORE_MAP = {
             // No specific validation here currently, assuming stats are handled or defaulted.
         }
         // Logic for Step 4: Background Selection
-        else if (currentStep === 3) {
+        else if (currentStep === 3) { // This is when user is ON step 3 and clicks "Next"
             if (!characterCreationData.step3_selected_background_slug) {
                 alert("Please select a background before proceeding.");
                 return;
             }
-            // Data (step3_background_selection and step3_background_details_text)
-            // should already be saved by displayBackgroundDetails when a background is selected.
-            // Log to confirm.
-            console.log("Proceeding from Step 4. Background data:", characterCreationData.step3_background_selection);
-            saveCharacterDataToSession(); // Ensure latest state is saved, though likely redundant
+            // New check for data loaded flag
+            if (!characterCreationData.step3_background_data_loaded) {
+                alert("Background details are still loading or failed to load. Please wait a moment or reselect the background.");
+                console.log("[DEBUG] NextButton Step 3: Prevented proceeding, step3_background_data_loaded is false. Slug:", characterCreationData.step3_selected_background_slug);
+                return;
+            }
+            // Log corrected to refer to Step 3
+            console.log("[DEBUG] Proceeding from Step 3 (Background). Background selection object:", JSON.parse(JSON.stringify(characterCreationData.step3_background_selection)));
+            saveCharacterDataToSession(); // Ensure latest state, though likely redundant if flag is true
         }
 
 
@@ -903,7 +911,9 @@ function identifyASIs(descriptionText, sourceName, abilityScoreMap) {
 
 
 function getStatBonuses() {
-    characterCreationData.step4_asi_choices = []; // Clear previous choices
+    console.log("[DEBUG] Entering getStatBonuses.");
+    // Clear existing choices here as per plan, so it's fresh for this calculation run
+    characterCreationData.step4_asi_choices = [];
     const bonuses = {
         STR: { race: 0, class: 0, background: 0 }, DEX: { race: 0, class: 0, background: 0 }, CON: { race: 0, class: 0, background: 0 },
         INT: { race: 0, class: 0, background: 0 }, WIS: { race: 0, class: 0, background: 0 }, CHA: { race: 0, class: 0, background: 0 }
@@ -914,8 +924,10 @@ function getStatBonuses() {
         if (traits && Array.isArray(traits)) {
             traits.forEach(trait => {
                 if (trait.name === "Ability Score Increase" && trait.desc) {
+                    console.log(`[DEBUG] getStatBonuses/processTraits: Identifying ASIs for ${type} trait '${trait.name}'. Desc:`, trait.desc);
                     const sourceFullName = `${sourceNamePrefix}: ${trait.name}`;
                     const asiResult = identifyASIs(trait.desc, sourceFullName, GLOBAL_ABILITY_SCORE_MAP);
+                    console.log(`[DEBUG] getStatBonuses/processTraits: Identified ASIs for ${type} trait '${trait.name}': Fixed:`, JSON.parse(JSON.stringify(asiResult.fixed)), "Choices:", JSON.parse(JSON.stringify(asiResult.choices)));
 
                     asiResult.fixed.forEach(fixedBonus => {
                         if (bonuses[fixedBonus.abilityName]) {
@@ -984,13 +996,18 @@ function getStatBonuses() {
         if (typeof backgroundData.data.desc === 'string') {
             combinedBackgroundText += backgroundData.data.desc + " ";
         }
-        if (typeof backgroundData.data.feature_desc === 'string') { // feature_name not used by parser
+        if (typeof backgroundData.data.feature_name === 'string' && typeof backgroundData.data.feature_desc === 'string') {
+             // combinedBackgroundText += backgroundData.data.feature_name + " " + backgroundData.data.feature_desc + " "; // Original
+             combinedBackgroundText += backgroundData.data.feature_desc + " "; // Using only feature_desc as per identifyASIs plan
+        } else if (typeof backgroundData.data.feature_desc === 'string') {
             combinedBackgroundText += backgroundData.data.feature_desc + " ";
         }
 
+        console.log("[DEBUG] getStatBonuses: Identifying ASIs for background. Combined Text:", combinedBackgroundText);
         if (combinedBackgroundText.trim()) {
             const sourceFullName = `Background (${backgroundName})`;
             const bgAsiResult = identifyASIs(combinedBackgroundText.trim(), sourceFullName, GLOBAL_ABILITY_SCORE_MAP);
+            console.log("[DEBUG] getStatBonuses: Identified ASIs from background text: Fixed:", JSON.parse(JSON.stringify(bgAsiResult.fixed)), "Choices:", JSON.parse(JSON.stringify(bgAsiResult.choices)));
 
             bgAsiResult.fixed.forEach(fixedBonus => {
                 if (bonuses[fixedBonus.abilityName]) {
@@ -998,7 +1015,11 @@ function getStatBonuses() {
                 }
             });
             characterCreationData.step4_asi_choices.push(...bgAsiResult.choices);
+        } else {
+            console.log("[DEBUG] getStatBonuses: No combined text for background ASI parsing.");
         }
+    } else {
+        console.log("[DEBUG] getStatBonuses: No backgroundData or backgroundData.data found for ASI processing.");
     }
 
     // The old logic for raceData.ability_score_bonuses is now replaced.
@@ -1006,12 +1027,14 @@ function getStatBonuses() {
     // *additional* to what's in traits, then that logic would need to be reinstated or merged carefully.
     // Based on the task, parsing traits is the primary source now.
 
-    console.log("Calculated Stat Bonuses (Race, Class, Background):", JSON.parse(JSON.stringify(bonuses)));
-    console.log("Identified ASI Choices:", JSON.parse(JSON.stringify(characterCreationData.step4_asi_choices)));
+    console.log("[DEBUG] getStatBonuses: Final bonuses object:", JSON.parse(JSON.stringify(bonuses)));
+    console.log("[DEBUG] getStatBonuses: Final step4_asi_choices:", JSON.parse(JSON.stringify(characterCreationData.step4_asi_choices)));
+    console.log("[DEBUG] Exiting getStatBonuses.");
     return bonuses;
 }
 
 function prepareASIChoiceDataForUI() {
+    console.log("[DEBUG] Entering prepareASIChoiceDataForUI. Current step4_asi_choices:", JSON.parse(JSON.stringify(characterCreationData.step4_asi_choices)));
     characterCreationData.step4_unallocated_asi_points = 0;
     characterCreationData.step4_asi_choice_details_for_ui = [];
 
@@ -1024,19 +1047,27 @@ function prepareASIChoiceDataForUI() {
             });
         });
     }
-    console.log("Prepared ASI Choice Data for UI:", characterCreationData.step4_asi_choice_details_for_ui, "Total Unallocated:", characterCreationData.step4_unallocated_asi_points);
+    console.log("[DEBUG] prepareASIChoiceDataForUI: Resulting step4_unallocated_asi_points:", characterCreationData.step4_unallocated_asi_points);
+    console.log("[DEBUG] prepareASIChoiceDataForUI: Resulting step4_asi_choice_details_for_ui:", JSON.parse(JSON.stringify(characterCreationData.step4_asi_choice_details_for_ui)));
 }
 
 function renderASIChoicesUI() {
-    const choiceListUl = document.getElementById('asi-choice-list');
-    const totalRemainingPointsSpan = document.getElementById('total-remaining-choice-points');
+    console.log("[DEBUG] Entering renderASIChoicesUI.");
+    console.log("[DEBUG] renderASIChoicesUI data: step4_asi_choice_details_for_ui:", JSON.parse(JSON.stringify(characterCreationData.step4_asi_choice_details_for_ui)),
+                "step4_unallocated_asi_points:", characterCreationData.step4_unallocated_asi_points,
+                "step4_allocated_choice_bonuses:", JSON.parse(JSON.stringify(characterCreationData.step4_allocated_choice_bonuses)));
+    const asiChoiceListEl = document.getElementById('asi-choice-list');
+    const totalRemainingPointsEl = document.getElementById('total-remaining-choice-points');
+    console.log("[DEBUG] renderASIChoicesUI: Found #asi-choice-list:", asiChoiceListEl ? 'Yes' : 'No');
+    console.log("[DEBUG] renderASIChoicesUI: Found #total-remaining-choice-points:", totalRemainingPointsEl ? 'Yes' : 'No');
 
-    if (!choiceListUl || !totalRemainingPointsSpan) {
+
+    if (!asiChoiceListEl || !totalRemainingPointsEl) {
         console.error("ASI Choice UI elements not found!");
         return;
     }
 
-    choiceListUl.innerHTML = ''; // Clear previous list
+    asiChoiceListEl.innerHTML = ''; // Clear previous list
 
     characterCreationData.step4_asi_choice_details_for_ui.forEach(choice => {
         const li = document.createElement('li');
@@ -1226,6 +1257,7 @@ function generate4d6DropLowest() {
 }
 
 function updateDisplayedBonuses() {
+    console.log("[DEBUG] Entering updateDisplayedBonuses. Current step4_stat_bonuses:", JSON.parse(JSON.stringify(characterCreationData.step4_stat_bonuses)));
     characterCreationData.step4_ability_scores.forEach(stat => {
         const raceBonusEl = document.querySelector(`.stat-bonus.race-bonus[data-stat='${stat}']`);
         const classBonusEl = document.querySelector(`.stat-bonus.class-bonus[data-stat='${stat}']`);
@@ -1244,6 +1276,10 @@ function updateDisplayedBonuses() {
 }
 
 function renderMainStatDisplay() {
+    console.log("[DEBUG] Entering renderMainStatDisplay.");
+    console.log("[DEBUG] renderMainStatDisplay data: step4_assigned_stats:", JSON.parse(JSON.stringify(characterCreationData.step4_assigned_stats)),
+                "step4_stat_bonuses:", JSON.parse(JSON.stringify(characterCreationData.step4_stat_bonuses)),
+                "step4_allocated_choice_bonuses:", JSON.parse(JSON.stringify(characterCreationData.step4_allocated_choice_bonuses)));
     characterCreationData.step4_ability_scores.forEach(stat => {
         const assignedValueEl = document.querySelector(`.stat-assigned-value[data-stat='${stat}']`);
         const totalEl = document.querySelector(`.stat-total[data-stat='${stat}']`);
@@ -1414,6 +1450,10 @@ function handleStatAssignmentClick(event) {
 }
 
 function loadStep3Logic() {
+    console.log("[DEBUG] Entering loadStep3Logic. Current characterCreationData:", JSON.parse(JSON.stringify(characterCreationData)));
+    console.log("[DEBUG] loadStep3Logic: Race Selection:", JSON.parse(JSON.stringify(characterCreationData.step1_race_selection)));
+    console.log("[DEBUG] loadStep3Logic: Class Selection:", JSON.parse(JSON.stringify(characterCreationData.step2_selected_base_class)));
+    console.log("[DEBUG] loadStep3Logic: Background Selection:", JSON.parse(JSON.stringify(characterCreationData.step3_background_selection)));
     console.log("Loading Step 3 logic (Ability Scores)...");
     characterCreationData.step4_allocated_choice_bonuses = { STR: 0, DEX: 0, CON: 0, INT: 0, WIS: 0, CHA: 0 };
     characterCreationData.step4_unallocated_asi_points = 0;
@@ -1649,6 +1689,8 @@ async function handleBackgroundClick(event) {
         console.log("Clicked element is not a valid background LI or has no slug.");
         return; // Click was not on a valid list item
     }
+    characterCreationData.step3_background_data_loaded = false; // Set to false when selection changes
+    saveCharacterDataToSession(); // Save this state change
 
     const slug = clickedLi.dataset.slug;
     characterCreationData.step3_selected_background_slug = slug;
@@ -1782,7 +1824,11 @@ async function displayBackgroundDetails(slug) {
 
         descriptionContainer.innerHTML = htmlContent;
         characterCreationData.step3_background_details_text = textSummary.trim();
-        saveCharacterDataToSession();
+        // saveCharacterDataToSession(); // Moved down
+
+        characterCreationData.step3_background_data_loaded = true; // Set flag to true on successful load
+        saveCharacterDataToSession(); // Save the updated flag and data
+        console.log("[DEBUG] displayBackgroundDetails: Set step3_background_data_loaded to true for slug:", slug);
         console.log("Background details displayed and stored for:", slug);
 
     } catch (error) {
@@ -1792,7 +1838,9 @@ async function displayBackgroundDetails(slug) {
         characterCreationData.step3_selected_background_slug = null;
         characterCreationData.step3_background_selection = null;
         characterCreationData.step3_background_details_text = '';
-        saveCharacterDataToSession();
+        characterCreationData.step3_background_data_loaded = false; // Explicitly false on error
+        saveCharacterDataToSession(); // Save the updated flag
+        console.log("[DEBUG] displayBackgroundDetails: Set step3_background_data_loaded to false due to error for slug:", slug);
     }
 }
 
