@@ -767,6 +767,85 @@ function identifyASIs(descriptionText, sourceName, abilityScoreMap) {
     };
     if (typeof descriptionText !== 'string') return identified;
 
+    const uniqueAbilityCodes = Object.values(GLOBAL_ABILITY_SCORE_MAP).filter((v, i, a) => a.indexOf(v) === i && v.length === 3);
+
+    // New: Handle compound pattern like "+1 to Dexterity and one other ability score"
+    const compoundPattern = /([+-]\d+)\s+to\s+([\w\s]+)\s+and\s+(?:one|an)\s+(?:other|additional)\s+ability\s+score/i;
+    let compoundMatch = descriptionText.match(compoundPattern);
+
+    if (compoundMatch) {
+        const bonusValueStr = compoundMatch[1]; // e.g., "+1"
+        const abilityNameFull = compoundMatch[2].trim().toLowerCase(); // e.g., "dexterity"
+        const bonusValue = parseInt(bonusValueStr.replace('+', ''), 10);
+
+        if (abilityScoreMap[abilityNameFull]) {
+            identified.fixed.push({ abilityName: abilityScoreMap[abilityNameFull], bonusValue });
+        }
+
+        identified.choices.push({
+            id: `choice_${sourceName.replace(/[^a-zA-Z0-9]/g, '_')}_compound_${identified.choices.length}`,
+            source: sourceName,
+            description: `From "${descriptionText}" - choose one other ability score`, // Using full desc for more context
+            number_of_abilities_to_choose: 1,
+            points_per_ability: bonusValue, // Inferred from the first part
+            total_points_to_allocate: bonusValue,
+            options: uniqueAbilityCodes
+        });
+        return identified; // Successfully parsed as a compound, return to avoid other regexes
+    }
+
+    // New: Handle Half-Elf-like compound pattern: "Your Charisma score increases by 2, and two other ability scores of your choice increase by 1."
+    const halfElfLikeCompoundRegex = /Your (\w+) score increases by (\d+),\s*and\s*(one|two|three|four|five|six)\s+other\s+ability\s+scores(?:\s+of\s+your\s+choice)?\s+increase\s+by\s+(\d+)/i;
+    let halfElfMatch = descriptionText.match(halfElfLikeCompoundRegex);
+
+    if (halfElfMatch) {
+        // Fixed Part
+        const fixedAbilityNameFull = halfElfMatch[1].toLowerCase();
+        const fixedBonusValue = parseInt(halfElfMatch[2], 10);
+        if (abilityScoreMap[fixedAbilityNameFull]) {
+            identified.fixed.push({ abilityName: abilityScoreMap[fixedAbilityNameFull], bonusValue: fixedBonusValue });
+        }
+
+        // Choice Part
+        const numScoresToChoose = parseWordToNumber(halfElfMatch[3].toLowerCase());
+        const choiceBonusValue = parseInt(halfElfMatch[4], 10);
+
+        if (numScoresToChoose > 0 && choiceBonusValue > 0) {
+            identified.choices.push({
+                id: `choice_${sourceName.replace(/[^a-zA-Z0-9]/g, '_')}_halfelf_${identified.choices.length}`,
+                source: sourceName,
+                description: halfElfMatch[0], // Full matched string for description
+                number_of_abilities_to_choose: numScoresToChoose,
+                points_per_ability: choiceBonusValue,
+                total_points_to_allocate: numScoresToChoose * choiceBonusValue,
+                options: uniqueAbilityCodes
+            });
+        }
+        return identified; // Successfully parsed, return early
+    }
+
+    // New Regex for patterns like "+1 to Dexterity" (if not part of the compound pattern handled above)
+    const plusValueToAbilityRegex = /([+-]\d+)\s+to\s+([\w\s]+)/gi;
+    let matchPlusValue;
+    while ((matchPlusValue = plusValueToAbilityRegex.exec(descriptionText)) !== null) {
+        const bonusValueStrPM = matchPlusValue[1]; // e.g., "+1" or "-1"
+        const abilityNameFullPM = matchPlusValue[2].trim().toLowerCase(); // e.g., "dexterity"
+        const bonusValuePM = parseInt(bonusValueStrPM.replace('+', ''), 10);
+
+        if (abilityScoreMap[abilityNameFullPM]) {
+            // Avoid double-adding if a more specific regex like "Your X score increases by Y" also matches.
+            // This is a simple safeguard. More complex logic might be needed if descriptions become very tricky.
+            const alreadyAddedByFixedRegex = identified.fixed.some(
+                f => f.abilityName === abilityScoreMap[abilityNameFullPM] &&
+                     f.bonusValue === bonusValuePM &&
+                     descriptionText.includes(`Your ${abilityNameFullPM} score increases by ${Math.abs(bonusValuePM)}`) // Math.abs for "increases by"
+            );
+            if (!alreadyAddedByFixedRegex) {
+                identified.fixed.push({ abilityName: abilityScoreMap[abilityNameFullPM], bonusValue: bonusValuePM });
+            }
+        }
+    }
+
     // Regex for "Your X score increases by Y."
     const fixedRegex = /Your (\w+) score increases by (\d+)/gi;
     let match;
@@ -794,7 +873,7 @@ function identifyASIs(descriptionText, sourceName, abilityScoreMap) {
                 number_of_abilities_to_choose: numScoresToChoose,
                 points_per_ability: bonusValue,
                 total_points_to_allocate: numScoresToChoose * bonusValue,
-                options: Object.values(abilityScoreMap) // Allows choosing from any ability
+                options: uniqueAbilityCodes // Allows choosing from any ability
             });
         }
     }
@@ -818,7 +897,7 @@ function identifyASIs(descriptionText, sourceName, abilityScoreMap) {
             number_of_abilities_to_choose: 1,
             points_per_ability: bonus1,
             total_points_to_allocate: bonus1,
-            options: Object.values(abilityScoreMap)
+            options: uniqueAbilityCodes
         });
         identified.choices.push({
             id: `choice_${sourceName.replace(/[^a-zA-Z0-9]/g, '_')}_${identified.choices.length}`,
@@ -827,7 +906,7 @@ function identifyASIs(descriptionText, sourceName, abilityScoreMap) {
             number_of_abilities_to_choose: 1,
             points_per_ability: bonus2,
             total_points_to_allocate: bonus2,
-            options: Object.values(abilityScoreMap)
+            options: uniqueAbilityCodes
         });
     }
 
@@ -863,7 +942,7 @@ function identifyASIs(descriptionText, sourceName, abilityScoreMap) {
                 number_of_abilities_to_choose: numToChoose,
                 points_per_ability: bonusValue,
                 total_points_to_allocate: numToChoose * bonusValue,
-                options
+                options // This is already filtered by parseAbilityList
             });
         }
     }
@@ -882,7 +961,7 @@ function identifyASIs(descriptionText, sourceName, abilityScoreMap) {
                 number_of_abilities_to_choose: numToChoose,
                 points_per_ability: bonusValue,
                 total_points_to_allocate: numToChoose * bonusValue,
-                options: Object.values(abilityScoreMap) // Any ability can be chosen
+                options: uniqueAbilityCodes // Any ability can be chosen
             });
         }
     }
@@ -891,11 +970,8 @@ function identifyASIs(descriptionText, sourceName, abilityScoreMap) {
     const allScoresIncreaseRegex = /All (?:of your |your six )?ability scores increase by (\d+)/gi;
     while ((match = allScoresIncreaseRegex.exec(descriptionText)) !== null) {
         const bonusValue = parseInt(match[1], 10);
-        Object.values(abilityScoreMap).forEach(abilityName => {
-            // Only add unique ability names (STR, DEX etc, not str, strength)
-             if (Object.keys(GLOBAL_ABILITY_SCORE_MAP).find(key => GLOBAL_ABILITY_SCORE_MAP[key] === abilityName) === abilityName.toLowerCase() || Object.keys(GLOBAL_ABILITY_SCORE_MAP).length / 2 === Object.values(GLOBAL_ABILITY_SCORE_MAP).filter((v, i, a) => a.indexOf(v) === i).length) { // Heuristic to get unique values
-                identified.fixed.push({ abilityName, bonusValue });
-            }
+        uniqueAbilityCodes.forEach(abilityName => { // Iterate over unique codes
+            identified.fixed.push({ abilityName, bonusValue });
         });
     }
 
@@ -1004,53 +1080,96 @@ function getStatBonuses() {
 
     // Process Background Bonuses
     const backgroundData = characterCreationData.step3_background_selection;
-    if (backgroundData && backgroundData.data) {
-        const backgroundName = backgroundData.name || backgroundData.slug;
-        // Attempt 1: Structured bonuses from backgroundData.data.ability_score_bonuses
-        // Assuming these are always fixed for now. If they can be choices, this needs more logic.
-        if (backgroundData.data.ability_score_bonuses && Array.isArray(backgroundData.data.ability_score_bonuses)) {
+    if (backgroundData) {
+        const backgroundName = backgroundData.name || backgroundData.slug || "Unknown Background";
+
+        // Attempt 1: Structured bonuses from backgroundData.data.ability_score_bonuses (if applicable)
+        // This existing logic can remain if backgroundData.data is a valid path and distinct source
+        if (backgroundData.data && backgroundData.data.ability_score_bonuses && Array.isArray(backgroundData.data.ability_score_bonuses)) {
+            console.log(`[DEBUG] getStatBonuses: Processing structured ASIs from backgroundData.data.ability_score_bonuses for ${backgroundName}`);
             backgroundData.data.ability_score_bonuses.forEach(bonus_info => {
                 if (bonus_info.ability_score && bonus_info.ability_score.name && bonus_info.bonus) {
                     const abilityName = bonus_info.ability_score.name.toLowerCase();
                     const statAbbr = GLOBAL_ABILITY_SCORE_MAP[abilityName];
-                    if (statAbbr && bonuses[statAbbr]) {
+                    if (statAbbr && bonuses[statAbbr] && bonuses[statAbbr].background !== undefined) {
                         bonuses[statAbbr].background += parseInt(bonus_info.bonus, 10);
                     } else {
-                        console.warn(`Unknown ability name in background structured ASI: ${bonus_info.ability_score.name}`);
+                        console.warn(`Unknown ability name or structure in background structured ASI: ${bonus_info.ability_score.name}`);
                     }
                 }
             });
         }
 
-        // Attempt 2: Parse from text descriptions (desc and feature_desc)
-        let combinedBackgroundText = "";
-        if (typeof backgroundData.data.desc === 'string') {
-            combinedBackgroundText += backgroundData.data.desc + " ";
-        }
-        if (typeof backgroundData.data.feature_name === 'string' && typeof backgroundData.data.feature_desc === 'string') {
-             // combinedBackgroundText += backgroundData.data.feature_name + " " + backgroundData.data.feature_desc + " "; // Original
-             combinedBackgroundText += backgroundData.data.feature_desc + " "; // Using only feature_desc as per identifyASIs plan
-        } else if (typeof backgroundData.data.feature_desc === 'string') {
-            combinedBackgroundText += backgroundData.data.feature_desc + " ";
-        }
+        // NEW: Process ASIs from the benefits array
+        let processedBenefitDescs = []; // To track descriptions processed from benefits
+        if (backgroundData.benefits && Array.isArray(backgroundData.benefits)) {
+            console.log(`[DEBUG] getStatBonuses: Processing ASIs from backgroundData.benefits for ${backgroundName}`);
+            backgroundData.benefits.forEach(benefit => {
+                if (benefit.type === "ability_score" && benefit.desc) {
+                    processedBenefitDescs.push(benefit.desc.trim()); // Track for de-duplication with general text
+                    const sourceFullName = `Background Benefit (${backgroundName}): ${benefit.name || 'ASI'}`;
+                    console.log(`[DEBUG] getStatBonuses/backgroundBenefits: Identifying ASIs for '${sourceFullName}'. Desc:`, benefit.desc);
+                    const benefitAsiResult = identifyASIs(benefit.desc, sourceFullName, GLOBAL_ABILITY_SCORE_MAP);
+                    console.log(`[DEBUG] getStatBonuses/backgroundBenefits: Identified ASIs: Fixed:`, JSON.parse(JSON.stringify(benefitAsiResult.fixed)), "Choices:", JSON.parse(JSON.stringify(benefitAsiResult.choices)));
 
-        console.log("[DEBUG] getStatBonuses: Identifying ASIs for background. Combined Text:", combinedBackgroundText);
-        if (combinedBackgroundText.trim()) {
-            const sourceFullName = `Background (${backgroundName})`;
-            const bgAsiResult = identifyASIs(combinedBackgroundText.trim(), sourceFullName, GLOBAL_ABILITY_SCORE_MAP);
-            console.log("[DEBUG] getStatBonuses: Identified ASIs from background text: Fixed:", JSON.parse(JSON.stringify(bgAsiResult.fixed)), "Choices:", JSON.parse(JSON.stringify(bgAsiResult.choices)));
-
-            bgAsiResult.fixed.forEach(fixedBonus => {
-                if (bonuses[fixedBonus.abilityName]) {
-                    bonuses[fixedBonus.abilityName].background += fixedBonus.bonusValue;
+                    benefitAsiResult.fixed.forEach(fixedBonus => {
+                        if (bonuses[fixedBonus.abilityName] && bonuses[fixedBonus.abilityName].background !== undefined) {
+                            bonuses[fixedBonus.abilityName].background += fixedBonus.bonusValue;
+                        } else {
+                             console.warn(`[DEBUG] getStatBonuses/backgroundBenefits: bonuses[${fixedBonus.abilityName}] or .background is undefined for fixed bonus. Stat exists: ${!!bonuses[fixedBonus.abilityName]}`);
+                        }
+                    });
+                    benefitAsiResult.choices.forEach(choice => {
+                        if (!characterCreationData.step4_asi_choices.find(existingChoice => existingChoice.description === choice.description && existingChoice.source.startsWith(`Background Benefit (${backgroundName})`))) {
+                            characterCreationData.step4_asi_choices.push(choice);
+                        } else {
+                            console.log(`[DEBUG] getStatBonuses/backgroundBenefits: Duplicate choice (from benefit) detected and skipped: ${choice.description}`);
+                        }
+                    });
                 }
             });
-            characterCreationData.step4_asi_choices.push(...bgAsiResult.choices);
-        } else {
-            console.log("[DEBUG] getStatBonuses: No combined text for background ASI parsing.");
+        }
+
+        // Attempt 2: Parse from text descriptions (desc and feature_desc from backgroundData.data or backgroundData directly)
+        let combinedBackgroundText = "";
+        const dataContext = backgroundData.data || backgroundData; // Prefer .data if it exists, else use backgroundData directly
+
+        if (typeof dataContext.desc === 'string') {
+            combinedBackgroundText += dataContext.desc + " ";
+        }
+        // Only add feature_desc if it's different from general desc and not already covered by benefits
+        if (typeof dataContext.feature_desc === 'string' && dataContext.feature_desc !== dataContext.desc) {
+            // combinedBackgroundText += dataContext.feature_desc + " "; // This line was commented out in thought, let's keep it for broader check unless it causes issues.
+        }
+
+        const trimmedCombinedText = combinedBackgroundText.trim();
+
+        if (trimmedCombinedText && !processedBenefitDescs.includes(trimmedCombinedText)) {
+            console.log(`[DEBUG] getStatBonuses: Identifying ASIs from background general text for '${backgroundName}'. Combined Text:`, trimmedCombinedText);
+            const sourceFullName = `Background Text (${backgroundName})`; // Differentiate source
+            const bgTextAsiResult = identifyASIs(trimmedCombinedText, sourceFullName, GLOBAL_ABILITY_SCORE_MAP);
+            console.log(`[DEBUG] getStatBonuses/backgroundText: Identified ASIs: Fixed:`, JSON.parse(JSON.stringify(bgTextAsiResult.fixed)), "Choices:", JSON.parse(JSON.stringify(bgTextAsiResult.choices)));
+
+            bgTextAsiResult.fixed.forEach(fixedBonus => {
+                if (bonuses[fixedBonus.abilityName] && bonuses[fixedBonus.abilityName].background !== undefined) {
+                    bonuses[fixedBonus.abilityName].background += fixedBonus.bonusValue;
+                } else {
+                     console.warn(`[DEBUG] getStatBonuses/backgroundText: bonuses[${fixedBonus.abilityName}] or .background is undefined for fixed bonus. Stat exists: ${!!bonuses[fixedBonus.abilityName]}`);
+                }
+            });
+            bgTextAsiResult.choices.forEach(choice => {
+                // Check against choices from benefits AND from other general text parsing
+                if (!characterCreationData.step4_asi_choices.find(existingChoice => existingChoice.description === choice.description && (existingChoice.source.startsWith(`Background Benefit (${backgroundName})`) || existingChoice.source.startsWith(`Background Text (${backgroundName})`)) )) {
+                    characterCreationData.step4_asi_choices.push(choice);
+                } else {
+                    console.log(`[DEBUG] getStatBonuses/backgroundText: Duplicate choice (from text) detected and skipped: ${choice.description}`);
+                }
+            });
+        } else if (trimmedCombinedText && processedBenefitDescs.includes(trimmedCombinedText)) {
+            console.log(`[DEBUG] getStatBonuses: General background text for '${backgroundName}' is identical to an already processed ASI benefit. Skipping general text parsing for ASIs.`);
         }
     } else {
-        console.log("[DEBUG] getStatBonuses: No backgroundData or backgroundData.data found for ASI processing.");
+        console.log("[DEBUG] getStatBonuses: No backgroundData found for ASI processing.");
     }
 
     // The old logic for raceData.ability_score_bonuses is now replaced.
@@ -1107,10 +1226,10 @@ function renderASIChoicesUI() {
         if (pointsRemainingForThis <= 0) {
             li.classList.add('choice-completed');
         }
-        choiceListUl.appendChild(li);
+        asiChoiceListEl.appendChild(li);
     });
 
-    totalRemainingPointsSpan.textContent = characterCreationData.step4_unallocated_asi_points;
+    totalRemainingPointsEl.textContent = characterCreationData.step4_unallocated_asi_points;
 
     // Update displayed choice bonuses on stats
     characterCreationData.step4_ability_scores.forEach(stat => {
