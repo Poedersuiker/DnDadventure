@@ -73,35 +73,42 @@ def load_user(user_id):
 from . import models # models is already imported above for User, keep for db registration
 
 # Function to load/initialize settings from DB
-def load_and_initialize_settings(current_app): # Restored signature
-    with current_app.app_context(): # Uses current_app argument
-        default_model_key = 'DEFAULT_GEMINI_MODEL'
-        try:
-            db_setting = Setting.query.filter_by(key=default_model_key).first()
+def load_and_initialize_settings(current_app):
+    with current_app.app_context():
+        db.create_all()
 
-            if db_setting and db_setting.value: # Check if db_setting.value is not None or empty
-                current_app.config[default_model_key] = db_setting.value
-                current_app.logger.info(f"Loaded '{default_model_key}' from database: {db_setting.value}")
-            else:
-                # Setting not in DB or value is empty, or db_setting itself is None
-                # Initialize from config.py's value
-                value_from_config = current_app.config.get(default_model_key) # This is the value from config.py or instance/config.py
-                if value_from_config: # Ensure there's a value in config.py
-                    if db_setting: # Setting key exists but value is empty/None
-                        db_setting.value = value_from_config
-                        current_app.logger.info(f"Updating empty DB setting for '{default_model_key}' from config.py: {value_from_config}")
-                    else: # Setting key does not exist
-                        db_setting = Setting(key=default_model_key, value=value_from_config)
-                        db.session.add(db_setting)
-                        current_app.logger.info(f"Initialized '{default_model_key}' in database from config.py: {value_from_config}")
-                    
-                    db.session.commit() # Commit changes (add or update)
-                else:
-                    current_app.logger.warning(f"'{default_model_key}' not found in config.py and not initialized in database.")
-        except Exception as e: # Catch broader exceptions during DB operations
+        # Initialize DEFAULT_GEMINI_MODEL setting if it doesn't exist
+        default_model_setting = Setting.query.filter_by(key='DEFAULT_GEMINI_MODEL').first()
+        if not default_model_setting:
+            db.session.add(Setting(key='DEFAULT_GEMINI_MODEL', value=current_app.config.get('DEFAULT_GEMINI_MODEL', 'gemini-1.5-flash')))
+
+        # Initialize CHARACTER_CREATION_DEBUG_MODE setting if it doesn't exist
+        debug_mode_setting = Setting.query.filter_by(key='CHARACTER_CREATION_DEBUG_MODE').first()
+        if not debug_mode_setting:
+            db.session.add(Setting(key='CHARACTER_CREATION_DEBUG_MODE', value='True')) # Store as string 'True'
+
+        try:
+            db.session.commit()
+        except Exception as e:
+            current_app.logger.error(f"Error initializing settings in DB: {e}")
             db.session.rollback()
-            current_app.logger.error(f"Database error during settings initialization for '{default_model_key}': {e}")
-            current_app.logger.info(f"'{default_model_key}' will use the value from config.py if available: {current_app.config.get(default_model_key)}")
+
+        # Load all settings from DB into app.config
+        try:
+            settings_from_db = Setting.query.all()
+            for setting_item in settings_from_db:
+                if setting_item.key == 'CHARACTER_CREATION_DEBUG_MODE':
+                    current_app.config[setting_item.key] = (setting_item.value.lower() == 'true') # Convert to boolean for app.config
+                else:
+                    current_app.config[setting_item.key] = setting_item.value
+            current_app.logger.info("Loaded/Refreshed settings from database into app.config.")
+        except Exception as e:
+            current_app.logger.error(f"Error loading settings from database into app.config: {e}")
+
+        # Fallback for debug mode in app.config if it wasn't loaded (e.g., DB error)
+        if 'CHARACTER_CREATION_DEBUG_MODE' not in current_app.config:
+            current_app.config['CHARACTER_CREATION_DEBUG_MODE'] = True # Default to True (boolean)
+            current_app.logger.warning("CHARACTER_CREATION_DEBUG_MODE defaulted in app.config as it was not loaded from DB.")
 
 # Conditionally call the function after db is initialized and app config is loaded.
 # This prevents it from running during test imports if app.config['TESTING'] is True.

@@ -61,13 +61,22 @@ def creation_wizard():
 
         # This data is primarily for the overall page structure if needed,
         # individual steps will fetch their specific data via AJAX to step_data route.
+
+        # Get the debug mode setting from app.config
+        # It should be a boolean, default to True if not found (though __init__.py should ensure it's there)
+        is_debug_mode_active = current_app.config.get('CHARACTER_CREATION_DEBUG_MODE', True)
+        current_app.logger.info(f"Character creation debug mode is: {is_debug_mode_active}")
+
         wizard_shell_data = {
-            'current_wizard_data': session.get('new_character_data', {})
-            # We could pass initial data for step 1 here if desired,
-            # but current design is for JS to fetch it.
+            'current_wizard_data': session.get('new_character_data', {}),
+            'character_creation_debug_active': is_debug_mode_active # Pass the flag here
         }
         return render_template('character_creation_wizard.html', wizard_shell_data=wizard_shell_data)
 
+    # ... (POST request logic remains the same) ...
+    # Ensure the POST block is correctly structured after this GET block.
+    # The provided snippet only shows the GET part. The existing POST logic should follow.
+    # For example:
     if request.method == 'POST':
         # This POST is intended for the final submission from the wizard's "Finish" button
         char_data = session.get('new_character_data', {})
