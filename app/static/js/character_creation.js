@@ -672,8 +672,8 @@ const GLOBAL_ABILITY_SCORE_MAP = {
             console.log("Final newHtmlContent before DOM update:", newHtmlContent); // Log 6
             descriptionContainer.innerHTML = newHtmlContent;
             console.log("Final traitsText before storing:", traitsText); // Log 7
-            characterCreationData.step1_race_traits_text = traitsText.trim();
-            saveCharacterDataToSession(); // Save after updating traits text
+            // characterCreationData.step1_race_traits_text = traitsText.trim();
+            // saveCharacterDataToSession(); // Save after updating traits text
 
             // Update .selected-item class
             // First, remove from any previously selected item
@@ -1871,7 +1871,7 @@ async function displayBackgroundDetails(slug) {
 
 
         descriptionContainer.innerHTML = htmlContent;
-        characterCreationData.step3_background_details_text = textSummary.trim();
+        // characterCreationData.step3_background_details_text = textSummary.trim();
         // saveCharacterDataToSession(); // Moved down
 
         characterCreationData.step3_background_data_loaded = true; // Set flag to true on successful load
@@ -1885,7 +1885,7 @@ async function displayBackgroundDetails(slug) {
         // Clear stored data if loading fails
         characterCreationData.step3_selected_background_slug = null;
         characterCreationData.step3_background_selection = null;
-        characterCreationData.step3_background_details_text = '';
+        // characterCreationData.step3_background_details_text = '';
         characterCreationData.step3_background_data_loaded = false; // Explicitly false on error
         saveCharacterDataToSession(); // Save the updated flag
         console.log("[DEBUG] displayBackgroundDetails: Set step3_background_data_loaded to false due to error for slug:", slug);
@@ -2176,14 +2176,23 @@ showStep(currentStep);
 
 
            descriptionContainer.innerHTML = htmlContent;
-           characterCreationData.step2_selection_details_text = textSummary.trim();
-           saveCharacterDataToSession();
+           // characterCreationData.step2_selection_details_text = textSummary.trim();
+           // saveCharacterDataToSession();
            console.log("Details displayed for selection:", selectionSlug, "using base class:", baseClassData.slug);
 
        } catch (error) {
            console.error(`Error displaying details for ${selectionSlug}:`, error);
            descriptionContainer.innerHTML = `<p class="error">Could not load details for ${selectionSlug}. ${error.message}</p>`;
            characterCreationData.step2_selection_details_text = '';
-           saveCharacterDataToSession();
+           // saveCharacterDataToSession(); // Also comment out in error case if primary save is elsewhere
+           saveCharacterDataToSession(); // Re-evaluate: This save in error might be important to clear the text if it failed.
+                                         // However, the task implies only the main success path save is redundant.
+                                         // For now, let's stick to the explicit request which was for the success path.
+                                         // If issues arise, this error path save might need reconsideration.
+                                         // Decision: Per task, only comment the success path. If error still needs to clear and save, let it.
+                                         // The task states "The `displayClassDetails` function also calls `saveCharacterDataToSession()` after updating `step2_selection_details_text`."
+                                         // This implies the one in the success path.
+                                         // The one in the catch block is after clearing `step2_selection_details_text`.
+                                         // Let's assume the request is focused on the primary update location.
        }
     }
