@@ -40,6 +40,10 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     characterCreationData.step4_selected_dice_value = characterCreationData.step4_selected_dice_value || null; // To store the currently clicked dice from the pool
     characterCreationData.step4_ability_scores = characterCreationData.step4_ability_scores || ["STR", "DEX", "CON", "INT", "WIS", "CHA"];
     characterCreationData.ability_scores = characterCreationData.ability_scores || {}; // For final calculated scores
+    characterCreationData.step4_asi_choices = characterCreationData.step4_asi_choices || []; // For storing ASI choices
+    characterCreationData.step4_allocated_choice_bonuses = characterCreationData.step4_allocated_choice_bonuses || { STR: 0, DEX: 0, CON: 0, INT: 0, WIS: 0, CHA: 0 };
+    characterCreationData.step4_unallocated_asi_points = characterCreationData.step4_unallocated_asi_points || 0;
+    characterCreationData.step4_asi_choice_details_for_ui = characterCreationData.step4_asi_choice_details_for_ui || [];
     // Step 4 keys
     characterCreationData.step3_selected_background_slug = characterCreationData.step3_selected_background_slug || null;
     characterCreationData.step3_background_selection = characterCreationData.step3_background_selection || null;
@@ -47,6 +51,13 @@ let currentStep = 0; // Start at Step 0 (Introduction)
 
     let selectedRaceSlug = null;
     let selectedClassOrArchetypeSlug = null; // Renamed from selectedClassSlug
+
+const GLOBAL_ABILITY_SCORE_MAP = {
+    "strength": "STR", "dexterity": "DEX", "constitution": "CON",
+    "intelligence": "INT", "wisdom": "WIS", "charisma": "CHA",
+    "str": "STR", "dex": "DEX", "con": "CON",
+    "int": "INT", "wis": "WIS", "cha": "CHA"
+};
 
     const prevButton = document.getElementById('prev-button'); // This ID is now in wizard-top-controls
     const nextButton = document.getElementById('next-button'); // This ID is now in wizard-top-controls
@@ -171,6 +182,10 @@ let currentStep = 0; // Start at Step 0 (Introduction)
             characterCreationData.step4_assigned_stats = {};
             characterCreationData.step4_dice_rolled_once = false;
             characterCreationData.step4_rolled_stats = null;
+            characterCreationData.step4_asi_choices = []; // Reset ASI choices
+            characterCreationData.step4_allocated_choice_bonuses = { STR: 0, DEX: 0, CON: 0, INT: 0, WIS: 0, CHA: 0 };
+            characterCreationData.step4_unallocated_asi_points = 0;
+            characterCreationData.step4_asi_choice_details_for_ui = [];
             saveCharacterDataToSession();
         }
         // Clear race-specific content when leaving step 1
@@ -680,93 +695,423 @@ let currentStep = 0; // Start at Step 0 (Introduction)
 // STEP 3: ABILITY SCORES LOGIC
 // =====================================================================================================================
 
-function getStatBonuses() {
-    const bonuses = {
-        STR: { race: 0, class: 0 }, DEX: { race: 0, class: 0 }, CON: { race: 0, class: 0 },
-        INT: { race: 0, class: 0 }, WIS: { race: 0, class: 0 }, CHA: { race: 0, class: 0 }
-    };
-    const abilityScoreMap = {
-        "strength": "STR", "dexterity": "DEX", "constitution": "CON",
-        "intelligence": "INT", "wisdom": "WIS", "charisma": "CHA"
-    };
+function parseWordToNumber(word) {
+    const map = { "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6 };
+    if (typeof word === 'string') {
+        const lowerWord = word.toLowerCase();
+        if (map[lowerWord] !== undefined) return map[lowerWord];
+    }
+    const num = parseInt(word);
+    return isNaN(num) ? 0 : num;
+}
 
-    function parseAbilityScoreIncrease(description) {
-        if (typeof description !== 'string') return []; // Return empty array for non-string input
-        const matches = [];
-        const regex = /Your (\w+) score increases by (\d+)/gi; // Added global flag
-        let match;
-        while ((match = regex.exec(description)) !== null) {
-            matches.push({
-                abilityName: match[1].toLowerCase(),
-                bonusValue: parseInt(match[2], 10)
-            });
+function parseAbilityList(str, abilityScoreMap) {
+    const abilities = [];
+    if (typeof str !== 'string') return abilities;
+    // Split by comma, "or", "and", and trim parts
+    const parts = str.split(/,\s*|\s+or\s+|\s+and\s+/i);
+    parts.forEach(part => {
+        const cleanPart = part.trim().toLowerCase();
+        if (abilityScoreMap[cleanPart]) {
+            abilities.push(abilityScoreMap[cleanPart]);
         }
-        // Handle cases like "Choose any +2; choose any other +1" or "All of your ability scores increase by 1."
-        // For now, this parser only handles "Your X score increases by Y".
-        // More complex parsing can be added here if needed for other formats.
-        return matches; // Return array of matches
+    });
+    return [...new Set(abilities)]; // Return unique abilities
+}
+
+
+function identifyASIs(descriptionText, sourceName, abilityScoreMap) {
+    const identified = {
+        fixed: [], // { abilityName: "STR", bonusValue: 1 }
+        choices: [] // { id, source, description, number_of_abilities_to_choose, points_per_ability, total_points_to_allocate, options: ["STR", "DEX", ...] }
+    };
+    if (typeof descriptionText !== 'string') return identified;
+
+    // Regex for "Your X score increases by Y."
+    const fixedRegex = /Your (\w+) score increases by (\d+)/gi;
+    let match;
+    while ((match = fixedRegex.exec(descriptionText)) !== null) {
+        const abilityName = match[1].toLowerCase();
+        const bonusValue = parseInt(match[2], 10);
+        if (abilityScoreMap[abilityName]) {
+            identified.fixed.push({ abilityName: abilityScoreMap[abilityName], bonusValue });
+        }
     }
 
-    function processTraits(traits, type) { // type is 'race' or 'class'
+    // Regex for "Choose any ability score to increase by X." or "Increase any one ability score by X."
+    // Example: "Choose any one ability score to increase by 2."
+    // Example: "Increase one ability score of your choice by 2."
+    // Example: "one ability score of your choice increases by 2"
+    const chooseAnyRegex = /(?:Choose any|Increase) (one|two|three|an) ability score(?: of your choice)? (?:to increase |increases )?by (\d+)/gi;
+    while ((match = chooseAnyRegex.exec(descriptionText)) !== null) {
+        const numScoresToChoose = parseWordToNumber(match[1] === 'an' ? 'one' : match[1]);
+        const bonusValue = parseInt(match[2], 10);
+        if (numScoresToChoose > 0 && bonusValue > 0) {
+            identified.choices.push({
+                id: `choice_${sourceName.replace(/[^a-zA-Z0-9]/g, '_')}_${identified.choices.length}`,
+                source: sourceName,
+                description: match[0],
+                number_of_abilities_to_choose: numScoresToChoose,
+                points_per_ability: bonusValue,
+                total_points_to_allocate: numScoresToChoose * bonusValue,
+                options: Object.values(abilityScoreMap) // Allows choosing from any ability
+            });
+        }
+    }
+
+    // Regex for "Increase one ability score by X and another ability score by Y."
+    // Example: "Increase one ability score by 2 and another ability score by 1."
+    const increaseTwoDifferentRegex = /Increase one ability score by (\d+) and another ability score by (\d+)/gi;
+    while ((match = increaseTwoDifferentRegex.exec(descriptionText)) !== null) {
+        const bonus1 = parseInt(match[1], 10);
+        const bonus2 = parseInt(match[2], 10);
+        // This creates two separate choices, as they are distinct applications.
+        // Or, it could be one choice with two parts, but current model is simpler.
+        // For now, let's model as two choices of "pick 1, get X" and "pick 1, get Y, must be different"
+        // This specific phrasing implies two distinct choices that must target different abilities.
+        // A more complex UI might handle this as one "choice group".
+        // For now: two distinct choices, UI later needs to enforce "different".
+        identified.choices.push({
+            id: `choice_${sourceName.replace(/[^a-zA-Z0-9]/g, '_')}_${identified.choices.length}`,
+            source: `${sourceName} (Part 1)`,
+            description: `Increase one ability score by ${bonus1} (must be different from other choice part)`,
+            number_of_abilities_to_choose: 1,
+            points_per_ability: bonus1,
+            total_points_to_allocate: bonus1,
+            options: Object.values(abilityScoreMap)
+        });
+        identified.choices.push({
+            id: `choice_${sourceName.replace(/[^a-zA-Z0-9]/g, '_')}_${identified.choices.length}`,
+            source: `${sourceName} (Part 2)`,
+            description: `Increase another ability score by ${bonus2} (must be different from other choice part)`,
+            number_of_abilities_to_choose: 1,
+            points_per_ability: bonus2,
+            total_points_to_allocate: bonus2,
+            options: Object.values(abilityScoreMap)
+        });
+    }
+
+    // Regex for "Your X, Y, and Z scores each increase by N."
+    const multipleSpecificScoresRegex = /Your ([\w\s,]+(?:and \w+)?) scores each increase by (\d+)/gi;
+    while ((match = multipleSpecificScoresRegex.exec(descriptionText)) !== null) {
+        const abilitiesListStr = match[1];
+        const bonusValue = parseInt(match[2], 10);
+        const abilities = parseAbilityList(abilitiesListStr, abilityScoreMap);
+        abilities.forEach(abilityName => {
+            if (abilityScoreMap[abilityName.toLowerCase()]) { // Ensure mapping before pushing
+                 identified.fixed.push({ abilityName: abilityScoreMap[abilityName.toLowerCase()], bonusValue });
+            } else if (Object.values(abilityScoreMap).includes(abilityName)) { // If already an ABBR
+                 identified.fixed.push({ abilityName: abilityName, bonusValue });
+            }
+        });
+    }
+
+
+    // Regex for "Choose N ability scores from [list] to increase by Y"
+    // Example: "Choose two ability scores from Strength, Dexterity, or Constitution to increase by 1."
+    const chooseNFromListRegex = /Choose (one|two|three|four|five|six) ability scores from ([\w\s,]+(?:or \w+)?) to increase by (\d+)/gi;
+    while ((match = chooseNFromListRegex.exec(descriptionText)) !== null) {
+        const numToChoose = parseWordToNumber(match[1]);
+        const abilityListStr = match[2];
+        const bonusValue = parseInt(match[3], 10);
+        const options = parseAbilityList(abilityListStr, abilityScoreMap);
+        if (numToChoose > 0 && bonusValue > 0 && options.length > 0) {
+            identified.choices.push({
+                id: `choice_${sourceName.replace(/[^a-zA-Z0-9]/g, '_')}_${identified.choices.length}`,
+                source: sourceName,
+                description: match[0],
+                number_of_abilities_to_choose: numToChoose,
+                points_per_ability: bonusValue,
+                total_points_to_allocate: numToChoose * bonusValue,
+                options
+            });
+        }
+    }
+
+    // Regex for "Two ability scores of your choice increase by 1." (general choice)
+    // Example: "Two ability scores of your choice increase by 1."
+    const NAbilitiesOfChoiceRegex = /(\w+) ability scores of your choice increase by (\d+)/gi;
+    while ((match = NAbilitiesOfChoiceRegex.exec(descriptionText)) !== null) {
+        const numToChoose = parseWordToNumber(match[1]);
+        const bonusValue = parseInt(match[2], 10);
+        if (numToChoose > 0 && bonusValue > 0) {
+            identified.choices.push({
+                id: `choice_${sourceName.replace(/[^a-zA-Z0-9]/g, '_')}_${identified.choices.length}`,
+                source: sourceName,
+                description: match[0],
+                number_of_abilities_to_choose: numToChoose,
+                points_per_ability: bonusValue,
+                total_points_to_allocate: numToChoose * bonusValue,
+                options: Object.values(abilityScoreMap) // Any ability can be chosen
+            });
+        }
+    }
+
+    // Regex for "All of your ability scores increase by 1."
+    const allScoresIncreaseRegex = /All (?:of your |your six )?ability scores increase by (\d+)/gi;
+    while ((match = allScoresIncreaseRegex.exec(descriptionText)) !== null) {
+        const bonusValue = parseInt(match[1], 10);
+        Object.values(abilityScoreMap).forEach(abilityName => {
+            // Only add unique ability names (STR, DEX etc, not str, strength)
+             if (Object.keys(GLOBAL_ABILITY_SCORE_MAP).find(key => GLOBAL_ABILITY_SCORE_MAP[key] === abilityName) === abilityName.toLowerCase() || Object.keys(GLOBAL_ABILITY_SCORE_MAP).length / 2 === Object.values(GLOBAL_ABILITY_SCORE_MAP).filter((v, i, a) => a.indexOf(v) === i).length) { // Heuristic to get unique values
+                identified.fixed.push({ abilityName, bonusValue });
+            }
+        });
+    }
+
+    // Regex for "Your Charisma score increases by 2, and your Dexterity score increases by 1."
+    const specificScoresMixedBonusesRegex = /Your (\w+) score increases by (\d+), and your (\w+) score increases by (\d+)/gi;
+    while ((match = specificScoresMixedBonusesRegex.exec(descriptionText)) !== null) {
+        const abilityName1 = match[1].toLowerCase();
+        const bonusValue1 = parseInt(match[2], 10);
+        const abilityName2 = match[3].toLowerCase();
+        const bonusValue2 = parseInt(match[4], 10);
+
+        if (abilityScoreMap[abilityName1]) {
+            identified.fixed.push({ abilityName: abilityScoreMap[abilityName1], bonusValue: bonusValue1 });
+        }
+        if (abilityScoreMap[abilityName2]) {
+            identified.fixed.push({ abilityName: abilityScoreMap[abilityName2], bonusValue: bonusValue2 });
+        }
+    }
+
+    // Regex for simple format like "Strength +1, Dexterity +1"
+    const simpleFormatRegex = /(\w+)\s*\+\s*(\d+)/gi;
+    // Need to be careful this doesn't overlap too much with previous, or run it on segments.
+    // For now, assume it's applied to the whole description.
+    // To avoid double counting if "Your Strength score increases by 1" (already caught) and "Strength +1" (this regex) are both present
+    // this should ideally be run if other patterns *don't* match, or fixed bonuses are stored in a way that prevents duplicates for same stat.
+    // Current logic: add all found, then sum up. So duplicates are fine if they mean "total +2 from two sources".
+    // But if it's the same sentence rephrased, it's an issue.
+    // For now, let's assume descriptions are not intentionally redundant in this way.
+    while ((match = simpleFormatRegex.exec(descriptionText)) !== null) {
+        const abilityName = match[1].toLowerCase();
+        const bonusValue = parseInt(match[2], 10);
+        if (abilityScoreMap[abilityName]) {
+            // Check if this exact bonus was already added by a more specific regex like "Your X score increases by Y"
+            // This is a simple check; a more robust solution might involve processing text in stages or more complex state.
+            const alreadyAdded = identified.fixed.some(f => f.abilityName === abilityScoreMap[abilityName] && f.bonusValue === bonusValue && descriptionText.includes(`Your ${match[1]} score increases by ${bonusValue}`));
+            if (!alreadyAdded) {
+                 identified.fixed.push({ abilityName: abilityScoreMap[abilityName], bonusValue });
+            }
+        }
+    }
+
+
+    return identified;
+}
+
+
+function getStatBonuses() {
+    characterCreationData.step4_asi_choices = []; // Clear previous choices
+    const bonuses = {
+        STR: { race: 0, class: 0, background: 0 }, DEX: { race: 0, class: 0, background: 0 }, CON: { race: 0, class: 0, background: 0 },
+        INT: { race: 0, class: 0, background: 0 }, WIS: { race: 0, class: 0, background: 0 }, CHA: { race: 0, class: 0, background: 0 }
+    };
+    // const abilityScoreMap = GLOBAL_ABILITY_SCORE_MAP; // Use global map
+
+    function processTraits(traits, type, sourceNamePrefix) { // type is 'race' or 'class'
         if (traits && Array.isArray(traits)) {
             traits.forEach(trait => {
                 if (trait.name === "Ability Score Increase" && trait.desc) {
-                    const parsedBonusesArray = parseAbilityScoreIncrease(trait.desc); // Returns an array
-                    if (parsedBonusesArray.length > 0) {
-                        parsedBonusesArray.forEach(parsedBonus => { // Iterate over each found bonus
-                            const statAbbr = abilityScoreMap[parsedBonus.abilityName];
-                            if (statAbbr) {
-                                if (type === 'race') {
-                                    bonuses[statAbbr].race += parsedBonus.bonusValue;
-                                } else if (type === 'class') {
-                                    bonuses[statAbbr].class += parsedBonus.bonusValue;
-                                }
-                            } else {
-                                console.warn(`Unknown ability name: ${parsedBonus.abilityName} from trait: ${trait.name} in description: "${trait.desc}"`);
-                            }
-                        });
-                    } else {
-                        // This console log can be noisy if many traits don't match the simple pattern.
-                        // console.log(`Could not parse any ASI from description: "${trait.desc}" in trait: ${trait.name}`);
-                    }
+                    const sourceFullName = `${sourceNamePrefix}: ${trait.name}`;
+                    const asiResult = identifyASIs(trait.desc, sourceFullName, GLOBAL_ABILITY_SCORE_MAP);
+
+                    asiResult.fixed.forEach(fixedBonus => {
+                        if (bonuses[fixedBonus.abilityName]) {
+                            if (type === 'race') bonuses[fixedBonus.abilityName].race += fixedBonus.bonusValue;
+                            else if (type === 'class') bonuses[fixedBonus.abilityName].class += fixedBonus.bonusValue;
+                        }
+                    });
+                    characterCreationData.step4_asi_choices.push(...asiResult.choices);
                 }
             });
         }
     }
 
     // Process Race Bonuses from traits
-    if (characterCreationData.step1_race_selection && characterCreationData.step1_race_selection.traits) {
-        processTraits(characterCreationData.step1_race_selection.traits, 'race');
+    if (characterCreationData.step1_race_selection) {
+        const raceName = characterCreationData.step1_race_selection.name || characterCreationData.step1_race_selection.slug;
+        if (characterCreationData.step1_race_selection.traits) {
+            processTraits(characterCreationData.step1_race_selection.traits, 'race', `Race (${raceName})`);
+        }
     }
-    if (characterCreationData.step1_parent_race_selection && characterCreationData.step1_parent_race_selection.traits) {
-        processTraits(characterCreationData.step1_parent_race_selection.traits, 'race');
+    if (characterCreationData.step1_parent_race_selection) {
+        const parentRaceName = characterCreationData.step1_parent_race_selection.name || characterCreationData.step1_parent_race_selection.slug;
+        if (characterCreationData.step1_parent_race_selection.traits) {
+             processTraits(characterCreationData.step1_parent_race_selection.traits, 'race', `Parent Race (${parentRaceName})`);
+        }
     }
+
 
     // Process Class Bonuses from traits
-    if (characterCreationData.step2_selected_base_class && characterCreationData.step2_selected_base_class.traits) {
-        processTraits(characterCreationData.step2_selected_base_class.traits, 'class');
+    if (characterCreationData.step2_selected_base_class) {
+        const className = characterCreationData.step2_selected_base_class.name || characterCreationData.step2_selected_base_class.slug;
+        if (characterCreationData.step2_selected_base_class.traits) {
+            processTraits(characterCreationData.step2_selected_base_class.traits, 'class', `Class (${className})`);
+        }
     }
-    if (characterCreationData.step2_selected_archetype && characterCreationData.step2_selected_archetype.traits) {
-        processTraits(characterCreationData.step2_selected_archetype.traits, 'class');
+    if (characterCreationData.step2_selected_archetype) {
+        const archetypeName = characterCreationData.step2_selected_archetype.name || characterCreationData.step2_selected_archetype.slug;
+        if (characterCreationData.step2_selected_archetype.traits) {
+            processTraits(characterCreationData.step2_selected_archetype.traits, 'class', `Archetype (${archetypeName})`);
+        }
     }
 
-    // The old logic for raceData.ability_score_bonuses is now replaced by parsing traits.
+
+    // Process Background Bonuses
+    const backgroundData = characterCreationData.step3_background_selection;
+    if (backgroundData && backgroundData.data) {
+        const backgroundName = backgroundData.name || backgroundData.slug;
+        // Attempt 1: Structured bonuses from backgroundData.data.ability_score_bonuses
+        // Assuming these are always fixed for now. If they can be choices, this needs more logic.
+        if (backgroundData.data.ability_score_bonuses && Array.isArray(backgroundData.data.ability_score_bonuses)) {
+            backgroundData.data.ability_score_bonuses.forEach(bonus_info => {
+                if (bonus_info.ability_score && bonus_info.ability_score.name && bonus_info.bonus) {
+                    const abilityName = bonus_info.ability_score.name.toLowerCase();
+                    const statAbbr = GLOBAL_ABILITY_SCORE_MAP[abilityName];
+                    if (statAbbr && bonuses[statAbbr]) {
+                        bonuses[statAbbr].background += parseInt(bonus_info.bonus, 10);
+                    } else {
+                        console.warn(`Unknown ability name in background structured ASI: ${bonus_info.ability_score.name}`);
+                    }
+                }
+            });
+        }
+
+        // Attempt 2: Parse from text descriptions (desc and feature_desc)
+        let combinedBackgroundText = "";
+        if (typeof backgroundData.data.desc === 'string') {
+            combinedBackgroundText += backgroundData.data.desc + " ";
+        }
+        if (typeof backgroundData.data.feature_desc === 'string') { // feature_name not used by parser
+            combinedBackgroundText += backgroundData.data.feature_desc + " ";
+        }
+
+        if (combinedBackgroundText.trim()) {
+            const sourceFullName = `Background (${backgroundName})`;
+            const bgAsiResult = identifyASIs(combinedBackgroundText.trim(), sourceFullName, GLOBAL_ABILITY_SCORE_MAP);
+
+            bgAsiResult.fixed.forEach(fixedBonus => {
+                if (bonuses[fixedBonus.abilityName]) {
+                    bonuses[fixedBonus.abilityName].background += fixedBonus.bonusValue;
+                }
+            });
+            characterCreationData.step4_asi_choices.push(...bgAsiResult.choices);
+        }
+    }
+
+    // The old logic for raceData.ability_score_bonuses is now replaced.
     // If the API also provides structured bonuses in `ability_score_bonuses` AND these are meant to be
     // *additional* to what's in traits, then that logic would need to be reinstated or merged carefully.
     // Based on the task, parsing traits is the primary source now.
 
-    console.log("Calculated Stat Bonuses from traits:", JSON.parse(JSON.stringify(bonuses)));
+    console.log("Calculated Stat Bonuses (Race, Class, Background):", JSON.parse(JSON.stringify(bonuses)));
+    console.log("Identified ASI Choices:", JSON.parse(JSON.stringify(characterCreationData.step4_asi_choices)));
     return bonuses;
 }
+
+function prepareASIChoiceDataForUI() {
+    characterCreationData.step4_unallocated_asi_points = 0;
+    characterCreationData.step4_asi_choice_details_for_ui = [];
+
+    if (characterCreationData.step4_asi_choices && characterCreationData.step4_asi_choices.length > 0) {
+        characterCreationData.step4_asi_choices.forEach(choice => {
+            characterCreationData.step4_unallocated_asi_points += choice.total_points_to_allocate;
+            characterCreationData.step4_asi_choice_details_for_ui.push({
+                ...choice, // Spread existing choice properties
+                allocated_points_for_this_choice: 0 // Initialize points used for this specific choice
+            });
+        });
+    }
+    console.log("Prepared ASI Choice Data for UI:", characterCreationData.step4_asi_choice_details_for_ui, "Total Unallocated:", characterCreationData.step4_unallocated_asi_points);
+}
+
+function renderASIChoicesUI() {
+    const choiceListUl = document.getElementById('asi-choice-list');
+    const totalRemainingPointsSpan = document.getElementById('total-remaining-choice-points');
+
+    if (!choiceListUl || !totalRemainingPointsSpan) {
+        console.error("ASI Choice UI elements not found!");
+        return;
+    }
+
+    choiceListUl.innerHTML = ''; // Clear previous list
+
+    characterCreationData.step4_asi_choice_details_for_ui.forEach(choice => {
+        const li = document.createElement('li');
+        const pointsRemainingForThis = choice.total_points_to_allocate - choice.allocated_points_for_this_choice;
+        li.textContent = `${choice.source}: ${choice.description} (Points remaining for this choice: ${pointsRemainingForThis})`;
+        if (pointsRemainingForThis <= 0) {
+            li.classList.add('choice-completed');
+        }
+        choiceListUl.appendChild(li);
+    });
+
+    totalRemainingPointsSpan.textContent = characterCreationData.step4_unallocated_asi_points;
+
+    // Update displayed choice bonuses on stats
+    characterCreationData.step4_ability_scores.forEach(stat => {
+        const choiceBonusEl = document.querySelector(`.stat-bonus.choice-bonus[data-stat='${stat}']`);
+        if (choiceBonusEl) {
+            const bonusValue = characterCreationData.step4_allocated_choice_bonuses[stat] || 0;
+            choiceBonusEl.textContent = `+${bonusValue}`;
+            choiceBonusEl.style.display = bonusValue > 0 ? 'inline-block' : 'none';
+        }
+    });
+}
+
+
+function handleAsiAllocateClick(event) {
+    const targetStat = event.target.dataset.stat;
+    const asiAllocationMessageEl = document.getElementById('asi-allocation-message');
+
+    if (characterCreationData.step4_unallocated_asi_points <= 0) {
+        asiAllocationMessageEl.textContent = "No more ASI points to allocate.";
+        asiAllocationMessageEl.style.display = 'block';
+        return;
+    }
+
+    // Find the first available ASI choice to allocate from
+    let currentChoiceToAllocateFrom = null;
+    for (let i = 0; i < characterCreationData.step4_asi_choice_details_for_ui.length; i++) {
+        if (characterCreationData.step4_asi_choice_details_for_ui[i].allocated_points_for_this_choice < characterCreationData.step4_asi_choice_details_for_ui[i].total_points_to_allocate) {
+            currentChoiceToAllocateFrom = characterCreationData.step4_asi_choice_details_for_ui[i];
+            break;
+        }
+    }
+
+    if (!currentChoiceToAllocateFrom) {
+        asiAllocationMessageEl.textContent = "Error: Unallocated points exist, but no available choice found.";
+        asiAllocationMessageEl.style.display = 'block';
+        console.error("Mismatch between unallocated_asi_points and available choices.");
+        return;
+    }
+
+    // Simplified logic: each click allocates +1.
+    // More complex logic would be needed to enforce "points_per_ability > 1" for a single click
+    // or "number_of_abilities_to_choose" if a choice requires picking multiple distinct abilities.
+    // For now, this is a pool of +1s. The description on the choice list item provides context.
+
+    characterCreationData.step4_unallocated_asi_points -= 1;
+    currentChoiceToAllocateFrom.allocated_points_for_this_choice += 1;
+    characterCreationData.step4_allocated_choice_bonuses[targetStat] = (characterCreationData.step4_allocated_choice_bonuses[targetStat] || 0) + 1;
+
+    asiAllocationMessageEl.textContent = `+1 allocated to ${targetStat} from choice: ${currentChoiceToAllocateFrom.source}.`;
+    asiAllocationMessageEl.style.display = 'block';
+
+    renderASIChoicesUI();
+    renderMainStatDisplay(); // Update totals which now include choice bonuses
+    saveCharacterDataToSession();
+    updateAndSaveFinalAbilityScores(); // Recalculate final scores
+}
+
 
 function getVitalStats() {
     let vital = [];
     const raceData = characterCreationData.step1_race_selection;
     const classData = characterCreationData.step2_selected_base_class;
-    const abilityScoreMap = {
-        "strength": "STR", "dexterity": "DEX", "constitution": "CON",
-        "intelligence": "INT", "wisdom": "WIS", "charisma": "CHA"
-    };
+    // const abilityScoreMap = GLOBAL_ABILITY_SCORE_MAP; // Use global map
 
     // Always suggest Constitution
     if (!vital.includes("CON")) vital.push("CON");
@@ -775,7 +1120,7 @@ function getVitalStats() {
     if (classData) {
         // Primary ability for spellcasters
         if (classData.spellcasting && classData.spellcasting.spellcasting_ability) {
-            const primaryCastingStat = abilityScoreMap[classData.spellcasting.spellcasting_ability.name.toLowerCase()];
+            const primaryCastingStat = GLOBAL_ABILITY_SCORE_MAP[classData.spellcasting.spellcasting_ability.name.toLowerCase()];
             if (primaryCastingStat && !vital.includes(primaryCastingStat)) {
                 vital.push(primaryCastingStat);
             }
@@ -803,7 +1148,7 @@ function getVitalStats() {
     if (raceData && raceData.ability_score_bonuses && Array.isArray(raceData.ability_score_bonuses)) {
         raceData.ability_score_bonuses.forEach(bonus => {
             if (bonus.bonus > 0) {
-                const statAbbr = abilityScoreMap[bonus.ability_score.name.toLowerCase()];
+                const statAbbr = GLOBAL_ABILITY_SCORE_MAP[bonus.ability_score.name.toLowerCase()];
                 if (statAbbr && !vital.includes(statAbbr)) {
                     vital.push(statAbbr);
                 }
@@ -819,7 +1164,7 @@ function getVitalStats() {
         let prioritizedVital = [];
         // 1. Primary casting stat (if any)
         if (classData && classData.spellcasting && classData.spellcasting.spellcasting_ability) {
-            const primaryCastingStat = abilityScoreMap[classData.spellcasting.spellcasting_ability.name.toLowerCase()];
+            const primaryCastingStat = GLOBAL_ABILITY_SCORE_MAP[classData.spellcasting.spellcasting_ability.name.toLowerCase()];
             if (primaryCastingStat && uniqueVital.includes(primaryCastingStat)) {
                 prioritizedVital.push(primaryCastingStat);
             }
@@ -845,7 +1190,7 @@ function getVitalStats() {
         if (raceData && raceData.ability_score_bonuses) {
             for (const bonus of raceData.ability_score_bonuses) {
                 if (prioritizedVital.length < 3 && bonus.bonus > 0) {
-                    const statAbbr = abilityScoreMap[bonus.ability_score.name.toLowerCase()];
+                    const statAbbr = GLOBAL_ABILITY_SCORE_MAP[bonus.ability_score.name.toLowerCase()];
                     if (statAbbr && uniqueVital.includes(statAbbr) && !prioritizedVital.includes(statAbbr)) {
                         prioritizedVital.push(statAbbr);
                     }
@@ -884,12 +1229,16 @@ function updateDisplayedBonuses() {
     characterCreationData.step4_ability_scores.forEach(stat => {
         const raceBonusEl = document.querySelector(`.stat-bonus.race-bonus[data-stat='${stat}']`);
         const classBonusEl = document.querySelector(`.stat-bonus.class-bonus[data-stat='${stat}']`);
+        const backgroundBonusEl = document.querySelector(`.stat-bonus.background-bonus[data-stat='${stat}']`); // New element
 
         if (raceBonusEl) {
-            raceBonusEl.textContent = `+${characterCreationData.step4_stat_bonuses[stat].race || 0}`;
+            raceBonusEl.textContent = `+${(characterCreationData.step4_stat_bonuses[stat] && characterCreationData.step4_stat_bonuses[stat].race) || 0}`;
         }
         if (classBonusEl) {
-            classBonusEl.textContent = `+${characterCreationData.step4_stat_bonuses[stat].class || 0}`;
+            classBonusEl.textContent = `+${(characterCreationData.step4_stat_bonuses[stat] && characterCreationData.step4_stat_bonuses[stat].class) || 0}`;
+        }
+        if (backgroundBonusEl) { // Update background bonus display
+            backgroundBonusEl.textContent = `+${(characterCreationData.step4_stat_bonuses[stat] && characterCreationData.step4_stat_bonuses[stat].background) || 0}`;
         }
     });
 }
@@ -903,9 +1252,12 @@ function renderMainStatDisplay() {
         assignedValueEl.textContent = assignedValue;
 
         if (assignedValue !== '-') {
-            const raceBonus = characterCreationData.step4_stat_bonuses[stat].race || 0;
-            const classBonus = characterCreationData.step4_stat_bonuses[stat].class || 0;
-            totalEl.textContent = parseInt(assignedValue) + raceBonus + classBonus;
+            const raceBonus = (characterCreationData.step4_stat_bonuses[stat] && characterCreationData.step4_stat_bonuses[stat].race) || 0;
+            const classBonus = (characterCreationData.step4_stat_bonuses[stat] && characterCreationData.step4_stat_bonuses[stat].class) || 0;
+            const backgroundBonus = (characterCreationData.step4_stat_bonuses[stat] && characterCreationData.step4_stat_bonuses[stat].background) || 0;
+            const choiceBonusTotal = (characterCreationData.step4_allocated_choice_bonuses && characterCreationData.step4_allocated_choice_bonuses[stat]) ?
+                parseInt(characterCreationData.step4_allocated_choice_bonuses[stat]) : 0;
+            totalEl.textContent = parseInt(assignedValue) + raceBonus + classBonus + backgroundBonus + choiceBonusTotal;
         } else {
             totalEl.textContent = '-';
         }
@@ -1062,7 +1414,11 @@ function handleStatAssignmentClick(event) {
 }
 
 function loadStep3Logic() {
-    console.log("Loading Step 3 logic...");
+    console.log("Loading Step 3 logic (Ability Scores)...");
+    characterCreationData.step4_allocated_choice_bonuses = { STR: 0, DEX: 0, CON: 0, INT: 0, WIS: 0, CHA: 0 };
+    characterCreationData.step4_unallocated_asi_points = 0;
+    // characterCreationData.step4_asi_choices is cleared in getStatBonuses
+
     // Initialize/retrieve DOM elements for step 3
     // const vitalStatsDisplay = document.getElementById('vital-stats-display'); // Moved down
     const standardArrayDisplay = document.getElementById('standard-array-display');
@@ -1074,19 +1430,25 @@ function loadStep3Logic() {
 
     // Initialize stat blocks for assignment listeners
     const statBlocks = document.querySelectorAll('.stat-block .stat-assigned-value');
+    const asiAllocateButtons = document.querySelectorAll('.asi-allocate-button');
+
 
     // Get the vitalStatsDisplay element
     const vitalStatsDisplay = document.getElementById('vital-stats-display');
 
-    // Calculate and store/update bonuses and vital stats
+    // Calculate and store/update bonuses and vital stats (including ASI choices)
     // Ensure raceData and classData are available in characterCreationData as expected by helper functions
     if (characterCreationData.step1_race_selection && characterCreationData.step2_selected_base_class) {
         characterCreationData.step4_stat_bonuses = getStatBonuses(); // Uses data from characterCreationData
         characterCreationData.step4_vital_stats = getVitalStats();   // Uses data from characterCreationData
     } else {
         // Fallback if race/class data not yet fully loaded or selected
-        console.warn("Race or Class data not fully available for Step 3 calculations. Using defaults.");
-        characterCreationData.step4_stat_bonuses = { STR: { race: 0, class: 0 }, DEX: { race: 0, class: 0 }, CON: { race: 0, class: 0 }, INT: { race: 0, class: 0 }, WIS: { race: 0, class: 0 }, CHA: { race: 0, class: 0 } };
+        console.warn("Race or Class data not fully available for Step 4 calculations. Using defaults for bonuses.");
+        // Ensure the default structure includes background
+        characterCreationData.step4_stat_bonuses = {
+            STR: { race: 0, class: 0, background: 0 }, DEX: { race: 0, class: 0, background: 0 }, CON: { race: 0, class: 0, background: 0 },
+            INT: { race: 0, class: 0, background: 0 }, WIS: { race: 0, class: 0, background: 0 }, CHA: { race: 0, class: 0, background: 0 }
+        };
         characterCreationData.step4_vital_stats = ["CON"]; // Default vital stat
     }
     saveCharacterDataToSession(); // Save after calculating these
@@ -1102,6 +1464,10 @@ function loadStep3Logic() {
 
     // Display stat bonuses (now using the calculated ones)
     updateDisplayedBonuses(); // This function should read from characterCreationData.step4_stat_bonuses
+
+    // Prepare and Render ASI Choice UI
+    prepareASIChoiceDataForUI();
+    renderASIChoicesUI();
 
     // The rest of loadStep3Logic (rendering dice pool, main stat display, button states) follows...
     // Determine which set of stats to use (standard or rolled)
@@ -1143,6 +1509,12 @@ function loadStep3Logic() {
         newBlock.addEventListener('click', handleStatAssignmentClick);
     });
 
+    asiAllocateButtons.forEach(button => {
+        const newButton = button.cloneNode(true);
+        button.parentNode.replaceChild(newButton, button);
+        newButton.addEventListener('click', handleAsiAllocateClick);
+    });
+
     console.log("Step 3 characterCreationData:", JSON.parse(JSON.stringify(characterCreationData)));
     saveCharacterDataToSession();
     updateAndSaveFinalAbilityScores(); // Update final scores after Step 3 logic is loaded
@@ -1172,10 +1544,16 @@ function updateAndSaveFinalAbilityScores() {
         const classBonus = (characterCreationData.step4_stat_bonuses[stat] && characterCreationData.step4_stat_bonuses[stat].class) ?
             parseInt(characterCreationData.step4_stat_bonuses[stat].class) : 0;
 
-        characterCreationData.ability_scores[stat] = baseValue + raceBonus + classBonus;
+        const backgroundBonus = (characterCreationData.step4_stat_bonuses[stat] && characterCreationData.step4_stat_bonuses[stat].background) ?
+            parseInt(characterCreationData.step4_stat_bonuses[stat].background) : 0;
+
+        const choiceBonus = (characterCreationData.step4_allocated_choice_bonuses && characterCreationData.step4_allocated_choice_bonuses[stat]) ?
+            parseInt(characterCreationData.step4_allocated_choice_bonuses[stat]) : 0;
+
+        characterCreationData.ability_scores[stat] = baseValue + raceBonus + classBonus + backgroundBonus + choiceBonus;
     });
 
-    console.log("Final ability_scores calculated:", characterCreationData.ability_scores);
+    console.log("Final ability_scores calculated (incl choice):", characterCreationData.ability_scores);
     saveCharacterDataToSession();
 }
 
