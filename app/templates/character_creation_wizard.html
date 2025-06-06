@@ -235,6 +235,7 @@
   // Ensure wizard_shell_data is available and defaults gracefully if not.
   const IS_CHARACTER_CREATION_DEBUG_ACTIVE = {{ wizard_shell_data.character_creation_debug_active | default(false) | tojson }};
 </script>
+<script src="{{ url_for('static', filename='js/general.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character_creation.js') }}"></script>
 
 <!-- Embedded styles removed, moved to static/css/style.css -->
