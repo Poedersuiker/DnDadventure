@@ -84,6 +84,185 @@ function loadStep5Logic() {
     updateSkillChoiceInfo(); // Initial update
     // Persist initial proficiencies from race, class (if any direct), background
     persistInitialProficiencies();
+
+    // Display Skills & Proficiencies Debug Texts if active
+    if (typeof IS_CHARACTER_CREATION_DEBUG_ACTIVE !== 'undefined' && IS_CHARACTER_CREATION_DEBUG_ACTIVE) {
+        const debugContainer = document.getElementById('skills-proficiencies-debug-container');
+        const debugOutputEl = document.getElementById('skills-proficiencies-debug-output');
+
+        if (debugContainer && debugOutputEl) {
+            debugContainer.style.display = 'block';
+            let debugTexts = "Debug Data for Skills & Proficiencies:\n";
+            debugTexts += "=======================================\n\n";
+
+            const ccData = window.character_data || {}; // Use character_data as per step5.js context
+
+            debugTexts += "Race Data Related:\n";
+            // In step5.js, race data is usually under window.character_data.race_data
+            // However, characterCreationData structure might place it under step1_race_selection
+            // Let's try to access it from common locations within window.character_data
+            const raceDataSource = ccData.step1_race_selection || ccData.race_data || {};
+            debugTexts += "  Race: " + (raceDataSource.name || 'Unknown Race') + "\n";
+            if (raceDataSource.proficiencies && raceDataSource.proficiencies.length > 0) {
+                debugTexts += "  Proficiencies Granted by Race (from .proficiencies list):\n";
+                raceDataSource.proficiencies.forEach(prof => {
+                    debugTexts += "    - " + (typeof prof === 'string' ? prof : JSON.stringify(prof)) + "\n";
+                });
+            } else {
+                debugTexts += "  No specific proficiencies listed under race_data.proficiencies.\n";
+            }
+            const raceTraits = raceDataSource.traits || [];
+            if (raceTraits.length > 0) {
+                 debugTexts += "  Race Traits (text implying skills/proficiencies):\n";
+                 let foundRelevantTrait = false;
+                 raceTraits.forEach(trait => {
+                    if (trait.name && trait.desc && (trait.desc.toLowerCase().includes('skill') || trait.desc.toLowerCase().includes('proficien'))) {
+                        debugTexts += "    - Trait: " + trait.name + ": " + trait.desc + "\n";
+                        foundRelevantTrait = true;
+                    }
+                 });
+                 if (!foundRelevantTrait) {
+                    debugTexts += "    No traits found with descriptions explicitly mentioning 'skill' or 'proficien'.\n";
+                 }
+            } else {
+                debugTexts += "  No traits listed for the race.\n";
+            }
+            debugTexts += "\n";
+
+            debugTexts += "Class Data Related:\n";
+            const classDataSource = ccData.step2_selected_base_class || ccData.class_data || {};
+            debugTexts += "  Class: " + (classDataSource.name || 'Unknown Class') + "\n";
+
+            // Fixed proficiencies directly from class
+            const classFixedProficiencies = (classDataSource.proficiencies || []).filter(p => SKILL_DEFINITIONS[p]); // Filter for actual skills
+            if (classFixedProficiencies && classFixedProficiencies.length > 0) {
+                debugTexts += "  Fixed Skill Proficiencies Granted by Class (from .proficiencies list that are skills):\n";
+                classFixedProficiencies.forEach(prof => {
+                    debugTexts += "    - " + (typeof prof === 'string' ? prof : JSON.stringify(prof)) + "\n";
+                });
+            } else {
+                debugTexts += "  No fixed SKILL proficiencies listed under class_data.proficiencies.\n";
+            }
+
+            // Other proficiencies (armor, weapons, tools) from class_data.proficiencies
+            const otherClassProficiencies = (classDataSource.proficiencies || []).filter(p => !SKILL_DEFINITIONS[p]);
+             if (otherClassProficiencies && otherClassProficiencies.length > 0) {
+                debugTexts += "  Other Proficiencies (Armor, Weapons, Tools) from Class:\n";
+                otherClassProficiencies.forEach(prof => {
+                    debugTexts += "    - " + (typeof prof === 'string' ? prof : JSON.stringify(prof)) + "\n";
+                });
+            }
+
+            const skillChoicesSource = classDataSource.skill_choices || (classDataSource.data ? classDataSource.data.skill_choices : null);
+            if (skillChoicesSource) {
+                debugTexts += "  Skill Choices from Class:\n";
+                debugTexts += "    Choose: " + (skillChoicesSource.choose !== undefined ? skillChoicesSource.choose : 'N/A') + "\n";
+                debugTexts += "    From: [" + (skillChoicesSource.from || []).join(", ") + "]\n";
+                if (skillChoicesSource.desc) { // If there's a description for the choice block
+                     debugTexts += "    Choice Description: " + skillChoicesSource.desc + "\n";
+                }
+            } else {
+                debugTexts += "  No skill_choices section found for the class.\n";
+            }
+
+            const savingThrowsSource = classDataSource.saving_throw_proficiencies || (classDataSource.data ? classDataSource.data.saving_throw_proficiencies : []);
+            if (savingThrowsSource && savingThrowsSource.length > 0) {
+                debugTexts += "  Saving Throw Proficiencies: [" + savingThrowsSource.join(", ") + "]\n";
+            } else {
+                debugTexts += "  No saving throw proficiencies listed for the class.\n";
+            }
+
+            const archetypeDataSource = ccData.step2_selected_archetype || {};
+            if (archetypeDataSource.name) {
+                debugTexts += "  Archetype: " + (archetypeDataSource.name || 'Unknown Archetype') + "\n";
+                const archetypeFixedProficiencies = (archetypeDataSource.proficiencies || []).filter(p => SKILL_DEFINITIONS[p]);
+                if (archetypeFixedProficiencies && archetypeFixedProficiencies.length > 0) {
+                    debugTexts += "  Fixed Skill Proficiencies Granted by Archetype:\n";
+                    archetypeFixedProficiencies.forEach(prof => {
+                        debugTexts += "    - " + (typeof prof === 'string' ? prof : JSON.stringify(prof)) + "\n";
+                    });
+                }
+                const otherArchetypeProficiencies = (archetypeDataSource.proficiencies || []).filter(p => !SKILL_DEFINITIONS[p]);
+                if (otherArchetypeProficiencies && otherArchetypeProficiencies.length > 0) {
+                    debugTexts += "  Other Proficiencies (Armor, Weapons, Tools) from Archetype:\n";
+                    otherArchetypeProficiencies.forEach(prof => {
+                        debugTexts += "    - " + (typeof prof === 'string' ? prof : JSON.stringify(prof)) + "\n";
+                    });
+                }
+                const archetypeTraits = archetypeDataSource.traits || [];
+                if (archetypeTraits.length > 0) {
+                    debugTexts += "  Archetype Traits (text implying skills/proficiencies):\n";
+                    let foundRelevantArchetypeTrait = false;
+                    archetypeTraits.forEach(trait => {
+                        if (trait.name && trait.desc && (trait.desc.toLowerCase().includes('skill') || trait.desc.toLowerCase().includes('proficien'))) {
+                            debugTexts += "    - Trait: " + trait.name + ": " + trait.desc + "\n";
+                            foundRelevantArchetypeTrait = true;
+                        }
+                    });
+                    if (!foundRelevantArchetypeTrait) {
+                        debugTexts += "    No archetype traits found with descriptions explicitly mentioning 'skill' or 'proficien'.\n";
+                    }
+                }
+            }
+            debugTexts += "\n";
+
+            debugTexts += "Background Data Related:\n";
+            const backgroundDataSource = ccData.step3_background_selection || ccData.background_data || {};
+            debugTexts += "  Background: " + (backgroundDataSource.name || 'Unknown Background') + "\n";
+
+            const backgroundSkillProficiencies = (backgroundDataSource.proficiencies || []).filter(p => SKILL_DEFINITIONS[p]);
+            if (backgroundSkillProficiencies && backgroundSkillProficiencies.length > 0) {
+                debugTexts += "  Skill Proficiencies Granted by Background:\n";
+                backgroundSkillProficiencies.forEach(prof => {
+                    debugTexts += "    - " + (typeof prof === 'string' ? prof : JSON.stringify(prof)) + "\n";
+                });
+            } else {
+                debugTexts += "  No SKILL proficiencies listed under background_data.proficiencies.\n";
+            }
+            const otherBackgroundProficiencies = (backgroundDataSource.proficiencies || []).filter(p => !SKILL_DEFINITIONS[p]);
+            if (otherBackgroundProficiencies && otherBackgroundProficiencies.length > 0) {
+                debugTexts += "  Other Proficiencies (Tools, Languages) from Background:\n";
+                otherBackgroundProficiencies.forEach(prof => {
+                    debugTexts += "    - " + (typeof prof === 'string' ? prof : JSON.stringify(prof)) + "\n";
+                });
+            }
+
+            const backgroundDataContext = backgroundDataSource.data || backgroundDataSource;
+            if (backgroundDataContext.desc) {
+                debugTexts += "  Background Description (desc field): " + backgroundDataContext.desc + "\n";
+            }
+            if (backgroundDataContext.feature_name && backgroundDataContext.feature_desc) {
+                debugTexts += "  Background Feature ("+ backgroundDataContext.feature_name +"): " + backgroundDataContext.feature_desc + "\n";
+            }
+            const backgroundBenefits = backgroundDataContext.benefits || [];
+            if (backgroundBenefits.length > 0) {
+                debugTexts += "  Background Benefits (text implying skills/proficiencies):\n";
+                let foundRelevantBenefit = false;
+                backgroundBenefits.forEach(benefit => {
+                    if (benefit.name && benefit.desc && (benefit.desc.toLowerCase().includes('skill') || benefit.desc.toLowerCase().includes('proficien') || benefit.type === 'skill' || benefit.type === 'proficiency')) {
+                        debugTexts += "    - Benefit: " + benefit.name + " (Type: " + (benefit.type || 'N/A') + "): " + benefit.desc + "\n";
+                        foundRelevantBenefit = true;
+                    }
+                });
+                if (!foundRelevantBenefit) {
+                    debugTexts += "    No benefits found with descriptions/types explicitly mentioning skills or proficiencies.\n";
+                }
+            }
+            debugTexts += "\n";
+
+            debugTexts += "Current Character Skill Proficiencies (after all processing in Step 5, from window.character_data.skill_proficiencies):\n";
+            if (ccData.skill_proficiencies && ccData.skill_proficiencies.length > 0) {
+                 debugTexts += "  [" + ccData.skill_proficiencies.join(", ") + "]\n";
+            } else {
+                 debugTexts += "  None listed in window.character_data.skill_proficiencies.\n";
+            }
+
+            debugOutputEl.textContent = debugTexts;
+        } else {
+            if (!debugContainer) console.error("Debug container 'skills-proficiencies-debug-container' not found.");
+            if (!debugOutputEl) console.error("Debug output element 'skills-proficiencies-debug-output' not found.");
+        }
+    }
 }
 
 function persistInitialProficiencies() {
