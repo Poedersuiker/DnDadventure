@@ -65,12 +65,6 @@
     </div>
 </div>
 
-{# Inside character_creation_wizard.html, before the script tag for character_creation.js #}
-<script>
-  // Pass the debug flag to JavaScript
-  // Ensure wizard_shell_data is available and defaults gracefully if not.
-  const IS_CHARACTER_CREATION_DEBUG_ACTIVE = {{ wizard_shell_data.character_creation_debug_active | default(false) | tojson }};
-</script>
 <script src="{{ url_for('static', filename='js/general.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character_creation_step0.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character_creation.js') }}"></script>
