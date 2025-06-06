@@ -114,6 +114,27 @@ function loadStep5Logic() {
     step5DebugTextsCollection = []; // Clear debug messages for this run
     addStep5DebugMessage("loadStep5Logic", "Starting Step 5 logic execution.");
 
+    // Ensure proficiency objects and extra arrays are initialized
+    if (!characterCreationData.saving_throw_proficiencies) {
+        characterCreationData.saving_throw_proficiencies = {};
+    }
+    if (!characterCreationData.saving_throw_proficiencies.extra) {
+        characterCreationData.saving_throw_proficiencies.extra = [];
+    }
+    if (!characterCreationData.skill_proficiencies) {
+        characterCreationData.skill_proficiencies = {}; // This was an array, should be object to hold 'base' and 'extra'
+    }
+     // If skill_proficiencies was an array (old structure), migrate or re-initialize
+    if (Array.isArray(characterCreationData.skill_proficiencies)) {
+        characterCreationData.skill_proficiencies = { base: characterCreationData.skill_proficiencies, extra: [] };
+    } else if (!characterCreationData.skill_proficiencies.base) {
+        characterCreationData.skill_proficiencies.base = [];
+    }
+    if (!characterCreationData.skill_proficiencies.extra) {
+        characterCreationData.skill_proficiencies.extra = [];
+    }
+
+
     if (!characterCreationData) {
         addStep5DebugMessage("loadStep5Logic", "characterCreationData is not available. Aborting.", {error: true});
         console.error("characterCreationData is not available for Step 5!");
@@ -149,9 +170,41 @@ function loadStep5Logic() {
             const row = savingThrowsTableBody.insertRow();
             row.insertCell().textContent = fullAbilityName;
             row.insertCell().textContent = baseScore;
-            row.insertCell().textContent = ''; // Was 'N/A' for Race
-            row.insertCell().textContent = isProficient ? `Yes (+${proficiencyBonusValue})` : ''; // Was 'No' for Class
-            row.insertCell().textContent = ''; // Was 'N/A' for Background
+            row.insertCell().textContent = ''; // Race contribution column
+            row.insertCell().textContent = isProficient ? `Yes (+${proficiencyBonusValue})` : ''; // Class contribution column
+
+            // Add Extra Proficiency Checkbox Column
+            const extraProfCell = row.insertCell();
+            const extraProfCheckbox = document.createElement('input');
+            extraProfCheckbox.type = 'checkbox';
+            extraProfCheckbox.id = `saving-throw-extra-prof-${abilityAbbr}`;
+            extraProfCheckbox.disabled = true; // Disabled by default
+            extraProfCheckbox.dataset.ability = abilityAbbr; // Store ability for event listener
+
+            // Check if this saving throw is granted by the class
+            if (isProficient) { // isProficient here means class proficiency
+                extraProfCheckbox.disabled = false;
+            }
+
+            // Check if already selected as extra
+            if (characterCreationData.saving_throw_proficiencies.extra.includes(fullAbilityName)) {
+                extraProfCheckbox.checked = true;
+            }
+
+            extraProfCheckbox.addEventListener('change', function() {
+                const abilityFullName = ABILITY_SCORE_FULL_NAMES[this.dataset.ability];
+                if (this.checked) {
+                    if (!characterCreationData.saving_throw_proficiencies.extra.includes(abilityFullName)) {
+                        characterCreationData.saving_throw_proficiencies.extra.push(abilityFullName);
+                    }
+                } else {
+                    characterCreationData.saving_throw_proficiencies.extra = characterCreationData.saving_throw_proficiencies.extra.filter(st => st !== abilityFullName);
+                }
+                renderStep5DebugInfo(); // Update debug info on change
+            });
+            extraProfCell.appendChild(extraProfCheckbox);
+
+            row.insertCell().textContent = ''; // Background contribution column (usually none for ST)
             row.insertCell().textContent = totalScore;
 
             addStep5DebugMessage("SavingThrowsPopulation", `Processed ${fullAbilityName}`, {
@@ -168,8 +221,12 @@ function loadStep5Logic() {
         console.error("Skills table body not found!");
     } else {
         skillsTableBody.innerHTML = ''; // Clear existing rows
-        const chosenSkillProficiencies = (characterCreationData.skill_proficiencies || []).map(s => s.toLowerCase());
-        addStep5DebugMessage("SkillsPopulation", "User chosen skill proficiencies (lowercase).", {chosenSkillProficiencies});
+        // Ensure 'base' exists for chosen skills
+        if (!characterCreationData.skill_proficiencies.base) {
+            characterCreationData.skill_proficiencies.base = [];
+        }
+        const chosenSkillProficiencies = (characterCreationData.skill_proficiencies.base || []).map(s => s.toLowerCase());
+        addStep5DebugMessage("SkillsPopulation", "User chosen skill proficiencies (lowercase from base).", {chosenSkillProficiencies});
 
         for (const skillName in SKILL_LIST) {
             if (SKILL_LIST.hasOwnProperty(skillName)) {
@@ -275,9 +332,74 @@ function loadStep5Logic() {
 
                 // Determine proficientByBackground for the column display
                 // proficientByBackground was already determined above.
-                row.insertCell().textContent = proficientByBackground ? 'Yes' : ''; // Was 'No'
+                row.insertCell().textContent = proficientByBackground ? 'Yes' : '';
 
-                row.insertCell().textContent = isOverallProficient ? `Yes (+${proficiencyBonusValue})` : ''; // Was 'No'
+                // Add Extra Proficiency Checkbox Column for Skills
+                const skillExtraProfCell = row.insertCell();
+                const skillExtraProfCheckbox = document.createElement('input');
+                skillExtraProfCheckbox.type = 'checkbox';
+                skillExtraProfCheckbox.id = `skill-extra-prof-${skillName.replace(/\s+/g, '-')}`;
+                skillExtraProfCheckbox.disabled = true; // Disabled by default
+                skillExtraProfCheckbox.dataset.skillName = skillName;
+
+                // Determine if checkbox should be enabled
+                // Enable if skill is granted by race, class, or background options
+                let canBeGrantedByRace = false;
+                let canBeGrantedByClass = false;
+                let canBeGrantedByBackground = false;
+
+                // Check Race: Direct grant or if race offers choices (need to define how race choices are stored)
+                // For now, using existing proficientByRace as a proxy for "available from race"
+                if (proficientByRace) canBeGrantedByRace = true;
+                // TODO: Add specific check for race *options* if characterCreationData.step1_race_selection.skill_proficiency_options exists
+
+                // Check Class: Direct grant or if class offers choices
+                const classSkillOptionsText = characterCreationData.step2_selected_base_class?.prof_skills || "";
+                // This checks if the skill is part of the general text blob of class skills.
+                // A more precise check would be against a list of *choosable* skills if available.
+                if (classSkillOptionsText.toLowerCase().includes(skillName.toLowerCase())) {
+                    canBeGrantedByClass = true;
+                }
+                // If class grants specific skill proficiencies (not choices), proficientByClass would be true
+                if (proficientByClass) canBeGrantedByClass = true;
+
+
+                // Check Background: Direct grant or if background offers choices
+                const backgroundBenefits = characterCreationData.step3_background_selection?.benefits || [];
+                for (const benefit of backgroundBenefits) {
+                    if (benefit.type === "skill_proficiency" && benefit.desc) {
+                        if (benefit.desc.toLowerCase().includes(skillName.toLowerCase())) {
+                            canBeGrantedByBackground = true;
+                            break;
+                        }
+                    }
+                }
+                // If background grants specific skill proficiencies, proficientByBackground would be true
+                if (proficientByBackground) canBeGrantedByBackground = true;
+
+                if (canBeGrantedByRace || canBeGrantedByClass || canBeGrantedByBackground) {
+                    skillExtraProfCheckbox.disabled = false;
+                }
+
+                // Check if already selected as extra
+                if (characterCreationData.skill_proficiencies.extra.includes(skillName)) {
+                    skillExtraProfCheckbox.checked = true;
+                }
+
+                skillExtraProfCheckbox.addEventListener('change', function() {
+                    const currentSkillName = this.dataset.skillName;
+                    if (this.checked) {
+                        if (!characterCreationData.skill_proficiencies.extra.includes(currentSkillName)) {
+                            characterCreationData.skill_proficiencies.extra.push(currentSkillName);
+                        }
+                    } else {
+                        characterCreationData.skill_proficiencies.extra = characterCreationData.skill_proficiencies.extra.filter(sk => sk !== currentSkillName);
+                    }
+                    renderStep5DebugInfo(); // Update debug info on change
+                });
+                skillExtraProfCell.appendChild(skillExtraProfCheckbox);
+
+                row.insertCell().textContent = isOverallProficient ? `Yes (+${proficiencyBonusValue})` : '';
                 row.insertCell().textContent = totalScore;
 
                 addStep5DebugMessage("SkillsPopulation", `Processed Skill: ${skillName}`, {
