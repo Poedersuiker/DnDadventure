@@ -2,7 +2,6 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     const totalSteps = 9; // Last actual step number for choices
 
     // Global variables for character creation
-    let allRacesData = null;
     let allClassesData = null; // Added for Step 2
     let allBackgroundsData = null;
     let characterCreationData;
@@ -51,7 +50,6 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     characterCreationData.step3_background_data_loaded = characterCreationData.step3_background_data_loaded || false;
 
 
-    let selectedRaceSlug = null;
     let selectedClassOrArchetypeSlug = null; // Renamed from selectedClassSlug
 
 let asiDebugTextsCollection = []; // To store texts for debug display
@@ -228,18 +226,47 @@ let asiDebugTextsCollection = []; // To store texts for debug display
             }
             // Special handling for Step 1 (Race Selection)
             if (stepNumber === 1) {
-                if (!allRacesData) {
-                    loadRaceStepData(); // Fetch data if not already fetched
-                } else {
-                    populateRaceList(allRacesData); // Repopulate if data exists
+                const step1ContentDiv = document.getElementById('step-1');
+                // Check if content is already loaded by looking for specific elements expected from the HTML, e.g., a known ID from the loaded content
+                if (step1ContentDiv && !step1ContentDiv.querySelector('#race-list-container')) {
+                    fetch('/static/character_creation/step1_race_selection.html')
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Network response was not ok for step1_race_selection.html');
+                            }
+                            return response.text();
+                        })
+                        .then(html => {
+                            step1ContentDiv.innerHTML = html;
+                            // Now that the HTML structure is loaded, call the function to populate race data
+                            if (typeof loadRaceStepData === 'function') {
+                                loadRaceStepData(); // This function is in character_creation_step1.js
+                            } else {
+                                console.error('loadRaceStepData function not found. Ensure character_creation_step1.js is loaded.');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching or loading Step 1 HTML:', error);
+                            if (step1ContentDiv) {
+                                step1ContentDiv.innerHTML = '<p class="error-message">Error loading race selection content. Please try refreshing or contact support.</p>';
+                            }
+                        });
+                } else if (step1ContentDiv && step1ContentDiv.querySelector('#race-list-container')) {
+                    // Content is already loaded, just ensure data is populated/refreshed.
+                    // loadRaceStepData itself handles the logic of fetching vs using existing data.
+                    if (typeof loadRaceStepData === 'function') {
+                        loadRaceStepData();
+                        // Optional: If a race was previously selected (e.g. characterCreationData.step1_race_selection exists),
+                        // and you want to re-highlight it or re-display its details, you might need to call
+                        // a function from character_creation_step1.js here that handles that.
+                        // For example, if selectedRaceSlug is maintained in character_creation_step1.js,
+                        // that script could have a function to re-apply selection based on characterCreationData.
+                    } else {
+                        console.error('loadRaceStepData function not found on subsequent load. Ensure character_creation_step1.js is loaded.');
+                    }
+                } else if (!step1ContentDiv) {
+                    console.error("Step 1 content div ('step-1') not found in the DOM.");
                 }
-               if (selectedRaceSlug) {
-                   const selectedLi = document.querySelector(`#race-selection-list li[data-slug="${selectedRaceSlug}"]`);
-                   const raceDescContainer = document.getElementById('race-description-container');
-                   if (selectedLi && raceDescContainer && (raceDescContainer.innerHTML === '' || raceDescContainer.innerHTML.includes('Loading details for'))) {
-                       handleRaceOrSubraceClick({ target: selectedLi });
-                   }
-               }
             } else if (stepNumber === 2) {
                if (!allClassesData) {
                    loadClassStepData();
@@ -335,55 +362,45 @@ let asiDebugTextsCollection = []; // To store texts for debug display
 
     nextButton.addEventListener('click', async () => {
         // Store data if moving from Step 1
-        if (currentStep === 1 && selectedRaceSlug) {
-            try {
-                // 1. Fetch the complete data for the selectedRaceSlug
-                const raceResponse = await fetch(`/api/v2/races/${selectedRaceSlug}/`);
-                if (!raceResponse.ok) {
-                    throw new Error(`Failed to fetch race data for ${selectedRaceSlug}: ${raceResponse.status}`);
-                }
-                const raceData = await raceResponse.json();
+        // selectedRaceSlug is now managed in character_creation_step1.js
+        // We rely on characterCreationData.step1_race_selection being populated by step 1's logic.
+        if (currentStep === 1) {
+            if (!characterCreationData.step1_race_selection) {
+                alert("Please select a race before proceeding.");
+                return;
+            }
+            // Data fetching for race/parent race is now primarily handled in character_creation_step1.js.
+            // This section will now mostly ensure data is saved or perform final validation if needed.
+            // The detailed fetch logic previously here has been removed.
 
-                // 2. Store this fetched data in characterCreationData.step1_race_selection
-                characterCreationData.step1_race_selection = raceData;
-
-                // 3. Check if the fetched data has a subrace_of field
-                if (raceData.subrace_of) {
-                    // 4.a Extract the parent race slug
+            // Fallback example: if parent race data wasn't loaded in step1.js, try here.
+            // This is more of a safeguard; ideally, step1.js handles all its data population.
+            const raceData = characterCreationData.step1_race_selection;
+            if (raceData && raceData.subrace_of && !characterCreationData.step1_parent_race_selection) {
+                console.warn("Parent race slug present but parent race data not loaded by Step 1 logic. Attempting fallback fetch.");
+                try {
                     const parentRaceUrlParts = raceData.subrace_of.split('/').filter(part => part);
-                    const parentRaceSlug = parentRaceUrlParts.pop();
+                    const parentRaceSlugFromData = parentRaceUrlParts.pop();
 
-                    if (parentRaceSlug) {
-                        // 4.b Fetch the complete data for the parent race
-                        const parentRaceResponse = await fetch(`/api/v2/races/${parentRaceSlug}/`);
+                    if (parentRaceSlugFromData) {
+                        const parentRaceResponse = await fetch(`/api/v2/races/${parentRaceSlugFromData}/`);
                         if (!parentRaceResponse.ok) {
-                            throw new Error(`Failed to fetch parent race data for ${parentRaceSlug}: ${parentRaceResponse.status}`);
+                            throw new Error(`Failed to fetch parent race data for ${parentRaceSlugFromData}: ${parentRaceResponse.status}`);
                         }
                         const parentRaceData = await parentRaceResponse.json();
-                        // 4.c Store this parent race data
                         characterCreationData.step1_parent_race_selection = parentRaceData;
-                    } else {
-                        console.warn("Could not extract parent race slug from:", raceData.subrace_of);
-                        characterCreationData.step1_parent_race_selection = null;
+                        console.log("Fallback: Parent race data fetched and stored on Next button click.");
                     }
-                } else {
-                    // 4.d If it's not a subrace, ensure step1_parent_race_selection is cleared
-                    characterCreationData.step1_parent_race_selection = null;
+                } catch (error) {
+                     console.error("Error during fallback parent race fetch:", error);
+                     // Decide if this error is critical enough to halt progression
                 }
-
-                // 5. Log the characterCreationData object
-                console.log("Updated characterCreationData:", characterCreationData);
-                saveCharacterDataToSession(); // Save after Step 1 data processing
-
-            } catch (error) {
-                console.error("Error processing race selection:", error);
-                // Optionally, display an error to the user and/or prevent moving to the next step
-                // alert(`Error: ${error.message}. Please try again.`);
-                // return; // Prevent moving to next step
             }
-        } else if (currentStep === 1 && !selectedRaceSlug) {
-            alert("Please select a race before proceeding.");
-            return;
+            // End of fallback example.
+
+            console.log("Step 1 data (race selection) seems okay. Proceeding to save.", characterCreationData);
+            saveCharacterDataToSession(); // Save the state which should include race data from step1.js
+
         }
         // Logic for Step 2: Class/Archetype Selection
         else if (currentStep === 2) {
@@ -481,200 +498,6 @@ let asiDebugTextsCollection = []; // To store texts for debug display
             // finalizeCharacter();
         }
     });
-
-    // --- New Functions for Step 1: Race Selection ---
-
-    async function loadRaceStepData() {
-        const raceListContainer = document.getElementById('race-list-container');
-        try {
-            const response = await fetch('/api/v2/races/');
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            const data = await response.json(); // data is now the array itself
-            allRacesData = data; // Assign the array directly
-
-            if (!Array.isArray(allRacesData)) {
-                console.warn('Race data is not an array after fetch:', allRacesData);
-                // Display error in UI as this is an unexpected format from the API
-                if(raceListContainer) raceListContainer.innerHTML = '<p>Error: Race data is not in the expected format.</p>';
-                allRacesData = []; // Initialize to empty array if the response is not as expected
-            }
-
-            populateRaceList(allRacesData); // Pass the array to the population function
-        } catch (error) {
-            console.error("Could not load race data:", error);
-            if(raceListContainer) raceListContainer.innerHTML = '<p>Error loading races. Please try again later.</p>';
-            allRacesData = []; // Ensure it's an empty array on error to prevent further issues
-        }
-    }
-
-    function populateRaceList(racesData) { // racesData is allRacesData
-        const raceListContainer = document.getElementById('race-list-container');
-        if (!raceListContainer) {
-            console.error("Race list container not found!");
-            return;
-        }
-        raceListContainer.innerHTML = ''; // Clear previous content
-
-        const parentRaces = [];
-        const subracesByParentSlug = {};
-
-        // Segregate races and subraces
-        racesData.forEach(raceItem => {
-            if (raceItem.data && raceItem.data.subrace_of && typeof raceItem.data.subrace_of === 'string' && raceItem.data.subrace_of.trim() !== '') {
-                const parentSlug = getSlugFromUrl(raceItem.data.subrace_of);
-                if (parentSlug) {
-                    if (!subracesByParentSlug[parentSlug]) {
-                        subracesByParentSlug[parentSlug] = [];
-                    }
-                    subracesByParentSlug[parentSlug].push(raceItem);
-                } else {
-                    // Could be a parent race if subrace_of is present but invalid, or log warning
-                    console.warn(`Could not extract parent slug from subrace_of URL: ${raceItem.data.subrace_of} for item ${raceItem.slug}`);
-                    parentRaces.push(raceItem); // Treat as parent if slug extraction fails but field exists
-                }
-            } else {
-                parentRaces.push(raceItem);
-            }
-        });
-
-        const raceSelectionList = document.createElement('ul');
-        raceSelectionList.id = 'race-selection-list';
-
-        // Populate parent races and their subraces
-        parentRaces.forEach(parentRaceItem => {
-            const raceLi = document.createElement('li');
-            raceLi.textContent = (parentRaceItem.data && parentRaceItem.data.name) ? parentRaceItem.data.name : parentRaceItem.slug;
-            raceLi.dataset.slug = parentRaceItem.slug;
-            raceSelectionList.appendChild(raceLi);
-
-            const currentSubraces = subracesByParentSlug[parentRaceItem.slug];
-            if (currentSubraces && currentSubraces.length > 0) {
-                const subraceUl = document.createElement('ul');
-                subraceUl.className = 'subrace-list'; // For styling indentation
-
-                currentSubraces.forEach(subraceItem => {
-                    const subLi = document.createElement('li');
-                    subLi.textContent = (subraceItem.data && subraceItem.data.name) ? subraceItem.data.name : subraceItem.slug;
-                    subLi.dataset.slug = subraceItem.slug;
-                    subLi.dataset.parentRaceSlug = parentRaceItem.slug; // Set parent slug
-                    subLi.classList.add('subrace-item'); // For styling
-                    subraceUl.appendChild(subLi);
-                });
-                raceLi.appendChild(subraceUl); // Append subrace list to parent race's li
-            }
-        });
-
-        raceListContainer.appendChild(raceSelectionList);
-        // Re-attach event listener to the new list
-        raceSelectionList.addEventListener('click', handleRaceOrSubraceClick);
-    }
-
-    async function handleRaceOrSubraceClick(event) { // Made async
-        const clickedLi = event.target.closest('li'); // Get the actual LI that was clicked or contains the click target
-
-        if (!clickedLi || !clickedLi.dataset || !clickedLi.dataset.slug) {
-            // Click was not on a valid race/subrace list item or its child
-            return;
-        }
-
-        const slug = clickedLi.dataset.slug;
-        selectedRaceSlug = slug; // Update the global selected slug
-
-        // Find the item (race or subrace) in the flat allRacesData list
-        // allRacesData stores objects like { slug: "...", data: { actual race/subrace properties } }
-        const selectedItem = allRacesData.find(item => item.slug === slug);
-
-        const descriptionContainer = document.getElementById('race-description-container');
-        if (!descriptionContainer) {
-            console.error('Race description container not found!');
-            return;
-        }
-        descriptionContainer.innerHTML = ''; // Clear previous content
-
-        if (selectedItem && selectedItem.data) {
-            const mainDesc = selectedItem.data.desc;
-            let newHtmlContent = '';
-
-            if (mainDesc) {
-                newHtmlContent += `<h5>Description</h5><p>${mainDesc}</p>`;
-            }
-
-            newHtmlContent += '<h5>Traits</h5>';
-            let traitsText = '';
-            if (mainDesc) {
-                traitsText += `Description:\n${mainDesc}\n\n`;
-            }
-            traitsText += 'Traits:\n'; // This will be for the selected race/subrace
-
-            if (selectedItem.data.traits && Array.isArray(selectedItem.data.traits)) {
-                selectedItem.data.traits.forEach(trait => {
-                    newHtmlContent += `<h6>${trait.name}</h6><p>${trait.desc}</p>`;
-                    traitsText += `${trait.name}\n${trait.desc}\n\n`;
-                });
-            }
-
-            // --- Parent Race Trait Handling ---
-            const parentRaceSlug = clickedLi.dataset.parentRaceSlug;
-            if (parentRaceSlug) {
-                try {
-                    const response = await fetch(`/api/v2/races/${parentRaceSlug}/`);
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status} for parent race ${parentRaceSlug}`);
-                    }
-                    const parentRaceFullData = await response.json();
-                    console.log("Fetched parentRaceFullData:", parentRaceFullData); // Log 1
-                    // const parentRaceData = parentRaceFullData.data; // Original
-                    const parentRaceData = parentRaceFullData; // Attempted Fix
-                    console.log("Using parentRaceData:", parentRaceData); // Log 3
-
-                    if (parentRaceData && parentRaceData.traits && Array.isArray(parentRaceData.traits)) {
-                        console.log("Parent race traits found:", parentRaceData.traits); // Log 4a
-                        newHtmlContent += `<h5>Parent race traits (${parentRaceData.name || parentRaceSlug})</h5>`;
-                        traitsText += `Parent Race Traits (${parentRaceData.name || parentRaceSlug}):\n`;
-                        parentRaceData.traits.forEach(trait => {
-                            console.log("Processing parent trait - Name:", trait.name, "Desc:", trait.desc); // Log 4b
-                            newHtmlContent += `<h6>${trait.name}</h6><p>${trait.desc}</p>`;
-                            traitsText += `${trait.name}\n${trait.desc}\n\n`;
-                        });
-                    }
-                } catch (error) {
-                    console.error("Could not load parent race data:", error);
-                    newHtmlContent += `<p class="error">Error loading parent race traits: ${error.message}</p>`;
-                    traitsText += `Error loading parent race traits: ${error.message}\n\n`;
-                }
-                console.log("newHtmlContent after parent traits:", newHtmlContent); // Log 5a
-                console.log("traitsText after parent traits:", traitsText); // Log 5b
-            }
-            // --- End Parent Race Trait Handling ---
-
-            console.log("Final newHtmlContent before DOM update:", newHtmlContent); // Log 6
-            descriptionContainer.innerHTML = newHtmlContent;
-            console.log("Final traitsText before storing:", traitsText); // Log 7
-            // characterCreationData.step1_race_traits_text = traitsText.trim();
-            // saveCharacterDataToSession(); // Save after updating traits text
-
-            // Update .selected-item class
-            // First, remove from any previously selected item
-            const currentlySelected = document.querySelector('#race-selection-list .selected-item');
-            if (currentlySelected) {
-                currentlySelected.classList.remove('selected-item');
-            }
-            // Then, add to the newly clicked item
-            clickedLi.classList.add('selected-item');
-            console.log("Selected item displayed:", selectedRaceSlug, selectedItem.data); // For debugging
-            console.log("Formatted traits plain text stored:", characterCreationData.step1_race_traits_text); // Log plain text version
-        } else {
-            console.error(`Data for slug '${slug}' not found or item.data is missing in allRacesData.`);
-            descriptionContainer.textContent = 'Details not found for the selected item.';
-            // Clear selection if item not found or data is missing
-             const currentlySelected = document.querySelector('#race-selection-list .selected-item');
-            if (currentlySelected) {
-                currentlySelected.classList.remove('selected-item');
-            }
-        }
-    }
 
     // --- New Functions for Step 2: Class Selection ---
 

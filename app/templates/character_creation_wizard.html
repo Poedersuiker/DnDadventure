@@ -36,16 +36,7 @@
         </div>
 
         <div id="step-1" class="wizard-step" style="display: none;">
-            <h2>Step 1: Race Selection</h2>
-            <h3>Choose Your Race</h3>
-            <div id="step-1-content">
-                <div id="race-list-container">
-                    <!-- Race list will be populated by JavaScript -->
-                </div>
-                <div id="race-description-container">
-                    <!-- Race description will be populated by JavaScript -->
-                </div>
-            </div>
+            <!-- Content for Step 1 will be loaded here dynamically -->
         </div>
         <div id="step-2" class="wizard-step" style="display: none;">
             <h2>Step 2: Class Selection</h2>
@@ -236,6 +227,7 @@
 <script src="{{ url_for('static', filename='js/general.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character_creation_step0.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character_creation.js') }}"></script>
+<script src="{{ url_for('static', filename='js/character_creation_step1.js') }}"></script>
 
 <!-- Embedded styles removed, moved to static/css/style.css -->
 {% endblock %}
