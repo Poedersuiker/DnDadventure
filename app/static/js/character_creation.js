@@ -3,7 +3,7 @@ let currentStep = 0; // Start at Step 0 (Introduction)
 
     // Global variables for character creation
     let allClassesData = null; // Added for Step 2
-    let allBackgroundsData = null;
+    // let allBackgroundsData = null; // Moved to character_creation_step3.js
     let characterCreationData;
     try {
         const storedData = sessionStorage.getItem('characterCreationData');
@@ -306,18 +306,67 @@ let asiDebugTextsCollection = []; // To store texts for debug display
                 } else if (!step2ContentDiv) {
                     console.error("Step 2 content div ('step-2') not found in the DOM.");
                 }
-            } else if (stepNumber === 4) { // This is Ability Scores, which calls loadStep3Logic
-                loadStep3Logic();
-            } else if (stepNumber === 3) { // This is Backgrounds
-                if (!allBackgroundsData) {
-                    loadBackgroundStepData();
-                } else {
-                    populateBackgroundList(allBackgroundsData);
+            } else if (stepNumber === 3) { // This is Backgrounds (Step 3)
+                const step3ContentDiv = document.getElementById('step-3');
+
+                // Ensure the main step div is visible. This should typically be handled by the generic
+                // currentStepContent.style.display = 'block' earlier, but this is a safeguard.
+                if (step3ContentDiv) {
+                    step3ContentDiv.style.display = 'block';
                 }
-                if (characterCreationData.step3_selected_background_slug) {
-                    displayBackgroundDetails(characterCreationData.step3_selected_background_slug);
+
+                // Check if content needs to be loaded
+                if (step3ContentDiv && !step3ContentDiv.querySelector('#background-list-container')) {
+                    fetch('/static/character_creation/step3_background_selection.html')
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Network response was not ok for step3_background_selection.html');
+                            }
+                            return response.text();
+                        })
+                        .then(html => {
+                            step3ContentDiv.innerHTML = html;
+                            // Ensure visibility AFTER innerHTML update
+                            step3ContentDiv.style.display = 'block';
+
+                            // Now that the HTML structure is loaded, call the function to populate background data
+                            if (typeof loadBackgroundStepData === 'function') {
+                                loadBackgroundStepData(); // This function is in character_creation_step3.js
+                                // If a background was previously selected, re-display its details
+                                if (characterCreationData.step3_selected_background_slug && typeof displayBackgroundDetails === 'function') {
+                                    displayBackgroundDetails(characterCreationData.step3_selected_background_slug);
+                                }
+                            } else {
+                                console.error('loadBackgroundStepData function not found. Ensure character_creation_step3.js is loaded.');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching or loading Step 3 HTML:', error);
+                            if (step3ContentDiv) {
+                                step3ContentDiv.innerHTML = '<p class="error-message">Error loading background selection content. Please try refreshing or contact support.</p>';
+                            }
+                        });
+                } else if (step3ContentDiv && step3ContentDiv.querySelector('#background-list-container')) {
+                    // Content is already loaded
+                    // Ensure visibility again, just in case.
+                    step3ContentDiv.style.display = 'block';
+
+                    // Ensure data is populated/refreshed.
+                    if (typeof loadBackgroundStepData === 'function') {
+                        loadBackgroundStepData(); // From character_creation_step3.js
+                        // If a background was previously selected, re-display its details
+                        if (characterCreationData.step3_selected_background_slug && typeof displayBackgroundDetails === 'function') {
+                            displayBackgroundDetails(characterCreationData.step3_selected_background_slug);
+                        }
+                    } else {
+                        console.error('loadBackgroundStepData function not found on subsequent load for step 3. Ensure character_creation_step3.js is loaded.');
+                    }
+                } else if (!step3ContentDiv) {
+                    console.error("Step 3 content div ('step-3') not found in the DOM.");
                 }
-           }
+            } else if (stepNumber === 4) { // This is Ability Scores, which calls loadStep4Logic (formerly loadStep3Logic)
+                loadStep3Logic(); // TODO: Rename loadStep3Logic to loadStep4Logic if it's purely for step 4. For now, keeping as is.
+            }
             // Update PHB description placeholder for steps > 0
             const phbDescContainer = document.getElementById('phb-description');
             if (phbPlaceholders[stepNumber] !== undefined) {
@@ -1522,252 +1571,6 @@ function updateAndSaveFinalAbilityScores() {
     saveCharacterDataToSession();
 }
 
-// --- New Functions for Step 4: Background Selection ---
-async function loadBackgroundStepData() {
-    const backgroundListContainer = document.getElementById('background-list-container');
-    if (!backgroundListContainer) {
-        console.error("Background list container not found for step 4!");
-        return;
-    }
-    backgroundListContainer.innerHTML = '<p>Loading backgrounds...</p>';
-    allBackgroundsData = []; // Initialize or clear previous data
-
-    let nextUrl = '/api/v2/backgrounds/?limit=50'; // Using a reasonable limit
-
-    try {
-        while (nextUrl) {
-            const response = await fetch(nextUrl);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status} while fetching ${nextUrl}`);
-            }
-            const pageData = await response.json();
-            if (pageData && pageData.results && Array.isArray(pageData.results)) {
-                allBackgroundsData = allBackgroundsData.concat(pageData.results);
-            } else {
-                console.warn("No results found in page data or results is not an array:", pageData);
-            }
-            nextUrl = pageData.next; // Update nextUrl, will be null/undefined if no more pages
-        }
-        console.log("All backgrounds loaded:", allBackgroundsData);
-        populateBackgroundList(allBackgroundsData);
-    } catch (error) {
-        console.error("Could not load background data:", error);
-        if (backgroundListContainer) {
-            backgroundListContainer.innerHTML = `<p class="error">Error loading backgrounds: ${error.message}. Please try refreshing or try again later.</p>`;
-        }
-        allBackgroundsData = []; // Ensure it's an empty array on error
-    }
-}
-
-function populateBackgroundList(backgroundsData) {
-    const backgroundListContainer = document.getElementById('background-list-container');
-    if (!backgroundListContainer) {
-        console.error("Background list container #background-list-container not found in populateBackgroundList!");
-        return;
-    }
-    backgroundListContainer.innerHTML = ''; // Clear previous content
-
-    if (!backgroundsData || backgroundsData.length === 0) {
-        backgroundListContainer.innerHTML = '<p>No backgrounds available or error in loading.</p>';
-        return;
-    }
-
-    const backgroundSelectionList = document.createElement('ul');
-    backgroundSelectionList.id = 'background-selection-list';
-
-    backgroundsData.forEach(item => {
-        // Assuming item structure is { slug: "...", data: { name: "..." } }
-        // or just { slug: "...", name: "..." } directly from some APIs.
-        // The API /api/v2/backgrounds/ provides { slug: "...", name: "...", desc: "..." }
-        // The list from /api/v2/backgrounds/?limit=50 gives { slug: "slug", data: {name:"...", slug:"..."} }
-        // Ensure we are using item.data.slug for API calls and item.data.name for display.
-
-        // Determine the correct slug to use for API calls, prioritizing item.data.slug
-        const trueApiSlug = (item.data && item.data.slug) ? item.data.slug : item.slug;
-
-        if (!trueApiSlug) {
-            console.warn("Background item missing a usable slug:", item);
-            return; // Skip item if it doesn't have a usable slug
-        }
-
-        // Determine the display name, prioritizing item.data.name, then trueApiSlug as fallback
-        const displayName = (item.data && item.data.name) ? item.data.name : trueApiSlug;
-
-        const li = document.createElement('li');
-        li.textContent = displayName;
-        li.dataset.slug = trueApiSlug; // Use the reliably sourced trueApiSlug
-
-        if (trueApiSlug === characterCreationData.step3_selected_background_slug) {
-            li.classList.add('selected-item');
-        }
-        backgroundSelectionList.appendChild(li);
-    });
-
-    backgroundListContainer.appendChild(backgroundSelectionList);
-    // Add event listener to the new list
-    backgroundSelectionList.addEventListener('click', handleBackgroundClick);
-}
-
-async function handleBackgroundClick(event) {
-    const clickedLi = event.target.closest('li');
-    if (!clickedLi || !clickedLi.dataset || !clickedLi.dataset.slug) {
-        console.log("Clicked element is not a valid background LI or has no slug.");
-        return; // Click was not on a valid list item
-    }
-    characterCreationData.step3_background_data_loaded = false; // Set to false when selection changes
-    saveCharacterDataToSession(); // Save this state change
-
-    const slug = clickedLi.dataset.slug;
-    characterCreationData.step3_selected_background_slug = slug;
-
-    // Update selection styling
-    const backgroundSelectionList = document.getElementById('background-selection-list');
-    if (backgroundSelectionList) {
-        const currentlySelected = backgroundSelectionList.querySelector('.selected-item');
-        if (currentlySelected) {
-            currentlySelected.classList.remove('selected-item');
-        }
-    }
-    clickedLi.classList.add('selected-item');
-
-    // Display details for the selected background
-    await displayBackgroundDetails(slug); // This function will also save to session storage
-    // saveCharacterDataToSession(); // Called within displayBackgroundDetails
-    console.log("Background selected:", slug);
-}
-
-async function displayBackgroundDetails(slug) {
-    const descriptionContainer = document.getElementById('background-description-container');
-    if (!descriptionContainer) {
-        console.error('Background description container #background-description-container not found!');
-        return;
-    }
-    descriptionContainer.innerHTML = `<p>Loading details for ${slug}...</p>`;
-
-    try {
-        const response = await fetch(`/api/v2/backgrounds/${slug}/`);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch background details for ${slug}: ${response.status}`);
-        }
-        const backgroundDetails = await response.json();
-
-        if (!backgroundDetails || !backgroundDetails.name) { // Basic check for valid data
-            throw new Error(`Incomplete data received for background ${slug}.`);
-        }
-
-        // Store the full background object
-        characterCreationData.step3_background_selection = backgroundDetails;
-
-        let htmlContent = `<h4>${backgroundDetails.name}</h4>`;
-        let textSummary = `Background: ${backgroundDetails.name}\n`;
-
-        if (backgroundDetails.desc) {
-            htmlContent += `<h5>Description</h5><p>${backgroundDetails.desc.replace(/\n/g, '<br>')}</p>`;
-            textSummary += `Description: ${backgroundDetails.desc}\n\n`;
-        }
-
-        htmlContent += '<h5>Provided Benefits:</h5><ul>';
-
-        // Skill Proficiencies
-        // The API provides skill_proficiencies as a string like "Persuasion, Deception"
-        if (backgroundDetails.data && backgroundDetails.data.skill_proficiencies) {
-            htmlContent += `<li><strong>Skill Proficiencies:</strong> ${backgroundDetails.data.skill_proficiencies}</li>`;
-            textSummary += `Skill Proficiencies: ${backgroundDetails.data.skill_proficiencies}\n`;
-        } else if (backgroundDetails.skill_proficiencies) { // Some backgrounds might have it at top level
-             htmlContent += `<li><strong>Skill Proficiencies:</strong> ${backgroundDetails.skill_proficiencies}</li>`;
-            textSummary += `Skill Proficiencies: ${backgroundDetails.skill_proficiencies}\n`;
-        }
-
-
-        // Tool Proficiencies
-        // API provides tool_proficiencies as a string like "Thieves' tools, one type of gaming set"
-        if (backgroundDetails.data && backgroundDetails.data.tool_proficiencies) {
-            htmlContent += `<li><strong>Tool Proficiencies:</strong> ${backgroundDetails.data.tool_proficiencies}</li>`;
-            textSummary += `Tool Proficiencies: ${backgroundDetails.data.tool_proficiencies}\n`;
-        } else if (backgroundDetails.tool_proficiencies) {
-            htmlContent += `<li><strong>Tool Proficiencies:</strong> ${backgroundDetails.tool_proficiencies}</li>`;
-            textSummary += `Tool Proficiencies: ${backgroundDetails.tool_proficiencies}\n`;
-        }
-
-        // Languages
-        // API provides languages as a string like "Two of your choice"
-        if (backgroundDetails.data && backgroundDetails.data.languages) {
-            htmlContent += `<li><strong>Languages:</strong> ${backgroundDetails.data.languages}</li>`;
-            textSummary += `Languages: ${backgroundDetails.data.languages}\n`;
-        } else if (backgroundDetails.languages) {
-             htmlContent += `<li><strong>Languages:</strong> ${backgroundDetails.languages}</li>`;
-            textSummary += `Languages: ${backgroundDetails.languages}\n`;
-        }
-
-
-        // Equipment
-        // API provides equipment as a block string
-        if (backgroundDetails.data && backgroundDetails.data.equipment) {
-            htmlContent += `<li><strong>Starting Equipment:</strong><br>${backgroundDetails.data.equipment.replace(/\n/g, '<br>')}</li>`;
-            textSummary += `Starting Equipment:\n${backgroundDetails.data.equipment}\n`;
-        } else if (backgroundDetails.equipment) { // check top level as well
-            htmlContent += `<li><strong>Starting Equipment:</strong><br>${backgroundDetails.equipment.replace(/\n/g, '<br>')}</li>`;
-            textSummary += `Starting Equipment:\n${backgroundDetails.equipment}\n`;
-        }
-
-
-        // Feature
-        if (backgroundDetails.data && backgroundDetails.data.feature_name && backgroundDetails.data.feature_desc) {
-            htmlContent += `<li><strong>Feature: ${backgroundDetails.data.feature_name}</strong><br>${backgroundDetails.data.feature_desc.replace(/\n/g, '<br>')}</li>`;
-            textSummary += `Feature: ${backgroundDetails.data.feature_name}\n${backgroundDetails.data.feature_desc}\n`;
-        } else if (backgroundDetails.feature_name && backgroundDetails.feature_desc) { // check top level
-            htmlContent += `<li><strong>Feature: ${backgroundDetails.feature_name}</strong><br>${backgroundDetails.feature_desc.replace(/\n/g, '<br>')}</li>`;
-            textSummary += `Feature: ${backgroundDetails.feature_name}\n${backgroundDetails.feature_desc}\n`;
-        }
-
-
-        htmlContent += '</ul>';
-
-        // Benefits from API
-        if (backgroundDetails.benefits && Array.isArray(backgroundDetails.benefits) && backgroundDetails.benefits.length > 0) {
-            htmlContent += `<h5>Benefits</h5>`;
-            textSummary += `Benefits:\n`;
-            backgroundDetails.benefits.forEach(benefit => {
-                if (benefit.name && benefit.desc) {
-                    htmlContent += `<h6>${benefit.name}</h6><p>${benefit.desc.replace(/\n/g, '<br>')}</p>`;
-                    textSummary += `${benefit.name}: ${benefit.desc}\n`;
-                }
-            });
-            textSummary += `\n`; // Add a newline after all benefits in textSummary
-        }
-
-        // Suggested Characteristics (often a large block of text or structured)
-        // For simplicity, just show if present as a string. Could be parsed further if needed.
-        if (backgroundDetails.data && backgroundDetails.data.suggested_characteristics) {
-            htmlContent += `<h5>Suggested Characteristics</h5><div>${backgroundDetails.data.suggested_characteristics.replace(/\n/g, '<br>')}</div>`;
-            textSummary += `\nSuggested Characteristics:\n${backgroundDetails.data.suggested_characteristics}\n`;
-        } else if (backgroundDetails.suggested_characteristics) {
-             htmlContent += `<h5>Suggested Characteristics</h5><div>${backgroundDetails.suggested_characteristics.replace(/\n/g, '<br>')}</div>`;
-            textSummary += `\nSuggested Characteristics:\n${backgroundDetails.suggested_characteristics}\n`;
-        }
-
-
-        descriptionContainer.innerHTML = htmlContent;
-        // characterCreationData.step3_background_details_text = textSummary.trim();
-        // saveCharacterDataToSession(); // Moved down
-
-        characterCreationData.step3_background_data_loaded = true; // Set flag to true on successful load
-        saveCharacterDataToSession(); // Save the updated flag and data
-        console.log("[DEBUG] displayBackgroundDetails: Set step3_background_data_loaded to true for slug:", slug);
-        console.log("Background details displayed and stored for:", slug);
-
-    } catch (error) {
-        console.error(`Error displaying background details for ${slug}:`, error);
-        descriptionContainer.innerHTML = `<p class="error">Could not load details for ${slug}. ${error.message}</p>`;
-        // Clear stored data if loading fails
-        characterCreationData.step3_selected_background_slug = null;
-        characterCreationData.step3_background_selection = null;
-        // characterCreationData.step3_background_details_text = '';
-        characterCreationData.step3_background_data_loaded = false; // Explicitly false on error
-        saveCharacterDataToSession(); // Save the updated flag
-        console.log("[DEBUG] displayBackgroundDetails: Set step3_background_data_loaded to false due to error for slug:", slug);
-    }
-}
 
 // Initialize first step
 showStep(currentStep);
