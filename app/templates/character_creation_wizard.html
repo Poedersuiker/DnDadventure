@@ -44,25 +44,11 @@
         <div id="step-4" class="wizard-step" style="display: none;">
             <!-- Content for Step 4 will be loaded here dynamically by JavaScript -->
         </div>
-        <div id="step-5" class="wizard-step" style="display: none;">
-            <h2>Step 5: Skills & Proficiencies</h2>
-        </div>
-        <div id="step-6" class="wizard-step" style="display: none;">
-            <h2>Step 6: HP & Combat Stats</h2>
-            <p>HP & combat stats content will go here.</p>
-        </div>
-        <div id="step-7" class="wizard-step" style="display: none;">
-            <h2>Step 7: Equipment</h2>
-            <p>Equipment content will go here.</p>
-        </div>
-        <div id="step-8" class="wizard-step" style="display: none;">
-            <h2>Step 8: Spells (if applicable)</h2>
-            <p>Spells content will go here.</p>
-        </div>
-        <div id="step-9" class="wizard-step" style="display: none;">
-            <h2>Step 9: Review & Finalize</h2>
-            <p>Review & finalize content will go here.</p>
-        </div>
+        <div id="step-5" class="wizard-step" style="display: none;"></div>
+        <div id="step-6" class="wizard-step" style="display: none;"></div>
+        <div id="step-7" class="wizard-step" style="display: none;"></div>
+        <div id="step-8" class="wizard-step" style="display: none;"></div>
+        <div id="step-9" class="wizard-step" style="display: none;"></div>
 
         <div id="phb-description">
             <p>Description for the current step will go here.</p>
@@ -92,6 +78,11 @@
 <script src="{{ url_for('static', filename='js/character_creation_step2.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character_creation_step3.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character_creation_step4.js') }}"></script>
+<script src="{{ url_for('static', filename='js/character_creation_step5.js') }}"></script>
+<script src="{{ url_for('static', filename='js/character_creation_step6.js') }}"></script>
+<script src="{{ url_for('static', filename='js/character_creation_step7.js') }}"></script>
+<script src="{{ url_for('static', filename='js/character_creation_step8.js') }}"></script>
+<script src="{{ url_for('static', filename='js/character_creation_step9.js') }}"></script>
 
 <!-- Embedded styles removed, moved to static/css/style.css -->
 {% endblock %}

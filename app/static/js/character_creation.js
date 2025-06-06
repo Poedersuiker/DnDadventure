@@ -398,6 +398,184 @@ let asiDebugTextsCollection = []; // To store texts for debug display
                 } else if (!step4ContentDiv) {
                     console.error("Step 4 content div ('step-4') not found in the DOM.");
                 }
+            } else if (stepNumber === 5) {
+                const step5ContentDiv = document.getElementById('step-5');
+                // Check if content is already loaded or needs to be fetched
+                if (step5ContentDiv && step5ContentDiv.innerHTML.trim() === '') { // Check if div is empty
+                    fetch('/static/character_creation/step5_skills_proficiencies.html')
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Network response was not ok for step5_skills_proficiencies.html');
+                            }
+                            return response.text();
+                        })
+                        .then(html => {
+                            if (step5ContentDiv) {
+                                step5ContentDiv.innerHTML = html;
+                            }
+                            // Now that the HTML structure is loaded, call the function to populate data
+                            if (typeof loadStep5Logic === 'function') {
+                                loadStep5Logic(); // This function is in character_creation_step5.js
+                            } else {
+                                console.error('loadStep5Logic function not found. Ensure character_creation_step5.js is loaded.');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching or loading Step 5 HTML:', error);
+                            if (step5ContentDiv) {
+                                step5ContentDiv.innerHTML = '<p class="error-message">Error loading skills & proficiencies content. Please try refreshing or contact support.</p>';
+                            }
+                        });
+                } else if (step5ContentDiv && step5ContentDiv.innerHTML.trim() !== '') {
+                    // Content is already loaded, just call the logic function
+                    if (typeof loadStep5Logic === 'function') {
+                        loadStep5Logic();
+                    } else {
+                        console.error('loadStep5Logic function not found on subsequent load for step 5. Ensure character_creation_step5.js is loaded.');
+                    }
+                } else if (!step5ContentDiv) {
+                    console.error("Step 5 content div ('step-5') not found in the DOM.");
+                }
+            } else if (stepNumber === 6) {
+                const step6ContentDiv = document.getElementById('step-6');
+                if (step6ContentDiv && step6ContentDiv.innerHTML.trim() === '') {
+                    fetch('/static/character_creation/step6_hp_combat_stats.html')
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Network response was not ok for step6_hp_combat_stats.html');
+                            }
+                            return response.text();
+                        })
+                        .then(html => {
+                            if (step6ContentDiv) {
+                                step6ContentDiv.innerHTML = html;
+                            }
+                            if (typeof loadStep6Logic === 'function') {
+                                loadStep6Logic();
+                            } else {
+                                console.error('loadStep6Logic function not found. Ensure character_creation_step6.js is loaded.');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching or loading Step 6 HTML:', error);
+                            if (step6ContentDiv) {
+                                step6ContentDiv.innerHTML = '<p class="error-message">Error loading HP & combat stats content. Please try refreshing or contact support.</p>';
+                            }
+                        });
+                } else if (step6ContentDiv && step6ContentDiv.innerHTML.trim() !== '') {
+                    if (typeof loadStep6Logic === 'function') {
+                        loadStep6Logic();
+                    } else {
+                        console.error('loadStep6Logic function not found on subsequent load for step 6. Ensure character_creation_step6.js is loaded.');
+                    }
+                } else if (!step6ContentDiv) {
+                    console.error("Step 6 content div ('step-6') not found in the DOM.");
+                }
+            } else if (stepNumber === 7) {
+                const step7ContentDiv = document.getElementById('step-7');
+                if (step7ContentDiv && step7ContentDiv.innerHTML.trim() === '') {
+                    fetch('/static/character_creation/step7_equipment.html')
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Network response was not ok for step7_equipment.html');
+                            }
+                            return response.text();
+                        })
+                        .then(html => {
+                            if (step7ContentDiv) {
+                                step7ContentDiv.innerHTML = html;
+                            }
+                            if (typeof loadStep7Logic === 'function') {
+                                loadStep7Logic();
+                            } else {
+                                console.error('loadStep7Logic function not found. Ensure character_creation_step7.js is loaded.');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching or loading Step 7 HTML:', error);
+                            if (step7ContentDiv) {
+                                step7ContentDiv.innerHTML = '<p class="error-message">Error loading equipment content. Please try refreshing or contact support.</p>';
+                            }
+                        });
+                } else if (step7ContentDiv && step7ContentDiv.innerHTML.trim() !== '') {
+                    if (typeof loadStep7Logic === 'function') {
+                        loadStep7Logic();
+                    } else {
+                        console.error('loadStep7Logic function not found on subsequent load for step 7. Ensure character_creation_step7.js is loaded.');
+                    }
+                } else if (!step7ContentDiv) {
+                    console.error("Step 7 content div ('step-7') not found in the DOM.");
+                }
+            } else if (stepNumber === 8) {
+                const step8ContentDiv = document.getElementById('step-8');
+                if (step8ContentDiv && step8ContentDiv.innerHTML.trim() === '') {
+                    fetch('/static/character_creation/step8_spells.html')
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Network response was not ok for step8_spells.html');
+                            }
+                            return response.text();
+                        })
+                        .then(html => {
+                            if (step8ContentDiv) {
+                                step8ContentDiv.innerHTML = html;
+                            }
+                            if (typeof loadStep8Logic === 'function') {
+                                loadStep8Logic();
+                            } else {
+                                console.error('loadStep8Logic function not found. Ensure character_creation_step8.js is loaded.');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching or loading Step 8 HTML:', error);
+                            if (step8ContentDiv) {
+                                step8ContentDiv.innerHTML = '<p class="error-message">Error loading spells content. Please try refreshing or contact support.</p>';
+                            }
+                        });
+                } else if (step8ContentDiv && step8ContentDiv.innerHTML.trim() !== '') {
+                    if (typeof loadStep8Logic === 'function') {
+                        loadStep8Logic();
+                    } else {
+                        console.error('loadStep8Logic function not found on subsequent load for step 8. Ensure character_creation_step8.js is loaded.');
+                    }
+                } else if (!step8ContentDiv) {
+                    console.error("Step 8 content div ('step-8') not found in the DOM.");
+                }
+            } else if (stepNumber === 9) {
+                const step9ContentDiv = document.getElementById('step-9');
+                if (step9ContentDiv && step9ContentDiv.innerHTML.trim() === '') {
+                    fetch('/static/character_creation/step9_review_finalize.html')
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Network response was not ok for step9_review_finalize.html');
+                            }
+                            return response.text();
+                        })
+                        .then(html => {
+                            if (step9ContentDiv) {
+                                step9ContentDiv.innerHTML = html;
+                            }
+                            if (typeof loadStep9Logic === 'function') {
+                                loadStep9Logic();
+                            } else {
+                                console.error('loadStep9Logic function not found. Ensure character_creation_step9.js is loaded.');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching or loading Step 9 HTML:', error);
+                            if (step9ContentDiv) {
+                                step9ContentDiv.innerHTML = '<p class="error-message">Error loading review & finalize content. Please try refreshing or contact support.</p>';
+                            }
+                        });
+                } else if (step9ContentDiv && step9ContentDiv.innerHTML.trim() !== '') {
+                    if (typeof loadStep9Logic === 'function') {
+                        loadStep9Logic();
+                    } else {
+                        console.error('loadStep9Logic function not found on subsequent load for step 9. Ensure character_creation_step9.js is loaded.');
+                    }
+                } else if (!step9ContentDiv) {
+                    console.error("Step 9 content div ('step-9') not found in the DOM.");
+                }
             }
             // Update PHB description placeholder for steps > 0
             const phbDescContainer = document.getElementById('phb-description');
