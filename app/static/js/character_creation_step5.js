@@ -110,9 +110,9 @@ function loadStep5Logic() {
             const row = savingThrowsTableBody.insertRow();
             row.insertCell().textContent = fullAbilityName;
             row.insertCell().textContent = baseScore;
-            row.insertCell().textContent = 'N/A'; // Race proficiency for saving throws
-            row.insertCell().textContent = isProficient ? `Yes (+${proficiencyBonusValue})` : 'No'; // Class proficiency
-            row.insertCell().textContent = 'N/A'; // Background proficiency for saving throws
+            row.insertCell().textContent = ''; // Was 'N/A' for Race
+            row.insertCell().textContent = isProficient ? `Yes (+${proficiencyBonusValue})` : ''; // Was 'No' for Class
+            row.insertCell().textContent = ''; // Was 'N/A' for Background
             row.insertCell().textContent = totalScore;
 
             addStep5DebugMessage("SavingThrowsPopulation", `Processed ${fullAbilityName}`, {
@@ -214,46 +214,38 @@ function loadStep5Logic() {
                 row.insertCell().textContent = skillName;
                 row.insertCell().textContent = abilityAbbr;
                 row.insertCell().textContent = baseScore;
-                row.insertCell().textContent = proficientByRace ? `Yes` : 'No';
-                // For class/background, we check if the skill is in chosenSkillProficiencies AND if that source type *could* have provided it.
-                let classCouldProvide = false;
-                if (characterCreationData.step2_selected_base_class?.prof_skills?.toLowerCase().includes(skillNameLower)){
-                    classCouldProvide = true;
-                }
-                row.insertCell().textContent = (chosenSkillProficiencies.includes(skillNameLower) && classCouldProvide) ? `Yes` : 'No';
+                row.insertCell().textContent = proficientByRace ? 'Yes' : ''; // Was 'No'
 
-                let backgroundCouldProvide = false;
-                for (const benefit of backgroundBenefits) {
-                    if (benefit.type === "skill_proficiency" && benefit.desc && benefit.desc.toLowerCase().includes(skillNameLower)) {
-                        backgroundCouldProvide = true;
-                        break;
+                // Determine proficientByClass based on chosenSkillProficiencies and if class could provide it
+                let classActuallyProvidedProficiency = false;
+                if (chosenSkillProficiencies.includes(skillNameLower)) {
+                    const classSkillOptions = characterCreationData.step2_selected_base_class?.prof_skills || "";
+                    if (classSkillOptions.toLowerCase().includes(skillNameLower)) {
+                        // This skill was chosen and the class offered it.
+                        // This is the most direct way to infer class proficiency from choices.
+                        classActuallyProvidedProficiency = true;
                     }
                 }
-                // Also count direct background grants even if not in chosenSkillProficiencies (e.g. fixed skill from background)
-                if (!proficientByBackground) { // if not already set by direct grant logic above
-                    for (const benefit of backgroundBenefits) {
-                        if (benefit.type === "skill_proficiency" && benefit.desc) {
-                             if (benefit.desc.toLowerCase().trim() === skillNameLower || benefit.desc.toLowerCase().startsWith(skillNameLower + ",") || benefit.desc.toLowerCase().includes(" " + skillNameLower + ",")) {
-                                proficientByBackground = true; // Direct grant
-                                break;
-                            }
-                        }
-                    }
-                } else { // it was already true from direct grant
-                     backgroundCouldProvide = true; // ensure this is true for the cell
-                }
+                // proficientByClass was already determined above based on more direct checks if available,
+                // this is refining it for the 'Yes'/' ' column.
+                // The actual proficientByClass variable might be true due to a direct feature not a choice.
+                // For the column, we are showing if the "Class" column should say Yes.
+                // Let's stick to the initially determined proficientByClass for this.
+                row.insertCell().textContent = proficientByClass ? 'Yes' : ''; // Was 'No'
 
 
-                row.insertCell().textContent = (proficientByBackground || (chosenSkillProficiencies.includes(skillNameLower) && backgroundCouldProvide)) ? `Yes` : 'No';
+                // Determine proficientByBackground for the column display
+                // proficientByBackground was already determined above.
+                row.insertCell().textContent = proficientByBackground ? 'Yes' : ''; // Was 'No'
 
-                row.insertCell().textContent = isOverallProficient ? `Yes (+${proficiencyBonusValue})` : 'No';
+                row.insertCell().textContent = isOverallProficient ? `Yes (+${proficiencyBonusValue})` : ''; // Was 'No'
                 row.insertCell().textContent = totalScore;
 
                 addStep5DebugMessage("SkillsPopulation", `Processed Skill: ${skillName}`, {
                     abilityAbbr, baseScore, modifier, proficientByRace,
-                    proficientByClassOutput: row.cells[4].textContent,
-                    proficientByBackgroundOutput: row.cells[5].textContent,
-                    isOverallProficient, chosenSkillProficiencies, classCouldProvide, backgroundCouldProvide,
+                    proficientByClassDisplay: proficientByClass, // actual boolean used for decision
+                    proficientByBackgroundDisplay: proficientByBackground, // actual boolean used for decision
+                    isOverallProficient, chosenSkillProficiencies,
                     currentProficiencyBonus, totalScore
                 });
             }
