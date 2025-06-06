@@ -1,6 +1,5 @@
 # DnDadventure
 
-
 DnDadventure offers a solo Dungeons & Dragons experience where Google's Gemini large language model takes on the role of the AI Dungeon Master (DM). Gemini is responsible for weaving the narrative, controlling non-player characters (NPCs), interpreting player actions, and describing the unfolding world. Players interact with the game through an adventure log, making choices, managing their character's inventory, and deciding when to rest and recover. Future enhancements aim to include mechanics for dice rolling for skill checks and combat.
 
 This README provides an overview of how to set up, configure, and run the application, as well as details on its core features like character management and the local Open5e API data mirror.
