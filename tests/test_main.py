@@ -1008,6 +1008,73 @@ class TestCharacterCreationWizard(unittest.TestCase):
             # self.assertIn('class_details', json_data)
             # self.assertEqual(json_data['class_details']['name'], self.class2['name'])
 
+    def test_creation_wizard_stores_full_proficiency_tables(self):
+        mock_saving_throws = [{'name': 'Dexterity Save', 'ability': 'DEX', 'total_score': 3, 'class_proficient': True, 'extra_proficient': False}]
+        mock_skills = [{'name': 'Stealth', 'ability': 'DEX', 'total_score': 5, 'race_proficient': True, 'extra_proficient': False}]
+
+        mock_session_data = {
+            'character_name': 'Test Hero Unit',
+            'alignment': 'Lawful Neutral',
+            'ability_scores': {'STR': 10, 'DEX': 16, 'CON': 12, 'INT': 13, 'WIS': 14, 'CHA': 8},
+            'step1_race_selection': {'name': 'Test Elf', 'traits': []},
+            'step1_race_traits_text': 'Some test racial traits.',
+            'step2_selected_base_class': {'name': 'Rogue', 'hit_die': 'd8', 'prof_saving_throws': 'Dexterity, Intelligence'},
+            'step3_background_selection': {
+                'name': 'Urchin', 'desc': 'Urchin background description for test.',
+                'equipment': 'A small knife, a map of the city you grew up in, a pet mouse, a token to remember your parents by, a set of common clothes, and a belt pouch containing 10 gp.',
+                'feature_name': 'City Secrets', 'feature_desc': 'You know the secret ways of your city.',
+                'data': {
+                    'name': 'Urchin', 'desc': 'Urchin background description for test.',
+                    'skill_proficiencies': ['Sleight of Hand', 'Stealth'],
+                    'tool_proficiencies': ["Disguise kit", "Thieves' tools"], 'languages': [],
+                    'equipment': 'A small knife, a map of the city you grew up in, a pet mouse, a token to remember your parents by, a set of common clothes, and a belt pouch containing 10 gp.',
+                    'feature_name': 'City Secrets', 'feature_desc': 'You know the secret ways of your city.'
+                }
+            },
+            'step5_full_saving_throw_table': mock_saving_throws,
+            'step5_full_skill_table': mock_skills,
+            'proficiency_bonus': 2,
+            'max_hp': 9,
+            'armor_class_base': 14,
+            'speed': 30,
+            'hit_die': 'd8'
+        }
+
+        with self.client as c: # Use self.client consistently
+            with c.session_transaction() as sess:
+                sess['user_id'] = self.test_user.id # Ensure user is logged in
+                sess['_fresh'] = True
+                sess['new_character_data'] = mock_session_data
+
+            response = c.post(url_for('main.creation_wizard'), data={})
+
+        self.assertEqual(response.status_code, 200)
+        json_response = response.get_json()
+        self.assertEqual(json_response['status'], 'success')
+        self.assertIn('character_id', json_response)
+        new_char_id = json_response['character_id']
+
+        created_character = Character.query.get(new_char_id)
+        self.assertIsNotNone(created_character)
+        self.assertEqual(created_character.name, mock_session_data['character_name'])
+
+        char_level_1 = CharacterLevel.query.filter_by(character_id=new_char_id, level_number=1).first()
+        self.assertIsNotNone(char_level_1)
+
+        self.assertIsNotNone(char_level_1.proficiencies)
+        proficiencies_snapshot = json.loads(char_level_1.proficiencies)
+
+        self.assertIn('full_saving_throws', proficiencies_snapshot)
+        self.assertEqual(proficiencies_snapshot['full_saving_throws'], mock_saving_throws)
+
+        self.assertIn('full_skills', proficiencies_snapshot)
+        self.assertEqual(proficiencies_snapshot['full_skills'], mock_skills)
+
+        # Verify that other parts of the proficiencies snapshot are still there (e.g., from background)
+        self.assertIn('skills', proficiencies_snapshot) # General skills list
+        self.assertIn('Sleight of Hand', proficiencies_snapshot['skills']) # From Urchin background data
+        self.assertIn('Stealth', proficiencies_snapshot['skills'])     # From Urchin background data
+
 
     def _populate_session_for_final_submission(self):
         # Helper to populate session with enough data to pass final POST validation
@@ -1029,10 +1096,21 @@ class TestCharacterCreationWizard(unittest.TestCase):
             'base_ability_scores': {'STR': 9, 'DEX': 11, 'CON': 13, 'INT': 14, 'WIS': 7, 'CHA': 12},
 
             'background_name': 'Sage',
-            'background_skill_proficiencies': ['Arcana', 'History'], # From Sage
+            # Added step3_background_selection to match new structure used by routes.py
+            'step3_background_selection': {
+                'name': 'Sage', 'desc': 'Sage background desc.', 'equipment': 'Ink, quill, 10 gp',
+                'feature_name': 'Researcher', 'feature_desc': 'Knows things.',
+                'data': {
+                    'name': 'Sage', 'skill_proficiencies': ['Arcana', 'History'],
+                    'tool_proficiencies': [], 'languages': ["Elvish", "Dwarvish"],
+                    'equipment': 'Ink, quill, 10 gp'
+                }
+            },
+            # These might be redundant if step3_background_selection.data is the primary source now
+            'background_skill_proficiencies': ['Arcana', 'History'],
             'background_tool_proficiencies': [],
-            'background_languages_fixed': ["Elvish", "Dwarvish"], # Sage example has "Two of your choice"
-            'chosen_languages_from_bg': [], # Assuming none chosen beyond fixed for simplicity here
+            'background_languages_fixed': ["Elvish", "Dwarvish"],
+            'chosen_languages_from_bg': [],
             'chosen_tool_proficiencies_from_bg': [],
             'background_equipment_string': "A bottle of black ink, a quill, ... and a pouch containing 10 gp.",
 
@@ -1053,7 +1131,15 @@ class TestCharacterCreationWizard(unittest.TestCase):
             'character_name': 'Test Wizard Finale',
             'alignment': 'Lawful Good',
             'character_description': 'A test wizard ready for action.',
-            'player_notes': 'Prefers fire spells.'
+            'player_notes': 'Prefers fire spells.',
+            # Added fields from the new test's mock_session_data for completeness
+            'step1_race_selection': {'name': self.race1['name'], 'traits': []},
+            'step1_race_traits_text': 'Some default racial traits text.',
+            'step2_selected_base_class': {'name': self.class2['name'], 'hit_die': 'd6', 'prof_saving_throws': 'INT, WIS'},
+            'step5_full_saving_throw_table': [], # Default empty for this helper
+            'step5_full_skill_table': [],      # Default empty for this helper
+            'proficiency_bonus': 2,
+            'hit_die': 'd6' # From class
         }
         with self.client.session_transaction() as sess:
             sess['new_character_data'] = char_data

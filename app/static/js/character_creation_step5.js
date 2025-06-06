@@ -166,6 +166,11 @@ function updateSkillCheckboxStatesBasedOnLimit() {
 function loadStep5Logic() {
     console.log("Step 5 JS loaded");
     step5DebugTextsCollection = []; // Clear debug messages for this run
+
+    // Initialize full data tables for step 5
+    characterCreationData.step5_full_saving_throw_table = [];
+    characterCreationData.step5_full_skill_table = [];
+
     addStep5DebugMessage("loadStep5Logic", "Starting Step 5 logic execution.");
     addStep5DebugMessage("loadStep5Logic", "Initial characterCreationData.step2_selected_base_class", characterCreationData.step2_selected_base_class);
 
@@ -357,6 +362,7 @@ function loadStep5Logic() {
         console.error("Saving throws table body not found!");
     } else {
         savingThrowsTableBody.innerHTML = ''; // Clear existing rows
+        characterCreationData.step5_full_saving_throw_table = []; // Clear previous data
         const classProfSavingThrows = characterCreationData.step2_selected_base_class?.prof_saving_throws || "";
         addStep5DebugMessage("SavingThrowsPopulation", "Class proficient saving throws string.", {prof_saving_throws: classProfSavingThrows});
 
@@ -365,46 +371,80 @@ function loadStep5Logic() {
             const baseScore = characterCreationData.ability_scores?.[abilityAbbr] || 10;
             const modifier = getAbilityModifier(baseScore);
 
-            let isProficient = false;
+            let isClassProficient = false; // Renamed for clarity
             if (classProfSavingThrows.toLowerCase().includes(fullAbilityName.toLowerCase())) {
-                isProficient = true;
+                isClassProficient = true;
             }
 
-            const currentProficiencyBonus = isProficient ? proficiencyBonusValue : 0;
-            const totalScore = modifier + currentProficiencyBonus;
+            // Determine if extra proficiency is checked
+            const isExtraProficient = characterCreationData.saving_throw_proficiencies.extra.includes(fullAbilityName);
+
+            const proficiencyBonusForCalc = (isClassProficient || isExtraProficient) ? proficiencyBonusValue : 0;
+            const totalScore = modifier + proficiencyBonusForCalc;
+            const classBonusText = isClassProficient ? `Yes (+${proficiencyBonusValue})` : '';
 
             const row = savingThrowsTableBody.insertRow();
             row.insertCell().textContent = fullAbilityName;
             row.insertCell().textContent = baseScore;
             row.insertCell().textContent = ''; // Race contribution column
-            row.insertCell().textContent = isProficient ? `Yes (+${proficiencyBonusValue})` : ''; // Class contribution column
+            row.insertCell().textContent = classBonusText; // Class contribution column
 
             // Add Extra Proficiency Checkbox Column
             const extraProfCell = row.insertCell();
             const extraProfCheckbox = document.createElement('input');
             extraProfCheckbox.type = 'checkbox';
             extraProfCheckbox.id = `saving-throw-extra-prof-${abilityAbbr}`;
-            extraProfCheckbox.disabled = true; // Disabled by default
-            extraProfCheckbox.dataset.ability = abilityAbbr; // Store ability for event listener
+            // extraProfCheckbox.disabled = true; // Will be handled by logic below
+            extraProfCheckbox.dataset.abilityAbbr = abilityAbbr; // Store ability for event listener
 
-            // Check if this saving throw is granted by the class
-            if (isProficient) { // isProficient here means class proficiency
-                extraProfCheckbox.disabled = false;
-            }
+            // A saving throw is either proficient by class or can be chosen as extra.
+            // It cannot be proficient by class AND selected as an "extra" proficiency from a limited pool.
+            // The "extra" checkbox here means "is this saving throw getting proficiency bonus beyond the class default?"
+            // For most classes, saving throw proficiencies are fixed. Some features might allow choosing one.
+            // For now, let's assume "extra" means the user explicitly checked it, potentially overriding other logic if needed.
+            // However, standard D&D 5e doesn't typically allow "extra" saving throw proficiencies like skills.
+            // This checkbox might represent a special feature (e.g. Monk's Diamond Soul).
+            // Let's assume it's for features that grant additional saving throw profs.
+            // If class already grants it, the checkbox being checked doesn't change much unless it implies expertise (not handled here).
 
-            // Check if already selected as extra
-            if (characterCreationData.saving_throw_proficiencies.extra.includes(fullAbilityName)) {
+            extraProfCheckbox.checked = isExtraProficient;
+            extraProfCheckbox.disabled = isClassProficient; // If class provides it, user cannot uncheck it here. Or can they?
+                                                        // Let's assume if class provides it, it's fixed.
+                                                        // If a feature allows choosing an *additional* one, that's different.
+                                                        // For now, if isClassProficient = true, checkbox is checked and disabled.
+            if (isClassProficient) {
                 extraProfCheckbox.checked = true;
+                // If it's a class proficiency, it shouldn't be in the 'extra' list unless a feature specifically adds it redundantly.
+                // Let's ensure `extra` only contains truly extra proficiencies.
+                // However, the current problem asks to store checkbox state.
             }
+
 
             extraProfCheckbox.addEventListener('change', function() {
-                const abilityFullName = ABILITY_SCORE_FULL_NAMES[this.dataset.ability];
-                if (this.checked) {
-                    if (!characterCreationData.saving_throw_proficiencies.extra.includes(abilityFullName)) {
-                        characterCreationData.saving_throw_proficiencies.extra.push(abilityFullName);
+                const changedAbilityAbbr = this.dataset.abilityAbbr;
+                const changedFullAbilityName = ABILITY_SCORE_FULL_NAMES[changedAbilityAbbr];
+                const isChecked = this.checked;
+
+                if (isChecked) {
+                    if (!characterCreationData.saving_throw_proficiencies.extra.includes(changedFullAbilityName)) {
+                        characterCreationData.saving_throw_proficiencies.extra.push(changedFullAbilityName);
                     }
                 } else {
-                    characterCreationData.saving_throw_proficiencies.extra = characterCreationData.saving_throw_proficiencies.extra.filter(st => st !== abilityFullName);
+                    characterCreationData.saving_throw_proficiencies.extra = characterCreationData.saving_throw_proficiencies.extra.filter(st => st !== changedFullAbilityName);
+                }
+
+                // Update the corresponding entry in step5_full_saving_throw_table
+                const entryToUpdate = characterCreationData.step5_full_saving_throw_table.find(st => st.name === changedFullAbilityName);
+                if (entryToUpdate) {
+                    entryToUpdate.extra_proficient = isChecked;
+                    const updatedProficiencyBonus = (entryToUpdate.class_proficient || isChecked) ? proficiencyBonusValue : 0;
+                    entryToUpdate.total_score = entryToUpdate.modifier + updatedProficiencyBonus;
+
+                    // Also update the table cell directly for immediate visual feedback
+                    const specificRow = Array.from(savingThrowsTableBody.rows).find(r => r.cells[0].textContent === changedFullAbilityName);
+                    if (specificRow) {
+                        specificRow.cells[6].textContent = entryToUpdate.total_score; // Assuming total score is in the 7th cell (index 6)
+                    }
                 }
                 renderStep5DebugInfo(); // Update debug info on change
             });
@@ -413,11 +453,26 @@ function loadStep5Logic() {
             row.insertCell().textContent = ''; // Background contribution column (usually none for ST)
             row.insertCell().textContent = totalScore;
 
+            // Populate step5_full_saving_throw_table
+            const savingThrowData = {
+                name: fullAbilityName,
+                ability: abilityAbbr,
+                base_score: baseScore,
+                modifier: modifier,
+                race_bonus: '', // Placeholder
+                class_proficient: isClassProficient,
+                class_bonus_text: classBonusText,
+                background_bonus: '', // Placeholder
+                extra_proficient: extraProfCheckbox.checked, // Capture current state
+                total_score: totalScore
+            };
+            characterCreationData.step5_full_saving_throw_table.push(savingThrowData);
+
             addStep5DebugMessage("SavingThrowsPopulation", `Processed ${fullAbilityName}`, {
-                baseScore, modifier, isProficient, classProfSavingThrows, currentProficiencyBonus, totalScore, rawProfBonus: proficiencyBonusValue
+                baseScore, modifier, isClassProficient, classProfSavingThrows, proficiencyBonusForCalc, totalScore, rawProfBonus: proficiencyBonusValue, details: savingThrowData
             });
         });
-        addStep5DebugMessage("loadStep5Logic", "Saving throws table populated.");
+        addStep5DebugMessage("loadStep5Logic", "Saving throws table populated.", { full_table: characterCreationData.step5_full_saving_throw_table });
     }
 
     // --- SKILLS ---
@@ -427,6 +482,7 @@ function loadStep5Logic() {
         console.error("Skills table body not found!");
     } else {
         skillsTableBody.innerHTML = ''; // Clear existing rows
+        characterCreationData.step5_full_skill_table = []; // Clear previous data
         // Ensure 'base' exists for chosen skills
         if (!characterCreationData.skill_proficiencies.base) {
             characterCreationData.skill_proficiencies.base = [];
@@ -508,9 +564,14 @@ function loadStep5Logic() {
                 }
 
 
-                const isOverallProficient = proficientByRace || proficientByClass || proficientByBackground;
+                // Determine if extra proficiency is checked for this skill
+                const isExtraProficientByChoice = characterCreationData.skill_proficiencies.extra.includes(skillName);
+
+                const isOverallProficient = proficientByRace || proficientByClass || proficientByBackground || isExtraProficientByChoice;
+                const overallBonusText = isOverallProficient ? `Yes (+${proficiencyBonusValue})` : '';
                 const currentProficiencyBonus = isOverallProficient ? proficiencyBonusValue : 0;
                 const totalScore = modifier + currentProficiencyBonus;
+
 
                 const row = skillsTableBody.insertRow();
                 row.insertCell().textContent = skillName;
@@ -598,15 +659,13 @@ function loadStep5Logic() {
                     // extraSkills array reference before modification
                     const extraSkillsBeforeChange = [...(characterCreationData.skill_proficiencies.extra || [])];
                     let currentSelectedCount = extraSkillsBeforeChange.length;
+                    const isChecked = this.checked;
 
-                    if (this.checked) {
-                        // If it wasn't in the list before, and we are at the limit, prevent checking.
+                    if (isChecked) {
                         if (!extraSkillsBeforeChange.includes(currentSkillName) && currentSelectedCount >= currentAllowedSkillChoices) {
-                            addStep5DebugMessage("SkillCheckboxChange", `Attempted to select ${currentSkillName}, but limit (${currentAllowedSkillChoices}) reached.`, { currentSelectedCount });
-                            this.checked = false; // Revert checkbox state
-                            event.preventDefault(); // Prevent the default action
-                            // Optionally, inform the user (e.g., alert or a status message)
-                            // alert(`You cannot select more than ${currentAllowedSkillChoices} skill(s).`);
+                            addStep5DebugMessage("SkillCheckboxChange", `Attempted to select ${currentSkillName}, but limit (${currentAllowedSkillChoices}) reached. Reverting.`, { currentSelectedCount });
+                            this.checked = false;
+                            event.preventDefault();
                         } else {
                             if (!extraSkillsBeforeChange.includes(currentSkillName)) {
                                 characterCreationData.skill_proficiencies.extra.push(currentSkillName);
@@ -614,34 +673,61 @@ function loadStep5Logic() {
                             }
                         }
                     } else {
-                        // If unchecking, remove it from the list
                         if (extraSkillsBeforeChange.includes(currentSkillName)) {
                             characterCreationData.skill_proficiencies.extra = characterCreationData.skill_proficiencies.extra.filter(sk => sk !== currentSkillName);
                             addStep5DebugMessage("SkillCheckboxChange", `Deselected skill ${currentSkillName}.`, { extraSkills: characterCreationData.skill_proficiencies.extra });
                         }
                     }
 
-                    // Update UI for skill choice count
-                    updateSkillChoiceInfoText();
+                    // Update the corresponding entry in step5_full_skill_table
+                    const entryToUpdate = characterCreationData.step5_full_skill_table.find(sk => sk.name === currentSkillName);
+                    if (entryToUpdate) {
+                        entryToUpdate.extra_proficient = this.checked; // Use current checkbox state after potential revert
+                        const newOverallProficient = entryToUpdate.race_proficient || entryToUpdate.class_proficient || entryToUpdate.background_proficient || entryToUpdate.extra_proficient;
+                        const newProficiencyBonus = newOverallProficient ? proficiencyBonusValue : 0;
+                        entryToUpdate.total_score = entryToUpdate.modifier + newProficiencyBonus;
+                        entryToUpdate.is_overall_proficient = newOverallProficient;
+                        entryToUpdate.overall_bonus_text = newOverallProficient ? `Yes (+${proficiencyBonusValue})` : '';
 
-                    updateSkillCheckboxStatesBasedOnLimit(); // Update all checkbox enable/disable states
-                    renderStep5DebugInfo(); // Update general debug info
+                        // Also update the table cell directly for immediate visual feedback
+                        const specificRow = Array.from(skillsTableBody.rows).find(r => r.cells[0].textContent === currentSkillName);
+                        if (specificRow) {
+                            specificRow.cells[7].textContent = entryToUpdate.overall_bonus_text; // Bonus text cell (index 7)
+                            specificRow.cells[8].textContent = entryToUpdate.total_score;    // Total score cell (index 8)
+                        }
+                    }
+
+                    updateSkillChoiceInfoText();
+                    updateSkillCheckboxStatesBasedOnLimit();
+                    renderStep5DebugInfo();
                 });
                 skillExtraProfCell.appendChild(skillExtraProfCheckbox);
 
-                row.insertCell().textContent = isOverallProficient ? `Yes (+${proficiencyBonusValue})` : '';
+                row.insertCell().textContent = overallBonusText;
                 row.insertCell().textContent = totalScore;
 
+                // Populate step5_full_skill_table
+                const skillData = {
+                    name: skillName,
+                    ability: abilityAbbr,
+                    base_score: baseScore,
+                    modifier: modifier,
+                    race_proficient: proficientByRace,
+                    class_proficient: proficientByClass, // This reflects actual class proficiency
+                    background_proficient: proficientByBackground,
+                    extra_proficient: skillExtraProfCheckbox.checked, // Capture current state
+                    is_overall_proficient: isOverallProficient,
+                    overall_bonus_text: overallBonusText,
+                    total_score: totalScore
+                };
+                characterCreationData.step5_full_skill_table.push(skillData);
+
                 addStep5DebugMessage("SkillsPopulation", `Processed Skill: ${skillName}`, {
-                    abilityAbbr, baseScore, modifier, proficientByRace,
-                    proficientByClassDisplay: proficientByClass, // actual boolean used for decision
-                    proficientByBackgroundDisplay: proficientByBackground, // actual boolean used for decision
-                    isOverallProficient, chosenSkillProficiencies,
-                    currentProficiencyBonus, totalScore
+                    details: skillData, chosenSkillProficiencies
                 });
             }
         }
-        addStep5DebugMessage("loadStep5Logic", "Skills table populated.");
+        addStep5DebugMessage("loadStep5Logic", "Skills table populated.", { full_table: characterCreationData.step5_full_skill_table });
     }
 
     updateSkillCheckboxStatesBasedOnLimit(); // Initial call to set checkbox states based on loaded data and limits

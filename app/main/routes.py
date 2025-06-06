@@ -266,6 +266,15 @@ def creation_wizard():
 
         # level_1_proficiencies_snapshot is now initialized and populated above new_char creation
 
+        # Retrieve full saving throw and skill tables from session
+        full_saving_throw_table = char_data.get('step5_full_saving_throw_table', [])
+        full_skill_table = char_data.get('step5_full_skill_table', [])
+
+        # Add them to the proficiencies snapshot
+        level_1_proficiencies_snapshot['full_saving_throws'] = full_saving_throw_table
+        level_1_proficiencies_snapshot['full_skills'] = full_skill_table
+        current_app.logger.info(f"Adding full saving throw table (count: {len(full_saving_throw_table)}) and skill table (count: {len(full_skill_table)}) to proficiencies snapshot.")
+
         spell_slots_L1 = {}
 
         new_char_level_1 = CharacterLevel(
