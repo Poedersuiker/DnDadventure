@@ -69,6 +69,13 @@ function renderStep5DebugInfo() {
         const backgroundBenefits = characterCreationData.step3_background_selection?.benefits || [];
         focusedDebugData.background_skill_benefits = backgroundBenefits.filter(benefit => benefit.type === "skill_proficiency");
 
+        // Add Skill Choice Limits and Selections to Debug Info
+        focusedDebugData.skill_choice_limits = {
+            allowed_skill_choices: characterCreationData.step5_info?.allowed_skill_choices ?? "Not calculated",
+            selected_extra_skills_count: characterCreationData.skill_proficiencies?.extra?.length ?? 0,
+            selected_extra_skills_list: characterCreationData.skill_proficiencies?.extra || []
+        };
+
         let formattedDebugText = `Focused Character Proficiency Data for Step 5:
 ${JSON.stringify(focusedDebugData, null, 2)}
 
@@ -108,6 +115,39 @@ function checkStringForSkillProficiency(text, skillName) {
     return regex.test(text);
 }
 
+// Function to update skill checkbox states based on selection limits
+function updateSkillCheckboxStatesBasedOnLimit() {
+    const allowedSkillChoices = characterCreationData.step5_info?.allowed_skill_choices || 0;
+    const selectedExtraSkills = characterCreationData.skill_proficiencies?.extra || [];
+    const selectedExtraSkillsCount = selectedExtraSkills.length;
+    const skillCheckboxes = document.querySelectorAll('#skills-table input[type="checkbox"][data-skill-name]');
+
+    addStep5DebugMessage("updateSkillCheckboxStatesBasedOnLimit", "Updating skill checkbox states.", { allowedSkillChoices, selectedExtraSkillsCount, numberOfCheckboxes: skillCheckboxes.length });
+
+    skillCheckboxes.forEach(checkbox => {
+        const skillName = checkbox.dataset.skillName;
+        // Check the flag set during checkbox creation
+        const isAllowedBySource = checkbox.dataset.initiallyAllowed === 'true';
+
+        if (!isAllowedBySource) {
+            checkbox.disabled = true;
+            return; // Skill not allowed by any source, always keep disabled
+        }
+
+        if (checkbox.checked) { // If it's already checked, it should be enabled (to allow unchecking)
+            checkbox.disabled = false;
+        } else {
+            // If not checked, disable if limit is reached
+            if (selectedExtraSkillsCount >= allowedSkillChoices) {
+                checkbox.disabled = true;
+            } else {
+                checkbox.disabled = false; // Enable if limit not reached and allowed by source
+            }
+        }
+    });
+    addStep5DebugMessage("updateSkillCheckboxStatesBasedOnLimit", "Finished updating skill checkbox states.");
+}
+
 
 function loadStep5Logic() {
     console.log("Step 5 JS loaded");
@@ -132,6 +172,46 @@ function loadStep5Logic() {
     }
     if (!characterCreationData.skill_proficiencies.extra) {
         characterCreationData.skill_proficiencies.extra = [];
+    }
+
+    // Initialize step5_info if it doesn't exist
+    if (!characterCreationData.step5_info) {
+        characterCreationData.step5_info = {};
+    }
+
+    // Calculate allowed skill choices from class
+    let allowedSkillChoices = 0;
+    const classData = characterCreationData.step2_selected_base_class;
+    if (classData && classData.proficiency_choices) {
+        addStep5DebugMessage("loadStep5Logic", "Calculating allowed skill choices from class.", { classProfChoices: classData.proficiency_choices });
+        for (const choiceGroup of classData.proficiency_choices) {
+            // Heuristic: check if 'desc' mentions skills or if options look like skills
+            let isSkillChoiceGroup = false;
+            if (choiceGroup.desc && choiceGroup.desc.toLowerCase().includes("skill")) {
+                isSkillChoiceGroup = true;
+            } else if (choiceGroup.choose_from && choiceGroup.choose_from.options && choiceGroup.choose_from.options.length > 0) {
+                // Check if the first option looks like a skill (e.g., exists in SKILL_LIST)
+                const firstOption = choiceGroup.choose_from.options[0]?.item?.name || "";
+                if (SKILL_LIST.hasOwnProperty(firstOption)) {
+                     isSkillChoiceGroup = true;
+                }
+            }
+
+            if (isSkillChoiceGroup && choiceGroup.choose_from && typeof choiceGroup.choose_from.count === 'number') {
+                allowedSkillChoices += choiceGroup.choose_from.count;
+                addStep5DebugMessage("loadStep5Logic", `Found skill choice group, adding ${choiceGroup.choose_from.count} to allowedSkillChoices.`, { choiceGroupDesc: choiceGroup.desc, count: choiceGroup.choose_from.count });
+            }
+        }
+    }
+    characterCreationData.step5_info.allowed_skill_choices = allowedSkillChoices;
+    addStep5DebugMessage("loadStep5Logic", `Total allowed skill choices calculated: ${allowedSkillChoices}`);
+
+    // For UI (placeholder for now - actual DOM element to be added in HTML)
+    const skillChoiceInfoEl = document.getElementById('skill-choice-info');
+    if (skillChoiceInfoEl) {
+        skillChoiceInfoEl.textContent = `You can choose ${allowedSkillChoices} skill proficiencies. Selected: ${characterCreationData.skill_proficiencies.extra.length || 0}.`;
+    } else {
+        console.log(`UI Placeholder: You can choose ${allowedSkillChoices} skill proficiencies. Selected: ${characterCreationData.skill_proficiencies.extra.length || 0}. ('skill-choice-info' element not found)`);
     }
 
 
@@ -339,10 +419,10 @@ function loadStep5Logic() {
                 const skillExtraProfCheckbox = document.createElement('input');
                 skillExtraProfCheckbox.type = 'checkbox';
                 skillExtraProfCheckbox.id = `skill-extra-prof-${skillName.replace(/\s+/g, '-')}`;
-                skillExtraProfCheckbox.disabled = true; // Disabled by default
+                // skillExtraProfCheckbox.disabled = true; // Initial disabling will be handled by updateSkillCheckboxStatesBasedOnLimit
                 skillExtraProfCheckbox.dataset.skillName = skillName;
 
-                // Determine if checkbox should be enabled
+                // Determine if checkbox should be initially allowed by sources
                 // Enable if skill is granted by race, class, or background options
                 let canBeGrantedByRace = false;
                 let canBeGrantedByClass = false;
@@ -377,25 +457,52 @@ function loadStep5Logic() {
                 // If background grants specific skill proficiencies, proficientByBackground would be true
                 if (proficientByBackground) canBeGrantedByBackground = true;
 
-                if (canBeGrantedByRace || canBeGrantedByClass || canBeGrantedByBackground) {
-                    skillExtraProfCheckbox.disabled = false;
-                }
+                let isInitiallyAllowedBySource = (canBeGrantedByRace || canBeGrantedByClass || canBeGrantedByBackground);
+                skillExtraProfCheckbox.dataset.initiallyAllowed = isInitiallyAllowedBySource ? 'true' : 'false';
 
-                // Check if already selected as extra
+
+                // Check if already selected as extra (and thus should be checked)
                 if (characterCreationData.skill_proficiencies.extra.includes(skillName)) {
                     skillExtraProfCheckbox.checked = true;
                 }
 
-                skillExtraProfCheckbox.addEventListener('change', function() {
+                skillExtraProfCheckbox.addEventListener('change', function(event) {
                     const currentSkillName = this.dataset.skillName;
+                    const currentAllowedSkillChoices = characterCreationData.step5_info?.allowed_skill_choices || 0;
+                    // extraSkills array reference before modification
+                    const extraSkillsBeforeChange = [...(characterCreationData.skill_proficiencies.extra || [])];
+                    let currentSelectedCount = extraSkillsBeforeChange.length;
+
                     if (this.checked) {
-                        if (!characterCreationData.skill_proficiencies.extra.includes(currentSkillName)) {
-                            characterCreationData.skill_proficiencies.extra.push(currentSkillName);
+                        // If it wasn't in the list before, and we are at the limit, prevent checking.
+                        if (!extraSkillsBeforeChange.includes(currentSkillName) && currentSelectedCount >= currentAllowedSkillChoices) {
+                            addStep5DebugMessage("SkillCheckboxChange", `Attempted to select ${currentSkillName}, but limit (${currentAllowedSkillChoices}) reached.`, { currentSelectedCount });
+                            this.checked = false; // Revert checkbox state
+                            event.preventDefault(); // Prevent the default action
+                            // Optionally, inform the user (e.g., alert or a status message)
+                            // alert(`You cannot select more than ${currentAllowedSkillChoices} skill(s).`);
+                        } else {
+                            if (!extraSkillsBeforeChange.includes(currentSkillName)) {
+                                characterCreationData.skill_proficiencies.extra.push(currentSkillName);
+                                addStep5DebugMessage("SkillCheckboxChange", `Selected skill ${currentSkillName}.`, { extraSkills: characterCreationData.skill_proficiencies.extra });
+                            }
                         }
                     } else {
-                        characterCreationData.skill_proficiencies.extra = characterCreationData.skill_proficiencies.extra.filter(sk => sk !== currentSkillName);
+                        // If unchecking, remove it from the list
+                        if (extraSkillsBeforeChange.includes(currentSkillName)) {
+                            characterCreationData.skill_proficiencies.extra = characterCreationData.skill_proficiencies.extra.filter(sk => sk !== currentSkillName);
+                            addStep5DebugMessage("SkillCheckboxChange", `Deselected skill ${currentSkillName}.`, { extraSkills: characterCreationData.skill_proficiencies.extra });
+                        }
                     }
-                    renderStep5DebugInfo(); // Update debug info on change
+
+                    // Update UI for skill choice count
+                    const skillChoiceInfoEl = document.getElementById('skill-choice-info');
+                    if (skillChoiceInfoEl) {
+                        skillChoiceInfoEl.textContent = `You can choose ${currentAllowedSkillChoices} skill proficiencies. Selected: ${characterCreationData.skill_proficiencies.extra.length}.`;
+                    }
+
+                    updateSkillCheckboxStatesBasedOnLimit(); // Update all checkbox enable/disable states
+                    renderStep5DebugInfo(); // Update general debug info
                 });
                 skillExtraProfCell.appendChild(skillExtraProfCheckbox);
 
@@ -413,6 +520,8 @@ function loadStep5Logic() {
         }
         addStep5DebugMessage("loadStep5Logic", "Skills table populated.");
     }
+
+    updateSkillCheckboxStatesBasedOnLimit(); // Initial call to set checkbox states based on loaded data and limits
 
     renderStep5DebugInfo();
     console.log("Step 5 Logic fully executed. characterCreationData:", JSON.parse(JSON.stringify(characterCreationData)));
