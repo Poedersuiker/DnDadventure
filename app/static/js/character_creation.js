@@ -49,6 +49,11 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     characterCreationData.step3_background_details_text = characterCreationData.step3_background_details_text || '';
     characterCreationData.step3_background_data_loaded = characterCreationData.step3_background_data_loaded || false;
 
+    // Step 5 data
+    characterCreationData.skill_proficiencies = characterCreationData.skill_proficiencies || []; // Stores chosen/granted skill proficiencies
+    characterCreationData.saving_throw_proficiencies = characterCreationData.saving_throw_proficiencies || []; // Stores saving throw proficiencies (usually from class)
+    characterCreationData.proficiency_bonus = characterCreationData.proficiency_bonus || 2; // Default for level 1, might be set elsewhere too
+
 
     let selectedClassOrArchetypeSlug = null; // Renamed from selectedClassSlug
 
@@ -398,10 +403,11 @@ let asiDebugTextsCollection = []; // To store texts for debug display
                 } else if (!step4ContentDiv) {
                     console.error("Step 4 content div ('step-4') not found in the DOM.");
                 }
-            } else if (stepNumber === 5) {
+            } else if (stepNumber === 5) { // Skills and Proficiencies
                 const step5ContentDiv = document.getElementById('step-5');
-                // Check if content is already loaded or needs to be fetched
-                if (step5ContentDiv && step5ContentDiv.innerHTML.trim() === '') { // Check if div is empty
+                // Using innerHTML.trim() === '' as a simple check for emptiness.
+                // A more robust check might be for a specific element ID from step5's HTML if one exists.
+                if (step5ContentDiv && step5ContentDiv.innerHTML.trim() === '') {
                     fetch('/static/character_creation/step5_skills_proficiencies.html')
                         .then(response => {
                             if (!response.ok) {
@@ -427,7 +433,7 @@ let asiDebugTextsCollection = []; // To store texts for debug display
                             }
                         });
                 } else if (step5ContentDiv && step5ContentDiv.innerHTML.trim() !== '') {
-                    // Content is already loaded, just call the logic function
+                    // Content is already loaded, just call the logic function to refresh/repopulate
                     if (typeof loadStep5Logic === 'function') {
                         loadStep5Logic();
                     } else {
@@ -436,7 +442,7 @@ let asiDebugTextsCollection = []; // To store texts for debug display
                 } else if (!step5ContentDiv) {
                     console.error("Step 5 content div ('step-5') not found in the DOM.");
                 }
-            } else if (stepNumber === 6) {
+            } else if (stepNumber === 6) { // HP and Combat Stats
                 const step6ContentDiv = document.getElementById('step-6');
                 if (step6ContentDiv && step6ContentDiv.innerHTML.trim() === '') {
                     fetch('/static/character_creation/step6_hp_combat_stats.html')
