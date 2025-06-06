@@ -308,7 +308,14 @@ let asiDebugTextsCollection = []; // To store texts for debug display
                 }
             } else if (stepNumber === 3) { // This is Backgrounds (Step 3)
                 const step3ContentDiv = document.getElementById('step-3');
-                // Check if content is already loaded
+
+                // Ensure the main step div is visible. This should typically be handled by the generic
+                // currentStepContent.style.display = 'block' earlier, but this is a safeguard.
+                if (step3ContentDiv) {
+                    step3ContentDiv.style.display = 'block';
+                }
+
+                // Check if content needs to be loaded
                 if (step3ContentDiv && !step3ContentDiv.querySelector('#background-list-container')) {
                     fetch('/static/character_creation/step3_background_selection.html')
                         .then(response => {
@@ -319,6 +326,9 @@ let asiDebugTextsCollection = []; // To store texts for debug display
                         })
                         .then(html => {
                             step3ContentDiv.innerHTML = html;
+                            // Ensure visibility AFTER innerHTML update
+                            step3ContentDiv.style.display = 'block';
+
                             // Now that the HTML structure is loaded, call the function to populate background data
                             if (typeof loadBackgroundStepData === 'function') {
                                 loadBackgroundStepData(); // This function is in character_creation_step3.js
@@ -337,7 +347,11 @@ let asiDebugTextsCollection = []; // To store texts for debug display
                             }
                         });
                 } else if (step3ContentDiv && step3ContentDiv.querySelector('#background-list-container')) {
-                    // Content is already loaded, just ensure data is populated/refreshed.
+                    // Content is already loaded
+                    // Ensure visibility again, just in case.
+                    step3ContentDiv.style.display = 'block';
+
+                    // Ensure data is populated/refreshed.
                     if (typeof loadBackgroundStepData === 'function') {
                         loadBackgroundStepData(); // From character_creation_step3.js
                         // If a background was previously selected, re-display its details
