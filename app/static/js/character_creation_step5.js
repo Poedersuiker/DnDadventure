@@ -259,9 +259,60 @@ function loadStep5Logic() {
             }
         }
     }
-    // This log for "No class data..." is now part of the if/else block above.
+    addStep5DebugMessage("loadStep5Logic", `Allowed skill choices from class: ${allowedSkillChoices}`);
+
+    // Calculate allowed skill choices from background benefits
+    const backgroundBenefits = characterCreationData.step3_background_selection?.benefits;
+    if (backgroundBenefits && backgroundBenefits.length > 0) {
+        addStep5DebugMessage("loadStep5Logic", "Processing background benefits for skill choices.", { count: backgroundBenefits.length });
+        for (const benefit of backgroundBenefits) {
+            if (benefit.type === "skill_proficiency" && benefit.desc) {
+                let choicesFromBenefit = 0;
+                const descLower = benefit.desc.toLowerCase();
+
+                // Order is important here: more specific phrases should be checked before general ones.
+                if (descLower.startsWith("two of your choice")) { // Handles "Two of your choice from all skills"
+                    choicesFromBenefit = 2;
+                } else if (descLower.startsWith("one of your choice")) { // Handles "One of your choice from all skills"
+                    choicesFromBenefit = 1;
+                } else if (descLower.includes("choose two from") || descLower.includes("choose two of the following")) {
+                    choicesFromBenefit = 2;
+                } else if (descLower.includes("choose one from") || descLower.includes("choose one of the following")) {
+                    choicesFromBenefit = 1;
+                } else if (descLower.includes("choose any two") || descLower.includes("choose two skills")) { // General "choose two"
+                    choicesFromBenefit = 2;
+                } else if (descLower.includes("choose any one") || descLower.includes("choose one skill")) { // General "choose one"
+                    choicesFromBenefit = 1;
+                } else if (descLower.includes("either ") && descLower.includes(" or ")) {
+                    // Handles cases like:
+                    // 1. "SkillA, and either SkillB or SkillC" (grants 1 choice for "either SkillB or SkillC")
+                    // 2. "either SkillA or SkillB" (grants 1 choice)
+                    if (descLower.includes(", and either ") || descLower.includes(",and either ")) {
+                         choicesFromBenefit = 1;
+                    } else if (!descLower.includes(",")) { // Ensures it's a simple "either X or Y" and not part of a more complex unhandled list
+                         choicesFromBenefit = 1;
+                    }
+                    // Other complex structures with "or" (e.g., "SkillA, SkillB, or SkillC") are not explicitly handled here
+                    // unless they match earlier "choose one from..." patterns.
+                    // "X, Y, and choose one from A, B" is handled by "choose one from" or "choose one skill".
+                    // "X, and Y" (fixed skills) results in 0 choices, so no explicit handling needed to add to choicesFromBenefit.
+                }
+
+                if (choicesFromBenefit > 0) {
+                    allowedSkillChoices += choicesFromBenefit;
+                    addStep5DebugMessage("loadStep5Logic", `Added ${choicesFromBenefit} skill choice(s) from background benefit: '${benefit.desc}'. New total: ${allowedSkillChoices}`, { benefit });
+                } else {
+                    addStep5DebugMessage("loadStep5Logic", `Background benefit '${benefit.desc}' did not grant additional skill choices (likely fixed proficiencies).`, { benefit });
+                }
+            }
+        }
+    } else {
+        addStep5DebugMessage("loadStep5Logic", "No background benefits found or step3_background_selection is missing.");
+    }
+
+    // Store the final calculated allowed skill choices
     characterCreationData.step5_info.allowed_skill_choices = allowedSkillChoices;
-    addStep5DebugMessage("loadStep5Logic", `Final total allowed skill choices calculated: ${allowedSkillChoices}`);
+    addStep5DebugMessage("loadStep5Logic", `Final total allowed skill choices after class and background: ${allowedSkillChoices}`);
 
     // Update the skill choice information display
     updateSkillChoiceInfoText();
