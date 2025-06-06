@@ -167,6 +167,8 @@ function loadStep5Logic() {
     console.log("Step 5 JS loaded");
     step5DebugTextsCollection = []; // Clear debug messages for this run
     addStep5DebugMessage("loadStep5Logic", "Starting Step 5 logic execution.");
+    addStep5DebugMessage("loadStep5Logic", "Initial characterCreationData.step2_selected_base_class", characterCreationData.step2_selected_base_class);
+
 
     // Ensure proficiency objects and extra arrays are initialized
     if (!characterCreationData.saving_throw_proficiencies) {
@@ -195,10 +197,24 @@ function loadStep5Logic() {
 
     // Calculate allowed skill choices from class
     let allowedSkillChoices = 0;
-    const classData = characterCreationData.step2_selected_base_class;
-    if (classData && classData.proficiency_choices) {
-        addStep5DebugMessage("loadStep5Logic", "Processing class proficiency choices for skill count.", { classProfChoices: classData.proficiency_choices });
-        for (const choiceGroup of classData.proficiency_choices) {
+    // const classData = characterCreationData.step2_selected_base_class; // Old way
+    addStep5DebugMessage("loadStep5Logic", "Attempting to access proficiency_choices from:", characterCreationData.step2_selected_base_class);
+    const classProficiencyChoices = characterCreationData.step2_selected_base_class?.data?.proficiency_choices || characterCreationData.step2_selected_base_class?.proficiency_choices;
+
+    if (!classProficiencyChoices || classProficiencyChoices.length === 0) {
+        let reason = "Not found or empty.";
+        if (characterCreationData.step2_selected_base_class) {
+            if (!classProficiencyChoices) reason = "proficiency_choices attribute itself not found on class data object (checked root and .data).";
+            else if (classProficiencyChoices.length === 0) reason = "proficiency_choices array is empty.";
+        } else {
+            reason = "step2_selected_base_class data is missing.";
+        }
+        addStep5DebugMessage("loadStep5Logic", "No class proficiency_choices available for calculating skill choices.", { reason: reason, classData: characterCreationData.step2_selected_base_class });
+        // allowedSkillChoices remains 0
+    } else {
+        // Proceed with calculation
+        addStep5DebugMessage("loadStep5Logic", "Found class proficiency_choices. Processing for skill choices.", { count: classProficiencyChoices.length, choices: classProficiencyChoices });
+        for (const choiceGroup of classProficiencyChoices) {
             let isSkillChoiceGroup = false;
             let reasonForSkillChoice = "N/A";
 
@@ -242,9 +258,8 @@ function loadStep5Logic() {
                  addStep5DebugMessage("loadStep5Logic", `Choice group '${choiceGroup.desc || "No Desc"}' was NOT identified as a skill choice group.`, { reason: reasonForSkillChoice, choiceGroup });
             }
         }
-    } else {
-        addStep5DebugMessage("loadStep5Logic", "No class data or proficiency_choices found for calculating skill choices.");
     }
+    // This log for "No class data..." is now part of the if/else block above.
     characterCreationData.step5_info.allowed_skill_choices = allowedSkillChoices;
     addStep5DebugMessage("loadStep5Logic", `Final total allowed skill choices calculated: ${allowedSkillChoices}`);
 
