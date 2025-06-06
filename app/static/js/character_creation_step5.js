@@ -197,69 +197,92 @@ function loadStep5Logic() {
 
     // Calculate allowed skill choices from class
     let allowedSkillChoices = 0;
-    // const classData = characterCreationData.step2_selected_base_class; // Old way
-    addStep5DebugMessage("loadStep5Logic", "Attempting to access proficiency_choices from:", characterCreationData.step2_selected_base_class);
-    const classProficiencyChoices = characterCreationData.step2_selected_base_class?.data?.proficiency_choices || characterCreationData.step2_selected_base_class?.proficiency_choices;
+    const wordToNumberMap = { 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6 };
+    const classData = characterCreationData.step2_selected_base_class;
 
-    if (!classProficiencyChoices || classProficiencyChoices.length === 0) {
-        let reason = "Not found or empty.";
-        if (characterCreationData.step2_selected_base_class) {
-            if (!classProficiencyChoices) reason = "proficiency_choices attribute itself not found on class data object (checked root and .data).";
-            else if (classProficiencyChoices.length === 0) reason = "proficiency_choices array is empty.";
+    if (classData && typeof classData.prof_skills === 'string') {
+        addStep5DebugMessage("loadStep5Logic", "Processing class prof_skills string for skill choices.", { prof_skills: classData.prof_skills });
+        const profSkillsLower = classData.prof_skills.toLowerCase();
+        const match = profSkillsLower.match(/choose (one|two|three|four|five|six) from/i);
+
+        if (match && match[1]) {
+            const numberWord = match[1];
+            const count = wordToNumberMap[numberWord];
+            if (typeof count === 'number') {
+                allowedSkillChoices += count;
+                addStep5DebugMessage("loadStep5Logic", `Derived ${count} skill choice(s) from prof_skills string: "${classData.prof_skills}". New total: ${allowedSkillChoices}.`, { derivedCount: count });
+            } else {
+                addStep5DebugMessage("loadStep5Logic", `Could not map number word "${numberWord}" from prof_skills to a number.`, { prof_skills: classData.prof_skills });
+            }
         } else {
-            reason = "step2_selected_base_class data is missing.";
+            addStep5DebugMessage("loadStep5Logic", "No choice pattern (e.g., 'Choose X from') found in prof_skills string.", { prof_skills: classData.prof_skills });
         }
-        addStep5DebugMessage("loadStep5Logic", "No class proficiency_choices available for calculating skill choices.", { reason: reason, classData: characterCreationData.step2_selected_base_class });
-        // allowedSkillChoices remains 0
     } else {
-        // Proceed with calculation
-        addStep5DebugMessage("loadStep5Logic", "Found class proficiency_choices. Processing for skill choices.", { count: classProficiencyChoices.length, choices: classProficiencyChoices });
-        for (const choiceGroup of classProficiencyChoices) {
-            let isSkillChoiceGroup = false;
-            let reasonForSkillChoice = "N/A";
+        addStep5DebugMessage("loadStep5Logic", "Class prof_skills string not found or not a string.", { prof_skills: classData?.prof_skills });
+    }
 
-            // Check 1: Description indicates skills
-            if (choiceGroup.desc && choiceGroup.desc.toLowerCase().includes("skill")) {
-                isSkillChoiceGroup = true;
-                reasonForSkillChoice = "Description contains 'skill'";
-                addStep5DebugMessage("loadStep5Logic", `Choice group '${choiceGroup.desc}' identified as potential skill choice by description.`, { choiceGroup });
+    // Fallback to proficiency_choices if prof_skills parsing yielded 0 choices
+    if (allowedSkillChoices === 0) {
+        addStep5DebugMessage("loadStep5Logic", "Falling back to proficiency_choices for class skill choices as prof_skills parsing yielded 0.", { currentAllowedChoices: allowedSkillChoices });
+        const classProficiencyChoices = classData?.data?.proficiency_choices || classData?.proficiency_choices;
+
+        if (!classProficiencyChoices || classProficiencyChoices.length === 0) {
+            let reason = "Not found or empty.";
+            if (classData) {
+                if (!classProficiencyChoices) reason = "proficiency_choices attribute itself not found on class data object (checked root and .data).";
+                else if (classProficiencyChoices.length === 0) reason = "proficiency_choices array is empty.";
+            } else {
+                reason = "step2_selected_base_class data is missing.";
             }
+            addStep5DebugMessage("loadStep5Logic", "No class proficiency_choices available (fallback).", { reason: reason, classData: classData });
+        } else {
+            addStep5DebugMessage("loadStep5Logic", "Found class proficiency_choices (fallback). Processing for skill choices.", { count: classProficiencyChoices.length, choices: classProficiencyChoices });
+            for (const choiceGroup of classProficiencyChoices) {
+                let isSkillChoiceGroup = false;
+                let reasonForSkillChoice = "N/A";
 
-            // Check 2: Options list contains actual skills from SKILL_LIST
-            // This check is more definitive and can override a non-skill description.
-            if (choiceGroup.choose_from && choiceGroup.choose_from.options && choiceGroup.choose_from.options.length > 0) {
-                let foundSkillInOptions = false;
-                for (const option of choiceGroup.choose_from.options) {
-                    const optionName = option.item?.name || option.name || ""; // Handle different structures
-                    if (optionName && SKILL_LIST.hasOwnProperty(optionName)) {
-                        foundSkillInOptions = true;
-                        reasonForSkillChoice = `Option '${optionName}' is a known skill.`;
-                        addStep5DebugMessage("loadStep5Logic", `Choice group '${choiceGroup.desc || "No Desc"}' confirmed as skill choice. Reason: ${reasonForSkillChoice}`, { choiceGroup });
-                        break; // Found a skill, this group is definitely skill-related
+                if (choiceGroup.desc && choiceGroup.desc.toLowerCase().includes("skill")) {
+                    isSkillChoiceGroup = true;
+                    reasonForSkillChoice = "Description contains 'skill'";
+                    addStep5DebugMessage("loadStep5Logic", `Choice group (fallback) '${choiceGroup.desc}' identified as potential skill choice by description.`, { choiceGroup });
+                }
+
+                if (choiceGroup.choose_from && choiceGroup.choose_from.options && choiceGroup.choose_from.options.length > 0) {
+                    let foundSkillInOptions = false;
+                    for (const option of choiceGroup.choose_from.options) {
+                        const optionName = option.item?.name || option.name || "";
+                        if (optionName && SKILL_LIST.hasOwnProperty(optionName)) {
+                            foundSkillInOptions = true;
+                            reasonForSkillChoice = `Option '${optionName}' is a known skill.`;
+                            addStep5DebugMessage("loadStep5Logic", `Choice group (fallback) '${choiceGroup.desc || "No Desc"}' confirmed as skill choice. Reason: ${reasonForSkillChoice}`, { choiceGroup });
+                            break;
+                        }
                     }
-                }
-                if (foundSkillInOptions) {
-                    isSkillChoiceGroup = true; // Confirm or set if not already set by description
+                    if (foundSkillInOptions) {
+                        isSkillChoiceGroup = true;
+                    } else {
+                         addStep5DebugMessage("loadStep5Logic", `Choice group (fallback) '${choiceGroup.desc || "No Desc"}' options did not contain any known skills.`, { options: choiceGroup.choose_from.options });
+                    }
                 } else {
-                     addStep5DebugMessage("loadStep5Logic", `Choice group '${choiceGroup.desc || "No Desc"}' options did not contain any known skills.`, { options: choiceGroup.choose_from.options });
+                    addStep5DebugMessage("loadStep5Logic", `Choice group (fallback) '${choiceGroup.desc || "No Desc"}' has no options to check for skills.`, { choiceGroup });
                 }
-            } else {
-                addStep5DebugMessage("loadStep5Logic", `Choice group '${choiceGroup.desc || "No Desc"}' has no options to check for skills.`, { choiceGroup });
-            }
 
-            if (isSkillChoiceGroup) {
-                if (choiceGroup.choose_from && typeof choiceGroup.choose_from.count === 'number') {
-                    allowedSkillChoices += choiceGroup.choose_from.count;
-                    addStep5DebugMessage("loadStep5Logic", `Incrementing allowedSkillChoices by ${choiceGroup.choose_from.count} for group '${choiceGroup.desc || "No Desc"}'. New total: ${allowedSkillChoices}. Reason: ${reasonForSkillChoice}`, { count: choiceGroup.choose_from.count });
+                if (isSkillChoiceGroup) {
+                    if (choiceGroup.choose_from && typeof choiceGroup.choose_from.count === 'number') {
+                        allowedSkillChoices += choiceGroup.choose_from.count;
+                        addStep5DebugMessage("loadStep5Logic", `Incrementing allowedSkillChoices by ${choiceGroup.choose_from.count} for group (fallback) '${choiceGroup.desc || "No Desc"}'. New total: ${allowedSkillChoices}. Reason: ${reasonForSkillChoice}`, { count: choiceGroup.choose_from.count });
+                    } else {
+                        addStep5DebugMessage("loadStep5Logic", `Skill choice group (fallback) '${choiceGroup.desc || "No Desc"}' lacks valid count. Not adding to total.`, { choiceGroup });
+                    }
                 } else {
-                    addStep5DebugMessage("loadStep5Logic", `Skill choice group '${choiceGroup.desc || "No Desc"}' lacks valid count. Not adding to total.`, { choiceGroup });
+                     addStep5DebugMessage("loadStep5Logic", `Choice group (fallback) '${choiceGroup.desc || "No Desc"}' was NOT identified as a skill choice group.`, { reason: reasonForSkillChoice, choiceGroup });
                 }
-            } else {
-                 addStep5DebugMessage("loadStep5Logic", `Choice group '${choiceGroup.desc || "No Desc"}' was NOT identified as a skill choice group.`, { reason: reasonForSkillChoice, choiceGroup });
             }
         }
+    } else {
+        addStep5DebugMessage("loadStep5Logic", "Skipping proficiency_choices for class skills as prof_skills parsing yielded choices.", { choicesFromProfSkills: allowedSkillChoices });
     }
-    addStep5DebugMessage("loadStep5Logic", `Allowed skill choices from class: ${allowedSkillChoices}`);
+    addStep5DebugMessage("loadStep5Logic", `Allowed skill choices from class (after prof_skills and potential fallback): ${allowedSkillChoices}`);
 
     // Calculate allowed skill choices from background benefits
     const backgroundBenefits = characterCreationData.step3_background_selection?.benefits;
