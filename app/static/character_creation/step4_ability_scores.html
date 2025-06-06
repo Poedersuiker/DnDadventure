@@ -1,0 +1,116 @@
+<h2>Step 4: Determine Ability Scores</h2> <!-- Note: Title changed -->
+
+            <div id="asi-debug-texts-container" class="debug-info-container" style="margin-top: 15px; margin-bottom: 15px; padding: 10px; border: 1px dashed #ccc; background-color: #f9f9f9; display: none;">
+                <h4>ASI Processing Debug Texts:</h4>
+                <p><small>The following raw text descriptions are being processed for Ability Score Increases (ASIs) from your race, class, and background choices.</small></p>
+                <pre id="asi-debug-output" style="white-space: pre-wrap; word-wrap: break-word; max-height: 300px; overflow-y: auto; background-color: #fff; border: 1px solid #eee; padding: 8px;"></pre>
+                <p><small><em>This section is visible because Character Creation Debug Mode is ON in Admin Settings. (This message will be shown/hidden by JS based on the flag).</em></small></p>
+            </div>
+
+            <div id="vital-stats-container">
+                <h4>Vital Stats for Your Race/Class:</h4>
+                <p id="vital-stats-display">(Vital stats will appear here)</p>
+            </div>
+
+            <div id="dice-roll-line">
+                <h4>Ability Score Generation:</h4>
+                <div id="standard-array-display">
+                    Standard Array: <span>15</span>, <span>14</span>, <span>13</span>, <span>12</span>, <span>10</span>, <span>8</span>
+                </div>
+                <div id="rolled-dice-display" style="display: none;">
+                    Your Rolls: <span id="rolled-dice-values">(Dice rolls will appear here)</span>
+                </div>
+                <button id="roll-dice-button" class="button">Roll Dice</button>
+                <p id="roll-dice-warning" class="warning-text" style="display: none;">Warning: This will override standard values and can only be done once!</p>
+            </div>
+
+            <div id="assignable-dice-pool-container">
+                <h4>Available Rolls:</h4>
+                <div id="assignable-dice-pool">
+                    <!-- Dice values will be populated here by JavaScript -->
+                </div>
+                <p><em>Click a roll, then click a stat to assign. Click an assigned stat to unassign.</em></p>
+            </div>
+
+            <div id="asi-choice-container">
+                <h4>Ability Score Improvement Choices:</h4>
+                <p>You may have points to assign from your race, class, or background.</p>
+                <ul id="asi-choice-list">
+                    <!-- ASI choices will be populated here by JavaScript -->
+                    <!-- Example li: <li>Source: Choose any one ability score by +1 (1 point remaining)</li> -->
+                </ul>
+                <p>Total unallocated points: <span id="total-remaining-choice-points">0</span></p>
+                <div id="asi-allocation-message" class="info-text" style="display: none;"></div>
+            </div>
+
+            <div id="stats-display-container">
+                <h4>Assign Your Scores:</h4>
+                <div class="stats-grid">
+                    <!-- Strength -->
+                    <div class="stat-block" id="stat-STR">
+                        <div class="stat-name">Strength<br>(STR)</div>
+                        <div class="stat-assigned-value" data-stat="STR">-</div>
+                        <div class="stat-bonus race-bonus" data-stat="STR" data-type="race">+0</div>
+                        <div class="stat-bonus class-bonus" data-stat="STR" data-type="class">+0</div>
+                        <div class="stat-bonus background-bonus" data-stat="STR" data-type="background">+0</div>
+                        <div class="stat-bonus choice-bonus" data-stat="STR" data-type="choice" style="display: none;">+0</div>
+                        <button class="button asi-allocate-button" data-stat="STR" title="Allocate choice point to Strength">+</button>
+                        <div class="stat-total" data-stat="STR">0</div>
+                    </div>
+                    <!-- Dexterity -->
+                    <div class="stat-block" id="stat-DEX">
+                        <div class="stat-name">Dexterity<br>(DEX)</div>
+                        <div class="stat-assigned-value" data-stat="DEX">-</div>
+                        <div class="stat-bonus race-bonus" data-stat="DEX" data-type="race">+0</div>
+                        <div class="stat-bonus class-bonus" data-stat="DEX" data-type="class">+0</div>
+                        <div class="stat-bonus background-bonus" data-stat="DEX" data-type="background">+0</div>
+                        <div class="stat-bonus choice-bonus" data-stat="DEX" data-type="choice" style="display: none;">+0</div>
+                        <button class="button asi-allocate-button" data-stat="DEX" title="Allocate choice point to Dexterity">+</button>
+                        <div class="stat-total" data-stat="DEX">0</div>
+                    </div>
+                    <!-- Constitution -->
+                    <div class="stat-block" id="stat-CON">
+                        <div class="stat-name">Constitution<br>(CON)</div>
+                        <div class="stat-assigned-value" data-stat="CON">-</div>
+                        <div class="stat-bonus race-bonus" data-stat="CON" data-type="race">+0</div>
+                        <div class="stat-bonus class-bonus" data-stat="CON" data-type="class">+0</div>
+                        <div class="stat-bonus background-bonus" data-stat="CON" data-type="background">+0</div>
+                        <div class="stat-bonus choice-bonus" data-stat="CON" data-type="choice" style="display: none;">+0</div>
+                        <button class="button asi-allocate-button" data-stat="CON" title="Allocate choice point to Constitution">+</button>
+                        <div class="stat-total" data-stat="CON">0</div>
+                    </div>
+                    <!-- Intelligence -->
+                    <div class="stat-block" id="stat-INT">
+                        <div class="stat-name">Intelligence<br>(INT)</div>
+                        <div class="stat-assigned-value" data-stat="INT">-</div>
+                        <div class="stat-bonus race-bonus" data-stat="INT" data-type="race">+0</div>
+                        <div class="stat-bonus class-bonus" data-stat="INT" data-type="class">+0</div>
+                        <div class="stat-bonus background-bonus" data-stat="INT" data-type="background">+0</div>
+                        <div class="stat-bonus choice-bonus" data-stat="INT" data-type="choice" style="display: none;">+0</div>
+                        <button class="button asi-allocate-button" data-stat="INT" title="Allocate choice point to Intelligence">+</button>
+                        <div class="stat-total" data-stat="INT">0</div>
+                    </div>
+                    <!-- Wisdom -->
+                    <div class="stat-block" id="stat-WIS">
+                        <div class="stat-name">Wisdom<br>(WIS)</div>
+                        <div class="stat-assigned-value" data-stat="WIS">-</div>
+                        <div class="stat-bonus race-bonus" data-stat="WIS" data-type="race">+0</div>
+                        <div class="stat-bonus class-bonus" data-stat="WIS" data-type="class">+0</div>
+                        <div class="stat-bonus background-bonus" data-stat="WIS" data-type="background">+0</div>
+                        <div class="stat-bonus choice-bonus" data-stat="WIS" data-type="choice" style="display: none;">+0</div>
+                        <button class="button asi-allocate-button" data-stat="WIS" title="Allocate choice point to Wisdom">+</button>
+                        <div class="stat-total" data-stat="WIS">0</div>
+                    </div>
+                    <!-- Charisma -->
+                    <div class="stat-block" id="stat-CHA">
+                        <div class="stat-name">Charisma<br>(CHA)</div>
+                        <div class="stat-assigned-value" data-stat="CHA">-</div>
+                        <div class="stat-bonus race-bonus" data-stat="CHA" data-type="race">+0</div>
+                        <div class="stat-bonus class-bonus" data-stat="CHA" data-type="class">+0</div>
+                        <div class="stat-bonus background-bonus" data-stat="CHA" data-type="background">+0</div>
+                        <div class="stat-bonus choice-bonus" data-stat="CHA" data-type="choice" style="display: none;">+0</div>
+                        <button class="button asi-allocate-button" data-stat="CHA" title="Allocate choice point to Charisma">+</button>
+                        <div class="stat-total" data-stat="CHA">0</div>
+                    </div>
+                </div>
+            </div>
