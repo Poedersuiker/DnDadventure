@@ -1,3 +1,4 @@
+const IS_CHARACTER_CREATION_DEBUG_ACTIVE = true;
 let currentStep = 0; // Start at Step 0 (Introduction)
     const totalSteps = 9; // Last actual step number for choices
 
@@ -48,6 +49,9 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     characterCreationData.step3_background_selection = characterCreationData.step3_background_selection || null;
     characterCreationData.step3_background_details_text = characterCreationData.step3_background_details_text || '';
     characterCreationData.step3_background_data_loaded = characterCreationData.step3_background_data_loaded || false;
+    // Initialize skill_proficiencies and proficiency_bonus for Step 5
+    characterCreationData.skill_proficiencies = characterCreationData.skill_proficiencies || [];
+    characterCreationData.proficiency_bonus = characterCreationData.proficiency_bonus || 2; // Default for LVL 1
 
 
     let selectedClassOrArchetypeSlug = null; // Renamed from selectedClassSlug
@@ -400,8 +404,7 @@ let asiDebugTextsCollection = []; // To store texts for debug display
                 }
             } else if (stepNumber === 5) {
                 const step5ContentDiv = document.getElementById('step-5');
-                // Check if content is already loaded or needs to be fetched
-                if (step5ContentDiv && step5ContentDiv.innerHTML.trim() === '') { // Check if div is empty
+                if (step5ContentDiv && (!step5ContentDiv.querySelector('#skills-table') || step5ContentDiv.innerHTML.trim() === '')) { // Check for a unique element or if empty
                     fetch('/static/character_creation/step5_skills_proficiencies.html')
                         .then(response => {
                             if (!response.ok) {
@@ -426,7 +429,7 @@ let asiDebugTextsCollection = []; // To store texts for debug display
                                 step5ContentDiv.innerHTML = '<p class="error-message">Error loading skills & proficiencies content. Please try refreshing or contact support.</p>';
                             }
                         });
-                } else if (step5ContentDiv && step5ContentDiv.innerHTML.trim() !== '') {
+                } else if (step5ContentDiv && step5ContentDiv.querySelector('#skills-table')) {
                     // Content is already loaded, just call the logic function
                     if (typeof loadStep5Logic === 'function') {
                         loadStep5Logic();
@@ -796,6 +799,14 @@ let asiDebugTextsCollection = []; // To store texts for debug display
 // Placeholder for any remaining top-level logic or helper functions from character_creation.js
 // that might be needed by the functions above, or by other steps.
 // For now, this section will be empty if all specific step logic is moved.
+
+// Global debug toggle function
+function toggleDebugVisibility(elementId) {
+    const el = document.getElementById(elementId);
+    if (el) {
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    }
+}
 
 // Initialize first step
 showStep(currentStep);
