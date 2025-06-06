@@ -115,6 +115,20 @@ function checkStringForSkillProficiency(text, skillName) {
     return regex.test(text);
 }
 
+// Function to update the skill choice information text display
+function updateSkillChoiceInfoText() {
+    const skillChoiceInfoEl = document.getElementById('skill-choice-info');
+    if (skillChoiceInfoEl) {
+        const allowed = characterCreationData.step5_info?.allowed_skill_choices || 0;
+        const selected = characterCreationData.skill_proficiencies?.extra?.length || 0;
+        skillChoiceInfoEl.textContent = `Skill Proficiencies (Selected ${selected} of ${allowed})`;
+        addStep5DebugMessage("updateSkillChoiceInfoText", "Updated skill choice info display.", { allowed, selected });
+    } else {
+        // This might be logged frequently if the element isn't on other steps' pages, consider severity.
+        // addStep5DebugMessage("updateSkillChoiceInfoText", "'skill-choice-info' element not found. Cannot update display.", {}, "INFO");
+    }
+}
+
 // Function to update skill checkbox states based on selection limits
 function updateSkillCheckboxStatesBasedOnLimit() {
     const allowedSkillChoices = characterCreationData.step5_info?.allowed_skill_choices || 0;
@@ -183,36 +197,59 @@ function loadStep5Logic() {
     let allowedSkillChoices = 0;
     const classData = characterCreationData.step2_selected_base_class;
     if (classData && classData.proficiency_choices) {
-        addStep5DebugMessage("loadStep5Logic", "Calculating allowed skill choices from class.", { classProfChoices: classData.proficiency_choices });
+        addStep5DebugMessage("loadStep5Logic", "Processing class proficiency choices for skill count.", { classProfChoices: classData.proficiency_choices });
         for (const choiceGroup of classData.proficiency_choices) {
-            // Heuristic: check if 'desc' mentions skills or if options look like skills
             let isSkillChoiceGroup = false;
+            let reasonForSkillChoice = "N/A";
+
+            // Check 1: Description indicates skills
             if (choiceGroup.desc && choiceGroup.desc.toLowerCase().includes("skill")) {
                 isSkillChoiceGroup = true;
-            } else if (choiceGroup.choose_from && choiceGroup.choose_from.options && choiceGroup.choose_from.options.length > 0) {
-                // Check if the first option looks like a skill (e.g., exists in SKILL_LIST)
-                const firstOption = choiceGroup.choose_from.options[0]?.item?.name || "";
-                if (SKILL_LIST.hasOwnProperty(firstOption)) {
-                     isSkillChoiceGroup = true;
-                }
+                reasonForSkillChoice = "Description contains 'skill'";
+                addStep5DebugMessage("loadStep5Logic", `Choice group '${choiceGroup.desc}' identified as potential skill choice by description.`, { choiceGroup });
             }
 
-            if (isSkillChoiceGroup && choiceGroup.choose_from && typeof choiceGroup.choose_from.count === 'number') {
-                allowedSkillChoices += choiceGroup.choose_from.count;
-                addStep5DebugMessage("loadStep5Logic", `Found skill choice group, adding ${choiceGroup.choose_from.count} to allowedSkillChoices.`, { choiceGroupDesc: choiceGroup.desc, count: choiceGroup.choose_from.count });
+            // Check 2: Options list contains actual skills from SKILL_LIST
+            // This check is more definitive and can override a non-skill description.
+            if (choiceGroup.choose_from && choiceGroup.choose_from.options && choiceGroup.choose_from.options.length > 0) {
+                let foundSkillInOptions = false;
+                for (const option of choiceGroup.choose_from.options) {
+                    const optionName = option.item?.name || option.name || ""; // Handle different structures
+                    if (optionName && SKILL_LIST.hasOwnProperty(optionName)) {
+                        foundSkillInOptions = true;
+                        reasonForSkillChoice = `Option '${optionName}' is a known skill.`;
+                        addStep5DebugMessage("loadStep5Logic", `Choice group '${choiceGroup.desc || "No Desc"}' confirmed as skill choice. Reason: ${reasonForSkillChoice}`, { choiceGroup });
+                        break; // Found a skill, this group is definitely skill-related
+                    }
+                }
+                if (foundSkillInOptions) {
+                    isSkillChoiceGroup = true; // Confirm or set if not already set by description
+                } else {
+                     addStep5DebugMessage("loadStep5Logic", `Choice group '${choiceGroup.desc || "No Desc"}' options did not contain any known skills.`, { options: choiceGroup.choose_from.options });
+                }
+            } else {
+                addStep5DebugMessage("loadStep5Logic", `Choice group '${choiceGroup.desc || "No Desc"}' has no options to check for skills.`, { choiceGroup });
+            }
+
+            if (isSkillChoiceGroup) {
+                if (choiceGroup.choose_from && typeof choiceGroup.choose_from.count === 'number') {
+                    allowedSkillChoices += choiceGroup.choose_from.count;
+                    addStep5DebugMessage("loadStep5Logic", `Incrementing allowedSkillChoices by ${choiceGroup.choose_from.count} for group '${choiceGroup.desc || "No Desc"}'. New total: ${allowedSkillChoices}. Reason: ${reasonForSkillChoice}`, { count: choiceGroup.choose_from.count });
+                } else {
+                    addStep5DebugMessage("loadStep5Logic", `Skill choice group '${choiceGroup.desc || "No Desc"}' lacks valid count. Not adding to total.`, { choiceGroup });
+                }
+            } else {
+                 addStep5DebugMessage("loadStep5Logic", `Choice group '${choiceGroup.desc || "No Desc"}' was NOT identified as a skill choice group.`, { reason: reasonForSkillChoice, choiceGroup });
             }
         }
+    } else {
+        addStep5DebugMessage("loadStep5Logic", "No class data or proficiency_choices found for calculating skill choices.");
     }
     characterCreationData.step5_info.allowed_skill_choices = allowedSkillChoices;
-    addStep5DebugMessage("loadStep5Logic", `Total allowed skill choices calculated: ${allowedSkillChoices}`);
+    addStep5DebugMessage("loadStep5Logic", `Final total allowed skill choices calculated: ${allowedSkillChoices}`);
 
-    // For UI (placeholder for now - actual DOM element to be added in HTML)
-    const skillChoiceInfoEl = document.getElementById('skill-choice-info');
-    if (skillChoiceInfoEl) {
-        skillChoiceInfoEl.textContent = `You can choose ${allowedSkillChoices} skill proficiencies. Selected: ${characterCreationData.skill_proficiencies.extra.length || 0}.`;
-    } else {
-        console.log(`UI Placeholder: You can choose ${allowedSkillChoices} skill proficiencies. Selected: ${characterCreationData.skill_proficiencies.extra.length || 0}. ('skill-choice-info' element not found)`);
-    }
+    // Update the skill choice information display
+    updateSkillChoiceInfoText();
 
 
     if (!characterCreationData) {
@@ -496,10 +533,7 @@ function loadStep5Logic() {
                     }
 
                     // Update UI for skill choice count
-                    const skillChoiceInfoEl = document.getElementById('skill-choice-info');
-                    if (skillChoiceInfoEl) {
-                        skillChoiceInfoEl.textContent = `You can choose ${currentAllowedSkillChoices} skill proficiencies. Selected: ${characterCreationData.skill_proficiencies.extra.length}.`;
-                    }
+                    updateSkillChoiceInfoText();
 
                     updateSkillCheckboxStatesBasedOnLimit(); // Update all checkbox enable/disable states
                     renderStep5DebugInfo(); // Update general debug info
@@ -522,6 +556,7 @@ function loadStep5Logic() {
     }
 
     updateSkillCheckboxStatesBasedOnLimit(); // Initial call to set checkbox states based on loaded data and limits
+    updateSkillChoiceInfoText(); // Ensure info text is correct after initial load & checkbox state update
 
     renderStep5DebugInfo();
     console.log("Step 5 Logic fully executed. characterCreationData:", JSON.parse(JSON.stringify(characterCreationData)));
