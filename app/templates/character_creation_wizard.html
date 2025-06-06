@@ -33,8 +33,6 @@
 
         <!-- Step 0: Introduction Content Area (optional, can be empty if PHB description is enough) -->
         <div id="step-0" class="wizard-step" style="display: none;">
-            <h2>Welcome to Character Creation!</h2>
-            <p>Follow the steps to create your D&D 5e character. Use the "Next" button to proceed through each step, and refer to the Player's Handbook descriptions for guidance.</p>
         </div>
 
         <div id="step-1" class="wizard-step" style="display: none;">
@@ -236,6 +234,7 @@
   const IS_CHARACTER_CREATION_DEBUG_ACTIVE = {{ wizard_shell_data.character_creation_debug_active | default(false) | tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/general.js') }}"></script>
+<script src="{{ url_for('static', filename='js/character_creation_step0.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character_creation.js') }}"></script>
 
 <!-- Embedded styles removed, moved to static/css/style.css -->
