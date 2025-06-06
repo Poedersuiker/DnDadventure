@@ -64,15 +64,6 @@ let asiDebugTextsCollection = []; // To store texts for debug display
 
 
     const phbPlaceholders = {
-        0: `<h3>Character Creation Steps</h3>
-            <p>Your first step in playing an adventurer in the Dungeons & Dragons game is to imagine and create a character of your own. Your character is a combination of game statistics, roleplaying hooks, and your imagination. You choose a race (such as human or halfling) and a class (such as fighter or wizard). You also invent the personality, appearance, and backstory of your character.</p>
-            <p>The process involves these main steps:<br><br>
-            <strong>1. Choose a Race:</strong> Every character belongs to a race, one of the many intelligent humanoid species in the D&D world. The most common player character races are dwarves, elves, halflings, and humans. Your character’s race grants particular racial traits, such as special senses, or proficiency with certain weapons or tools.<br><br>
-            <strong>2. Choose a Class:</strong> Every adventurer is a member of a character class. Class broadly describes a character’s vocation, special talents, and the tactics the character is most likely to employ when exploring a dungeon, fighting monsters, or engaging in a tense negotiation. <br><br>
-            <strong>3. Determine Ability Scores:</strong> Much of what your character does in the game depends on his or her six abilities: Strength, Dexterity, Constitution, Intelligence, Wisdom, and Charisma. Each ability has a score, which is a number you record on your character sheet. The three main ways to generate ability scores are rolling dice (typically 4d6, dropping the lowest die, for each score), using a standard set of scores (15, 14, 13, 12, 10, 8), or point buy.<br><br>
-            <strong>4. Describe Your Character:</strong> Once you know the basic game aspects of your character, it’s time to flesh out his or her history and personality. This includes your character's name, alignment, ideals, bonds, flaws, and background. A background describes your original occupation and provides benefits such as skill/tool proficiencies and starting equipment.<br><br>
-            <strong>5. Choose Equipment:</strong> Your class and background determine your character’s starting equipment, including weapons, armor, and other adventuring gear. Alternatively, you can start with a number of gold pieces based on your class and spend them on items from the lists in the Player's Handbook.<br><br>
-            <strong>Beyond 1st Level:</strong> As your character goes on adventures and overcomes challenges, he or she gains experience, represented by experience points. A character who reaches a specified experience point total advances in capability. This advancement is called gaining a level.</p>`,
         1: `<h3>1. Choose a Race</h3>
             <p>Your choice of race affects many different aspects of your character. It establishes fundamental qualities that exist throughout your character’s adventuring career.</p>
             <p><strong>Racial Traits:</strong> The description of each race includes racial traits that are common to members of that race. These can include: Ability Score Increase, Age, Alignment tendencies, Size, Speed, Languages, and Subraces.</p>`,
@@ -229,7 +220,7 @@ let asiDebugTextsCollection = []; // To store texts for debug display
             step.style.display = 'none';
         });
 
-        // Show current step's main content (if it's not step 0)
+        // Show current step's main content
         if (stepNumber > 0) {
             const currentStepContent = document.getElementById(`step-${stepNumber}`);
             if (currentStepContent) {
@@ -242,11 +233,6 @@ let asiDebugTextsCollection = []; // To store texts for debug display
                 } else {
                     populateRaceList(allRacesData); // Repopulate if data exists
                 }
-                // Removed logic for displaying traits in a separate #race-traits-display.
-                // handleRaceOrSubraceClick is now responsible for updating #race-description-container.
-                // If no race is selected when step 1 loads, #race-description-container will be empty
-                // or show a default message set by populateRaceList/handleRaceOrSubraceClick if applicable.
-                // Ensure correct re-display if race was already selected
                if (selectedRaceSlug) {
                    const selectedLi = document.querySelector(`#race-selection-list li[data-slug="${selectedRaceSlug}"]`);
                    const raceDescContainer = document.getElementById('race-description-container');
@@ -259,20 +245,18 @@ let asiDebugTextsCollection = []; // To store texts for debug display
                    loadClassStepData();
                } else {
                    populateClassList(allClassesData);
-                   if (selectedClassOrArchetypeSlug) { // Renamed
-                       // Ensure details are displayed if a class/archetype was already selected
+                   if (selectedClassOrArchetypeSlug) {
                        const classDescContainer = document.getElementById('class-description-container');
                        if (classDescContainer && (classDescContainer.innerHTML === '' || classDescContainer.innerHTML.includes('Loading details for'))) {
-                            displayClassDetails(selectedClassOrArchetypeSlug); // Renamed
-                       } else if (classDescContainer && selectedClassOrArchetypeSlug && !classDescContainer.innerHTML.includes(selectedClassOrArchetypeSlug)) { // Renamed
-                           // If a different class's details are showing, or it's empty but a slug is selected
-                           displayClassDetails(selectedClassOrArchetypeSlug); // Renamed
+                            displayClassDetails(selectedClassOrArchetypeSlug);
+                       } else if (classDescContainer && selectedClassOrArchetypeSlug && !classDescContainer.innerHTML.includes(selectedClassOrArchetypeSlug)) {
+                           displayClassDetails(selectedClassOrArchetypeSlug);
                        }
                    }
                }
-            } else if (stepNumber === 4) {
-                loadStep3Logic(); // Call a new function to handle Step 3's specific logic
-            } else if (stepNumber === 3) {
+            } else if (stepNumber === 4) { // This is Ability Scores, which calls loadStep3Logic
+                loadStep3Logic();
+            } else if (stepNumber === 3) { // This is Backgrounds
                 if (!allBackgroundsData) {
                     loadBackgroundStepData();
                 } else {
@@ -282,20 +266,40 @@ let asiDebugTextsCollection = []; // To store texts for debug display
                     displayBackgroundDetails(characterCreationData.step3_selected_background_slug);
                 }
            }
-        } else {
-            // For step 0 (Introduction)
+            // Update PHB description placeholder for steps > 0
+            const phbDescContainer = document.getElementById('phb-description');
+            if (phbPlaceholders[stepNumber] !== undefined) {
+                phbDescContainer.innerHTML = phbPlaceholders[stepNumber];
+            } else {
+                phbDescContainer.innerHTML = `<p>Description for step ${stepNumber} will go here.</p>`; // Fallback
+            }
+        } else { // Step 0 (Introduction)
             const stepZeroContent = document.getElementById('step-0');
             if (stepZeroContent) {
+                stepZeroContent.innerHTML = '<p>Loading introduction...</p>'; // Temporary loading message
                 stepZeroContent.style.display = 'block';
-            }
-        }
 
-        // Update PHB description placeholder
-        const phbDescContainer = document.getElementById('phb-description');
-        if (phbPlaceholders[stepNumber] !== undefined) { // Check if key exists, including 0
-            phbDescContainer.innerHTML = phbPlaceholders[stepNumber];
-        } else {
-            phbDescContainer.innerHTML = `<p>Description for step ${stepNumber} will go here.</p>`; // Fallback
+                // Fetch content for Step 0
+                fetch('/static/character_creation/step0_intro.html')
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok for step0_intro.html');
+                        }
+                        return response.text();
+                    })
+                    .then(html => {
+                        stepZeroContent.innerHTML = html;
+                    })
+                    .catch(error => {
+                        console.error('Error fetching step 0 content:', error);
+                        stepZeroContent.innerHTML = '<p>Error loading introduction. Please try refreshing.</p>';
+                    });
+            }
+            // Clear PHB description for step 0 as content is in stepZeroContent
+            const phbDescContainer = document.getElementById('phb-description');
+            if (phbDescContainer) {
+                phbDescContainer.innerHTML = '';
+            }
         }
 
         // Update button visibility and text
