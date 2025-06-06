@@ -27,11 +27,50 @@ function getAbilityModifier(score) {
 function renderStep5DebugInfo() {
     const debugOutputEl = document.getElementById('step5-debug-output');
     if (debugOutputEl && typeof IS_CHARACTER_CREATION_DEBUG_ACTIVE !== 'undefined' && IS_CHARACTER_CREATION_DEBUG_ACTIVE) {
-        // Ensure debug section is visible if active (button might not have been clicked yet)
-        // Consider adding a specific class to the debug section for easier show/hide via JS if needed.
-        // For now, assuming the button's onclick handles direct style.display.
-        let formattedDebugText = `Character Data Snapshot for Step 5:
-${JSON.stringify(characterCreationData, null, 2)}
+        let focusedDebugData = {};
+
+        // Extract skill_proficiencies
+        focusedDebugData.skill_proficiencies = characterCreationData.skill_proficiencies || [];
+
+        // Extract saving_throw_proficiencies
+        focusedDebugData.saving_throw_proficiencies = characterCreationData.saving_throw_proficiencies || [];
+
+        // Extract race traits relevant to skills
+        const raceTraits = characterCreationData.step1_race_selection?.traits || [];
+        focusedDebugData.race_skill_traits = raceTraits.filter(trait => trait.desc && trait.desc.toLowerCase().includes("proficiency in"));
+
+        // Include parent race traits if sub-race traits are empty or don't exist
+        // This ensures that if a sub-race doesn't define traits, or if the main traits are on the parent, they are still captured.
+        if (characterCreationData.step1_parent_race_selection && characterCreationData.step1_parent_race_selection.traits) {
+            const parentRaceTraits = characterCreationData.step1_parent_race_selection.traits.filter(trait => trait.desc && trait.desc.toLowerCase().includes("proficiency in"));
+            if (parentRaceTraits.length > 0) {
+                if (focusedDebugData.race_skill_traits.length === 0) {
+                    focusedDebugData.race_skill_traits = parentRaceTraits;
+                } else {
+                    // Optionally, merge or indicate parent traits separately
+                    // For now, let's add them if not already present (e.g. by name) to avoid duplicates if a subrace trait overrides a parent one.
+                    parentRaceTraits.forEach(ptrait => {
+                        if (!focusedDebugData.race_skill_traits.find(rtrait => rtrait.name === ptrait.name)) {
+                            focusedDebugData.race_skill_traits.push(ptrait);
+                        }
+                    });
+                }
+            }
+        }
+
+
+        // Extract class prof_saving_throws
+        focusedDebugData.class_prof_saving_throws = characterCreationData.step2_selected_base_class?.prof_saving_throws || "";
+
+        // Extract class prof_skills
+        focusedDebugData.class_prof_skills = characterCreationData.step2_selected_base_class?.prof_skills || "";
+
+        // Extract background benefits relevant to skills
+        const backgroundBenefits = characterCreationData.step3_background_selection?.benefits || [];
+        focusedDebugData.background_skill_benefits = backgroundBenefits.filter(benefit => benefit.type === "skill_proficiency");
+
+        let formattedDebugText = `Focused Character Proficiency Data for Step 5:
+${JSON.stringify(focusedDebugData, null, 2)}
 
 `;
         formattedDebugText += "Step 5 Processing Log:\n";
