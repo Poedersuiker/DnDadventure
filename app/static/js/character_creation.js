@@ -52,6 +52,8 @@ let currentStep = 0; // Start at Step 0 (Introduction)
     // Initialize skill_proficiencies and proficiency_bonus for Step 5
     characterCreationData.skill_proficiencies = characterCreationData.skill_proficiencies || [];
     characterCreationData.proficiency_bonus = characterCreationData.proficiency_bonus || 2; // Default for LVL 1
+    // Initialize step6_combat_stats for Step 6
+    characterCreationData.step6_combat_stats = characterCreationData.step6_combat_stats || {};
 
 
     let selectedClassOrArchetypeSlug = null; // Renamed from selectedClassSlug
