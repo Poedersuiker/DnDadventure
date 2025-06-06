@@ -1,14 +1,11 @@
 <h2>Step 4: Determine Ability Scores</h2> <!-- Note: Title changed -->
 
-            {# Check if wizard_shell_data and the debug flag are available #}
-            {% if wizard_shell_data and wizard_shell_data.character_creation_debug_active %}
-            <div id="asi-debug-texts-container" class="debug-info-container" style="margin-top: 15px; margin-bottom: 15px; padding: 10px; border: 1px dashed #ccc; background-color: #f9f9f9;">
+            <div id="asi-debug-texts-container" class="debug-info-container" style="margin-top: 15px; margin-bottom: 15px; padding: 10px; border: 1px dashed #ccc; background-color: #f9f9f9; display: none;">
                 <h4>ASI Processing Debug Texts:</h4>
                 <p><small>The following raw text descriptions are being processed for Ability Score Increases (ASIs) from your race, class, and background choices.</small></p>
                 <pre id="asi-debug-output" style="white-space: pre-wrap; word-wrap: break-word; max-height: 300px; overflow-y: auto; background-color: #fff; border: 1px solid #eee; padding: 8px;"></pre>
-                <p><small><em>This section is visible because Character Creation Debug Mode is ON in Admin Settings.</em></small></p>
+                <p><small><em>This section is visible because Character Creation Debug Mode is ON in Admin Settings. (This message will be shown/hidden by JS based on the flag).</em></small></p>
             </div>
-            {% endif %}
 
             <div id="vital-stats-container">
                 <h4>Vital Stats for Your Race/Class:</h4>
