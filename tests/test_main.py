@@ -1008,6 +1008,54 @@ class TestCharacterCreationWizard(unittest.TestCase):
             # self.assertIn('class_details', json_data)
             # self.assertEqual(json_data['class_details']['name'], self.class2['name'])
 
+    def test_creation_wizard_update_session_equipment(self):
+        # Step 1: Initialize session data for the wizard (simulating prior steps)
+        # User is logged in via setUp method of TestCharacterCreationWizard
+        with self.client.session_transaction() as sess:
+            sess['new_character_data'] = {'step1_data': 'some_race_info'}
+            # user_id is already set in setUp
+
+        # Step 2: Define the payload for the equipment step
+        equipment_payload = {
+            'step7_equipment': {
+                'weapons': [{'name': 'Longsword', 'slug': 'longsword', 'type': 'weapon'}],
+                'armor': [{'name': 'Leather Armor', 'slug': 'leather-armor', 'type': 'armor'}],
+                'custom': [{'name': 'Torch', 'quantity': 5, 'description': 'Lights the way', 'type': 'custom'}]
+            }
+        }
+
+        # Step 3: Make a POST request to the update_session endpoint
+        response = self.client.post(url_for('main.creation_wizard_update_session'),
+                                    json={'step_key': 'step7_equipment_selection', 'payload': equipment_payload},
+                                    content_type='application/json')
+
+        # Step 4: Assert the response is successful
+        self.assertEqual(response.status_code, 200)
+        response_data = json.loads(response.data)
+        self.assertEqual(response_data.get('status'), 'success')
+
+        # Step 5: Verify the session was updated correctly via response data
+        updated_session_data_from_response = response_data.get('current_character_data')
+        self.assertIsNotNone(updated_session_data_from_response)
+
+        # Check that prior data is preserved
+        self.assertEqual(updated_session_data_from_response.get('step1_data'), 'some_race_info')
+
+        # Check that new equipment data is present and correct
+        self.assertIn('step7_equipment', updated_session_data_from_response)
+        self.assertEqual(updated_session_data_from_response['step7_equipment']['weapons'][0]['name'], 'Longsword')
+        self.assertEqual(updated_session_data_from_response['step7_equipment']['armor'][0]['slug'], 'leather-armor')
+        self.assertEqual(updated_session_data_from_response['step7_equipment']['custom'][0]['quantity'], 5)
+
+        # Also verify directly from the session object after the request
+        with self.client.session_transaction() as sess:
+            self.assertIn('new_character_data', sess)
+            final_session_data = sess['new_character_data']
+            self.assertIn('step7_equipment', final_session_data)
+            self.assertEqual(final_session_data['step7_equipment']['weapons'][0]['name'], 'Longsword')
+            self.assertEqual(final_session_data.get('step1_data'), 'some_race_info') # Verify prior data again
+
+
     def test_creation_wizard_stores_full_proficiency_tables(self):
         mock_saving_throws = [{'name': 'Dexterity Save', 'ability': 'DEX', 'total_score': 3, 'class_proficient': True, 'extra_proficient': False}]
         mock_skills = [{'name': 'Stealth', 'ability': 'DEX', 'total_score': 5, 'race_proficient': True, 'extra_proficient': False}]
@@ -1139,7 +1187,12 @@ class TestCharacterCreationWizard(unittest.TestCase):
             'step5_full_saving_throw_table': [], # Default empty for this helper
             'step5_full_skill_table': [],      # Default empty for this helper
             'proficiency_bonus': 2,
-            'hit_die': 'd6' # From class
+            'hit_die': 'd6', # From class
+            'step7_equipment': {
+                'weapons': [{'name': 'Test Weapon', 'slug': 'test-weapon', 'type': 'weapon'}],
+                'armor': [{'name': 'Test Armor', 'slug': 'test-armor', 'type': 'armor'}],
+                'custom': [{'name': 'Test Custom Item', 'quantity': 2, 'description': 'A custom test item', 'type': 'custom'}]
+            }
         }
         with self.client.session_transaction() as sess:
             sess['new_character_data'] = char_data
@@ -1184,8 +1237,33 @@ class TestCharacterCreationWizard(unittest.TestCase):
             self.assertIn(self.spell2['id'], known_spells) # Magic Missile placeholder
 
             # Verify items (simplified check)
-            items_count = Item.query.filter_by(character_id=new_char_id).count()
-            self.assertGreaterEqual(items_count, 2) # Spellbook, Dagger
+            # Items from _populate_session_for_final_submission: Spellbook, Dagger (from 'final_equipment_objects')
+            # Items from Step 7: Test Weapon, Test Armor, Test Custom Item
+
+            # Fetch all items for the character
+            all_items_for_char = Item.query.filter_by(character_id=new_char_id).all()
+            item_names_and_details = {item.name: {'qty': item.quantity, 'desc': item.description} for item in all_items_for_char}
+
+            # Check for items from 'final_equipment_objects' (original test logic)
+            self.assertIn('Spellbook', item_names_and_details)
+            self.assertEqual(item_names_and_details['Spellbook']['qty'], 1)
+            self.assertIn('Dagger', item_names_and_details)
+            self.assertEqual(item_names_and_details['Dagger']['qty'], 2)
+
+            # Check for Test Weapon from Step 7
+            self.assertIn('Test Weapon', item_names_and_details)
+            self.assertEqual(item_names_and_details['Test Weapon']['qty'], 1)
+            self.assertEqual(item_names_and_details['Test Weapon']['desc'], 'Weapon: Test Weapon')
+
+            # Check for Test Armor from Step 7
+            self.assertIn('Test Armor', item_names_and_details)
+            self.assertEqual(item_names_and_details['Test Armor']['qty'], 1)
+            self.assertEqual(item_names_and_details['Test Armor']['desc'], 'Armor: Test Armor')
+
+            # Check for Test Custom Item from Step 7
+            self.assertIn('Test Custom Item', item_names_and_details)
+            self.assertEqual(item_names_and_details['Test Custom Item']['qty'], 2)
+            self.assertEqual(item_names_and_details['Test Custom Item']['desc'], 'A custom test item')
 
             # Verify session is cleared
             cleared_session_data = session.get('new_character_data')

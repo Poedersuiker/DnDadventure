@@ -366,6 +366,45 @@ def creation_wizard():
         # db.session.add(new_char) # new_char is already added
         db.session.flush() # This will assign an ID to new_char if it wasn't already (it was from previous flush)
 
+        # --- Process items from Step 7 (user-selected equipment) ---
+        step7_equipment_data = char_data.get('step7_equipment') # From session
+        if step7_equipment_data:
+            current_app.logger.info(f"Processing Step 7 equipment data: {step7_equipment_data}")
+
+            # Process selected weapons
+            if isinstance(step7_equipment_data.get('weapons'), list):
+                for weapon_item in step7_equipment_data['weapons']:
+                    if isinstance(weapon_item, dict) and weapon_item.get('name'):
+                        all_final_items_to_add.append({
+                            'name': weapon_item['name'].strip().title(),
+                            'quantity': 1, # Assuming 1 for each selected weapon unless specified otherwise
+                            'description': f"Weapon: {weapon_item.get('name', 'Unknown Weapon')}"
+                            # 'slug': weapon_item.get('slug') # Optional: if Item model can store it
+                        })
+
+            # Process selected armor
+            if isinstance(step7_equipment_data.get('armor'), list):
+                for armor_item in step7_equipment_data['armor']:
+                    if isinstance(armor_item, dict) and armor_item.get('name'):
+                        all_final_items_to_add.append({
+                            'name': armor_item['name'].strip().title(),
+                            'quantity': 1, # Assuming 1 for each selected armor
+                            'description': f"Armor: {armor_item.get('name', 'Unknown Armor')}"
+                            # 'slug': armor_item.get('slug') # Optional
+                        })
+
+            # Process custom items
+            if isinstance(step7_equipment_data.get('custom'), list):
+                for custom_item in step7_equipment_data['custom']:
+                    if isinstance(custom_item, dict) and custom_item.get('name') and custom_item.get('quantity', 0) > 0:
+                        all_final_items_to_add.append({
+                            'name': custom_item['name'].strip().title(),
+                            'quantity': custom_item['quantity'],
+                            'description': custom_item.get('description', 'Custom item')
+                        })
+        else:
+            current_app.logger.info("No Step 7 equipment data found in session to process.")
+
         # Add collected coinage to DB
         if parsed_coinage['gp'] > 0:
             db.session.add(Coinage(name="Gold Pieces", quantity=parsed_coinage['gp'], character_id=new_char.id))
@@ -595,7 +634,22 @@ def creation_wizard_step_data(step_name):
     elif step_name == 'hp':
         data = {'max_hp': 10, 'ac_base': 10, 'speed': 30} # Fixed defaults
     elif step_name == 'equipment':
-        data = {'fixed_items': [], 'choice_groups': [], 'background_equipment_string': ''} # Fixed defaults
+        data = {
+            'fixed_items': [],
+            'choice_groups': [],
+            'background_equipment_string': '',
+            'weapons_data': {"count": 0, "next": None, "previous": None, "results": []}, # Default structure
+            'armor_data': {"count": 0, "next": None, "previous": None, "results": []}    # Default structure
+        }
+        # Log the intention to fetch data here.
+        # Actual fetching would ideally use a helper function in open5e_api.py
+        # that can be called without a full Flask request context, or these calls
+        # would be made in a part of the code that has such context.
+        current_app.logger.info("Preparing data structure for equipment, weapons, and armor in creation_wizard_step_data.")
+        current_app.logger.info("Placeholder: Actual fetching of weapons/armor data will be handled by the frontend or a dedicated backend route that calls the API.")
+        # No direct API calls (like get_paginated_results) are made here in this subtask
+        # due to potential request context dependencies of that function.
+        # The structure is prepared for the frontend to later populate or for a dedicated API endpoint.
     elif step_name == 'spells':
         data = {'num_cantrips_to_select': 0, 'num_level_1_spells_to_select': 0, 'available_cantrips': [], 'available_level_1_spells': [], 'can_prepare_spells': False} # Fixed defaults
     elif step_name == 'review':
