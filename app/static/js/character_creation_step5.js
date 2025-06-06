@@ -206,7 +206,7 @@ function loadStep5Logic() {
                 }
 
 
-                const isOverallProficient = proficientByRace || chosenSkillProficiencies.includes(skillNameLower);
+                const isOverallProficient = proficientByRace || proficientByClass || proficientByBackground;
                 const currentProficiencyBonus = isOverallProficient ? proficiencyBonusValue : 0;
                 const totalScore = modifier + currentProficiencyBonus;
 
