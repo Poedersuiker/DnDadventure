@@ -69,6 +69,13 @@ function renderStep5DebugInfo() {
         const backgroundBenefits = characterCreationData.step3_background_selection?.benefits || [];
         focusedDebugData.background_skill_benefits = backgroundBenefits.filter(benefit => benefit.type === "skill_proficiency");
 
+        // Add Skill Choice Limits and Selections to Debug Info
+        focusedDebugData.skill_choice_limits = {
+            allowed_skill_choices: characterCreationData.step5_info?.allowed_skill_choices ?? "Not calculated",
+            selected_extra_skills_count: characterCreationData.skill_proficiencies?.extra?.length ?? 0,
+            selected_extra_skills_list: characterCreationData.skill_proficiencies?.extra || []
+        };
+
         let formattedDebugText = `Focused Character Proficiency Data for Step 5:
 ${JSON.stringify(focusedDebugData, null, 2)}
 
@@ -108,11 +115,157 @@ function checkStringForSkillProficiency(text, skillName) {
     return regex.test(text);
 }
 
+// Function to update the skill choice information text display
+function updateSkillChoiceInfoText() {
+    const skillChoiceInfoEl = document.getElementById('skill-choice-info');
+    if (skillChoiceInfoEl) {
+        const allowed = characterCreationData.step5_info?.allowed_skill_choices || 0;
+        const selected = characterCreationData.skill_proficiencies?.extra?.length || 0;
+        skillChoiceInfoEl.textContent = `Skill Proficiencies (Selected ${selected} of ${allowed})`;
+        addStep5DebugMessage("updateSkillChoiceInfoText", "Updated skill choice info display.", { allowed, selected });
+    } else {
+        // This might be logged frequently if the element isn't on other steps' pages, consider severity.
+        // addStep5DebugMessage("updateSkillChoiceInfoText", "'skill-choice-info' element not found. Cannot update display.", {}, "INFO");
+    }
+}
+
+// Function to update skill checkbox states based on selection limits
+function updateSkillCheckboxStatesBasedOnLimit() {
+    const allowedSkillChoices = characterCreationData.step5_info?.allowed_skill_choices || 0;
+    const selectedExtraSkills = characterCreationData.skill_proficiencies?.extra || [];
+    const selectedExtraSkillsCount = selectedExtraSkills.length;
+    const skillCheckboxes = document.querySelectorAll('#skills-table input[type="checkbox"][data-skill-name]');
+
+    addStep5DebugMessage("updateSkillCheckboxStatesBasedOnLimit", "Updating skill checkbox states.", { allowedSkillChoices, selectedExtraSkillsCount, numberOfCheckboxes: skillCheckboxes.length });
+
+    skillCheckboxes.forEach(checkbox => {
+        const skillName = checkbox.dataset.skillName;
+        // Check the flag set during checkbox creation
+        const isAllowedBySource = checkbox.dataset.initiallyAllowed === 'true';
+
+        if (!isAllowedBySource) {
+            checkbox.disabled = true;
+            return; // Skill not allowed by any source, always keep disabled
+        }
+
+        if (checkbox.checked) { // If it's already checked, it should be enabled (to allow unchecking)
+            checkbox.disabled = false;
+        } else {
+            // If not checked, disable if limit is reached
+            if (selectedExtraSkillsCount >= allowedSkillChoices) {
+                checkbox.disabled = true;
+            } else {
+                checkbox.disabled = false; // Enable if limit not reached and allowed by source
+            }
+        }
+    });
+    addStep5DebugMessage("updateSkillCheckboxStatesBasedOnLimit", "Finished updating skill checkbox states.");
+}
+
 
 function loadStep5Logic() {
     console.log("Step 5 JS loaded");
     step5DebugTextsCollection = []; // Clear debug messages for this run
     addStep5DebugMessage("loadStep5Logic", "Starting Step 5 logic execution.");
+    addStep5DebugMessage("loadStep5Logic", "Initial characterCreationData.step2_selected_base_class", characterCreationData.step2_selected_base_class);
+
+
+    // Ensure proficiency objects and extra arrays are initialized
+    if (!characterCreationData.saving_throw_proficiencies) {
+        characterCreationData.saving_throw_proficiencies = {};
+    }
+    if (!characterCreationData.saving_throw_proficiencies.extra) {
+        characterCreationData.saving_throw_proficiencies.extra = [];
+    }
+    if (!characterCreationData.skill_proficiencies) {
+        characterCreationData.skill_proficiencies = {}; // This was an array, should be object to hold 'base' and 'extra'
+    }
+     // If skill_proficiencies was an array (old structure), migrate or re-initialize
+    if (Array.isArray(characterCreationData.skill_proficiencies)) {
+        characterCreationData.skill_proficiencies = { base: characterCreationData.skill_proficiencies, extra: [] };
+    } else if (!characterCreationData.skill_proficiencies.base) {
+        characterCreationData.skill_proficiencies.base = [];
+    }
+    if (!characterCreationData.skill_proficiencies.extra) {
+        characterCreationData.skill_proficiencies.extra = [];
+    }
+
+    // Initialize step5_info if it doesn't exist
+    if (!characterCreationData.step5_info) {
+        characterCreationData.step5_info = {};
+    }
+
+    // Calculate allowed skill choices from class
+    let allowedSkillChoices = 0;
+    // const classData = characterCreationData.step2_selected_base_class; // Old way
+    addStep5DebugMessage("loadStep5Logic", "Attempting to access proficiency_choices from:", characterCreationData.step2_selected_base_class);
+    const classProficiencyChoices = characterCreationData.step2_selected_base_class?.data?.proficiency_choices || characterCreationData.step2_selected_base_class?.proficiency_choices;
+
+    if (!classProficiencyChoices || classProficiencyChoices.length === 0) {
+        let reason = "Not found or empty.";
+        if (characterCreationData.step2_selected_base_class) {
+            if (!classProficiencyChoices) reason = "proficiency_choices attribute itself not found on class data object (checked root and .data).";
+            else if (classProficiencyChoices.length === 0) reason = "proficiency_choices array is empty.";
+        } else {
+            reason = "step2_selected_base_class data is missing.";
+        }
+        addStep5DebugMessage("loadStep5Logic", "No class proficiency_choices available for calculating skill choices.", { reason: reason, classData: characterCreationData.step2_selected_base_class });
+        // allowedSkillChoices remains 0
+    } else {
+        // Proceed with calculation
+        addStep5DebugMessage("loadStep5Logic", "Found class proficiency_choices. Processing for skill choices.", { count: classProficiencyChoices.length, choices: classProficiencyChoices });
+        for (const choiceGroup of classProficiencyChoices) {
+            let isSkillChoiceGroup = false;
+            let reasonForSkillChoice = "N/A";
+
+            // Check 1: Description indicates skills
+            if (choiceGroup.desc && choiceGroup.desc.toLowerCase().includes("skill")) {
+                isSkillChoiceGroup = true;
+                reasonForSkillChoice = "Description contains 'skill'";
+                addStep5DebugMessage("loadStep5Logic", `Choice group '${choiceGroup.desc}' identified as potential skill choice by description.`, { choiceGroup });
+            }
+
+            // Check 2: Options list contains actual skills from SKILL_LIST
+            // This check is more definitive and can override a non-skill description.
+            if (choiceGroup.choose_from && choiceGroup.choose_from.options && choiceGroup.choose_from.options.length > 0) {
+                let foundSkillInOptions = false;
+                for (const option of choiceGroup.choose_from.options) {
+                    const optionName = option.item?.name || option.name || ""; // Handle different structures
+                    if (optionName && SKILL_LIST.hasOwnProperty(optionName)) {
+                        foundSkillInOptions = true;
+                        reasonForSkillChoice = `Option '${optionName}' is a known skill.`;
+                        addStep5DebugMessage("loadStep5Logic", `Choice group '${choiceGroup.desc || "No Desc"}' confirmed as skill choice. Reason: ${reasonForSkillChoice}`, { choiceGroup });
+                        break; // Found a skill, this group is definitely skill-related
+                    }
+                }
+                if (foundSkillInOptions) {
+                    isSkillChoiceGroup = true; // Confirm or set if not already set by description
+                } else {
+                     addStep5DebugMessage("loadStep5Logic", `Choice group '${choiceGroup.desc || "No Desc"}' options did not contain any known skills.`, { options: choiceGroup.choose_from.options });
+                }
+            } else {
+                addStep5DebugMessage("loadStep5Logic", `Choice group '${choiceGroup.desc || "No Desc"}' has no options to check for skills.`, { choiceGroup });
+            }
+
+            if (isSkillChoiceGroup) {
+                if (choiceGroup.choose_from && typeof choiceGroup.choose_from.count === 'number') {
+                    allowedSkillChoices += choiceGroup.choose_from.count;
+                    addStep5DebugMessage("loadStep5Logic", `Incrementing allowedSkillChoices by ${choiceGroup.choose_from.count} for group '${choiceGroup.desc || "No Desc"}'. New total: ${allowedSkillChoices}. Reason: ${reasonForSkillChoice}`, { count: choiceGroup.choose_from.count });
+                } else {
+                    addStep5DebugMessage("loadStep5Logic", `Skill choice group '${choiceGroup.desc || "No Desc"}' lacks valid count. Not adding to total.`, { choiceGroup });
+                }
+            } else {
+                 addStep5DebugMessage("loadStep5Logic", `Choice group '${choiceGroup.desc || "No Desc"}' was NOT identified as a skill choice group.`, { reason: reasonForSkillChoice, choiceGroup });
+            }
+        }
+    }
+    // This log for "No class data..." is now part of the if/else block above.
+    characterCreationData.step5_info.allowed_skill_choices = allowedSkillChoices;
+    addStep5DebugMessage("loadStep5Logic", `Final total allowed skill choices calculated: ${allowedSkillChoices}`);
+
+    // Update the skill choice information display
+    updateSkillChoiceInfoText();
+
 
     if (!characterCreationData) {
         addStep5DebugMessage("loadStep5Logic", "characterCreationData is not available. Aborting.", {error: true});
@@ -149,9 +302,41 @@ function loadStep5Logic() {
             const row = savingThrowsTableBody.insertRow();
             row.insertCell().textContent = fullAbilityName;
             row.insertCell().textContent = baseScore;
-            row.insertCell().textContent = ''; // Was 'N/A' for Race
-            row.insertCell().textContent = isProficient ? `Yes (+${proficiencyBonusValue})` : ''; // Was 'No' for Class
-            row.insertCell().textContent = ''; // Was 'N/A' for Background
+            row.insertCell().textContent = ''; // Race contribution column
+            row.insertCell().textContent = isProficient ? `Yes (+${proficiencyBonusValue})` : ''; // Class contribution column
+
+            // Add Extra Proficiency Checkbox Column
+            const extraProfCell = row.insertCell();
+            const extraProfCheckbox = document.createElement('input');
+            extraProfCheckbox.type = 'checkbox';
+            extraProfCheckbox.id = `saving-throw-extra-prof-${abilityAbbr}`;
+            extraProfCheckbox.disabled = true; // Disabled by default
+            extraProfCheckbox.dataset.ability = abilityAbbr; // Store ability for event listener
+
+            // Check if this saving throw is granted by the class
+            if (isProficient) { // isProficient here means class proficiency
+                extraProfCheckbox.disabled = false;
+            }
+
+            // Check if already selected as extra
+            if (characterCreationData.saving_throw_proficiencies.extra.includes(fullAbilityName)) {
+                extraProfCheckbox.checked = true;
+            }
+
+            extraProfCheckbox.addEventListener('change', function() {
+                const abilityFullName = ABILITY_SCORE_FULL_NAMES[this.dataset.ability];
+                if (this.checked) {
+                    if (!characterCreationData.saving_throw_proficiencies.extra.includes(abilityFullName)) {
+                        characterCreationData.saving_throw_proficiencies.extra.push(abilityFullName);
+                    }
+                } else {
+                    characterCreationData.saving_throw_proficiencies.extra = characterCreationData.saving_throw_proficiencies.extra.filter(st => st !== abilityFullName);
+                }
+                renderStep5DebugInfo(); // Update debug info on change
+            });
+            extraProfCell.appendChild(extraProfCheckbox);
+
+            row.insertCell().textContent = ''; // Background contribution column (usually none for ST)
             row.insertCell().textContent = totalScore;
 
             addStep5DebugMessage("SavingThrowsPopulation", `Processed ${fullAbilityName}`, {
@@ -168,8 +353,12 @@ function loadStep5Logic() {
         console.error("Skills table body not found!");
     } else {
         skillsTableBody.innerHTML = ''; // Clear existing rows
-        const chosenSkillProficiencies = (characterCreationData.skill_proficiencies || []).map(s => s.toLowerCase());
-        addStep5DebugMessage("SkillsPopulation", "User chosen skill proficiencies (lowercase).", {chosenSkillProficiencies});
+        // Ensure 'base' exists for chosen skills
+        if (!characterCreationData.skill_proficiencies.base) {
+            characterCreationData.skill_proficiencies.base = [];
+        }
+        const chosenSkillProficiencies = (characterCreationData.skill_proficiencies.base || []).map(s => s.toLowerCase());
+        addStep5DebugMessage("SkillsPopulation", "User chosen skill proficiencies (lowercase from base).", {chosenSkillProficiencies});
 
         for (const skillName in SKILL_LIST) {
             if (SKILL_LIST.hasOwnProperty(skillName)) {
@@ -275,9 +464,98 @@ function loadStep5Logic() {
 
                 // Determine proficientByBackground for the column display
                 // proficientByBackground was already determined above.
-                row.insertCell().textContent = proficientByBackground ? 'Yes' : ''; // Was 'No'
+                row.insertCell().textContent = proficientByBackground ? 'Yes' : '';
 
-                row.insertCell().textContent = isOverallProficient ? `Yes (+${proficiencyBonusValue})` : ''; // Was 'No'
+                // Add Extra Proficiency Checkbox Column for Skills
+                const skillExtraProfCell = row.insertCell();
+                const skillExtraProfCheckbox = document.createElement('input');
+                skillExtraProfCheckbox.type = 'checkbox';
+                skillExtraProfCheckbox.id = `skill-extra-prof-${skillName.replace(/\s+/g, '-')}`;
+                // skillExtraProfCheckbox.disabled = true; // Initial disabling will be handled by updateSkillCheckboxStatesBasedOnLimit
+                skillExtraProfCheckbox.dataset.skillName = skillName;
+
+                // Determine if checkbox should be initially allowed by sources
+                // Enable if skill is granted by race, class, or background options
+                let canBeGrantedByRace = false;
+                let canBeGrantedByClass = false;
+                let canBeGrantedByBackground = false;
+
+                // Check Race: Direct grant or if race offers choices (need to define how race choices are stored)
+                // For now, using existing proficientByRace as a proxy for "available from race"
+                if (proficientByRace) canBeGrantedByRace = true;
+                // TODO: Add specific check for race *options* if characterCreationData.step1_race_selection.skill_proficiency_options exists
+
+                // Check Class: Direct grant or if class offers choices
+                const classSkillOptionsText = characterCreationData.step2_selected_base_class?.prof_skills || "";
+                // This checks if the skill is part of the general text blob of class skills.
+                // A more precise check would be against a list of *choosable* skills if available.
+                if (classSkillOptionsText.toLowerCase().includes(skillName.toLowerCase())) {
+                    canBeGrantedByClass = true;
+                }
+                // If class grants specific skill proficiencies (not choices), proficientByClass would be true
+                if (proficientByClass) canBeGrantedByClass = true;
+
+
+                // Check Background: Direct grant or if background offers choices
+                // The variable 'backgroundBenefits' is already declared and populated earlier in this loop (around line 268)
+                for (const benefit of backgroundBenefits) { // Use existing backgroundBenefits
+                    if (benefit.type === "skill_proficiency" && benefit.desc) {
+                        if (benefit.desc.toLowerCase().includes(skillName.toLowerCase())) {
+                            canBeGrantedByBackground = true;
+                            break;
+                        }
+                    }
+                }
+                // If background grants specific skill proficiencies, proficientByBackground would be true
+                if (proficientByBackground) canBeGrantedByBackground = true;
+
+                let isInitiallyAllowedBySource = (canBeGrantedByRace || canBeGrantedByClass || canBeGrantedByBackground);
+                skillExtraProfCheckbox.dataset.initiallyAllowed = isInitiallyAllowedBySource ? 'true' : 'false';
+
+
+                // Check if already selected as extra (and thus should be checked)
+                if (characterCreationData.skill_proficiencies.extra.includes(skillName)) {
+                    skillExtraProfCheckbox.checked = true;
+                }
+
+                skillExtraProfCheckbox.addEventListener('change', function(event) {
+                    const currentSkillName = this.dataset.skillName;
+                    const currentAllowedSkillChoices = characterCreationData.step5_info?.allowed_skill_choices || 0;
+                    // extraSkills array reference before modification
+                    const extraSkillsBeforeChange = [...(characterCreationData.skill_proficiencies.extra || [])];
+                    let currentSelectedCount = extraSkillsBeforeChange.length;
+
+                    if (this.checked) {
+                        // If it wasn't in the list before, and we are at the limit, prevent checking.
+                        if (!extraSkillsBeforeChange.includes(currentSkillName) && currentSelectedCount >= currentAllowedSkillChoices) {
+                            addStep5DebugMessage("SkillCheckboxChange", `Attempted to select ${currentSkillName}, but limit (${currentAllowedSkillChoices}) reached.`, { currentSelectedCount });
+                            this.checked = false; // Revert checkbox state
+                            event.preventDefault(); // Prevent the default action
+                            // Optionally, inform the user (e.g., alert or a status message)
+                            // alert(`You cannot select more than ${currentAllowedSkillChoices} skill(s).`);
+                        } else {
+                            if (!extraSkillsBeforeChange.includes(currentSkillName)) {
+                                characterCreationData.skill_proficiencies.extra.push(currentSkillName);
+                                addStep5DebugMessage("SkillCheckboxChange", `Selected skill ${currentSkillName}.`, { extraSkills: characterCreationData.skill_proficiencies.extra });
+                            }
+                        }
+                    } else {
+                        // If unchecking, remove it from the list
+                        if (extraSkillsBeforeChange.includes(currentSkillName)) {
+                            characterCreationData.skill_proficiencies.extra = characterCreationData.skill_proficiencies.extra.filter(sk => sk !== currentSkillName);
+                            addStep5DebugMessage("SkillCheckboxChange", `Deselected skill ${currentSkillName}.`, { extraSkills: characterCreationData.skill_proficiencies.extra });
+                        }
+                    }
+
+                    // Update UI for skill choice count
+                    updateSkillChoiceInfoText();
+
+                    updateSkillCheckboxStatesBasedOnLimit(); // Update all checkbox enable/disable states
+                    renderStep5DebugInfo(); // Update general debug info
+                });
+                skillExtraProfCell.appendChild(skillExtraProfCheckbox);
+
+                row.insertCell().textContent = isOverallProficient ? `Yes (+${proficiencyBonusValue})` : '';
                 row.insertCell().textContent = totalScore;
 
                 addStep5DebugMessage("SkillsPopulation", `Processed Skill: ${skillName}`, {
@@ -291,6 +569,9 @@ function loadStep5Logic() {
         }
         addStep5DebugMessage("loadStep5Logic", "Skills table populated.");
     }
+
+    updateSkillCheckboxStatesBasedOnLimit(); // Initial call to set checkbox states based on loaded data and limits
+    updateSkillChoiceInfoText(); // Ensure info text is correct after initial load & checkbox state update
 
     renderStep5DebugInfo();
     console.log("Step 5 Logic fully executed. characterCreationData:", JSON.parse(JSON.stringify(characterCreationData)));
