@@ -365,8 +365,8 @@ function loadStep5Logic() {
 
 
                 // Check Background: Direct grant or if background offers choices
-                const backgroundBenefits = characterCreationData.step3_background_selection?.benefits || [];
-                for (const benefit of backgroundBenefits) {
+                // The variable 'backgroundBenefits' is already declared and populated earlier in this loop (around line 268)
+                for (const benefit of backgroundBenefits) { // Use existing backgroundBenefits
                     if (benefit.type === "skill_proficiency" && benefit.desc) {
                         if (benefit.desc.toLowerCase().includes(skillName.toLowerCase())) {
                             canBeGrantedByBackground = true;
