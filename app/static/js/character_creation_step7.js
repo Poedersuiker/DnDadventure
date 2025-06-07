@@ -28,116 +28,178 @@ function loadStep7Logic() {
             const characterDataString = sessionStorage.getItem('characterCreationData');
             if (characterDataString) {
                 const characterDataObject = JSON.parse(characterDataString);
-                // debugDataPre.textContent = JSON.stringify(characterDataObject, null, 2); // Will be set later
-                // debugDiv.style.display = 'block'; // Will be set after content is ready
 
                 // --- Inventory Text Extraction Logic ---
                 const inventoryTexts = [];
+                const inventoryKeywords = ["armor", "weapon", "shield", "tool", "pack", "equipment", "proficiency"];
 
                 // Access race data
                 const raceData = characterDataObject.step1_race_selection;
                 if (raceData) {
                     let raceTextFound = false;
                     let text = getTextFromPath(raceData, 'starting_proficiencies.armor');
-                    if (text) { inventoryTexts.push(`Race: ${text}`); raceTextFound = true; }
+                    if (text) { inventoryTexts.push(`Race Starting Proficiency: ${text}`); raceTextFound = true; }
 
                     text = getTextFromPath(raceData, 'starting_proficiencies.weapons');
-                    if (text) { inventoryTexts.push(`Race: ${text}`); raceTextFound = true; }
+                    if (text) { inventoryTexts.push(`Race Starting Proficiency: ${text}`); raceTextFound = true; }
 
                     text = getTextFromPath(raceData, 'starting_proficiencies.tools');
-                    if (text) { inventoryTexts.push(`Race: ${text}`); raceTextFound = true; }
+                    if (text) { inventoryTexts.push(`Race Starting Proficiency: ${text}`); raceTextFound = true; }
 
-                    text = getTextFromPath(raceData, 'asi_description');
-                    if (text && !raceTextFound) { inventoryTexts.push(`Race: ${text}`); raceTextFound = true; }
+                    const traits = raceData.traits;
+                    if (Array.isArray(traits)) {
+                        traits.forEach(trait => {
+                            const traitName = getTextFromPath(trait, 'name').toLowerCase();
+                            const traitDesc = getTextFromPath(trait, 'desc').toLowerCase();
+                            let traitHasKeyword = false;
 
-                    text = getTextFromPath(raceData, 'desc');
-                    if (text && !raceTextFound) { inventoryTexts.push(`Race: ${text}`);}
+                            if (traitDesc) {
+                                for (const keyword of inventoryKeywords) {
+                                    if (traitName.includes(keyword) || traitDesc.includes(keyword)) {
+                                        traitHasKeyword = true;
+                                        break;
+                                    }
+                                }
+                                if (traitHasKeyword) {
+                                    inventoryTexts.push(`Race Trait (${getTextFromPath(trait, 'name', 'N/A')}): ${getTextFromPath(trait, 'desc')}`);
+                                }
+                            }
+                        });
+                    }
+
+                    if (!raceTextFound && inventoryTexts.filter(t => t.startsWith("Race Trait")).length === 0) {
+                        text = getTextFromPath(raceData, 'asi_description');
+                        if (text) { inventoryTexts.push(`Race Info: ${text}`); raceTextFound = true; }
+
+                        text = getTextFromPath(raceData, 'desc');
+                        if (text && !raceTextFound) { inventoryTexts.push(`Race Info: ${text}`);}
+                    }
                 }
 
                 // Access class data
                 const classData = characterDataObject.step2_selected_base_class;
                 if (classData) {
-                    let classTextFound = false;
-                    let text = getTextFromPath(classData, 'starting_equipment.full_text');
-                    if (text) { inventoryTexts.push(`Class: ${text}`); classTextFound = true; }
+                    let text = getTextFromPath(classData, 'equipment');
+                    if (text) { inventoryTexts.push(`Class Equipment: ${text}`); }
 
-                    text = getTextFromPath(classData, 'starting_equipment.options_text');
-                    if (text) { inventoryTexts.push(`Class: ${text}`); classTextFound = true; }
+                    text = getTextFromPath(classData, 'prof_armor');
+                    if (text) { inventoryTexts.push(`Class Armor Proficiencies: ${text}`); }
 
-                    text = getTextFromPath(classData, 'proficiencies_text');
-                    if (text) { inventoryTexts.push(`Class: ${text}`); classTextFound = true; }
+                    text = getTextFromPath(classData, 'prof_weapons');
+                    if (text) { inventoryTexts.push(`Class Weapon Proficiencies: ${text}`); }
 
-                    text = getTextFromPath(classData, 'desc');
-                    if (text && !classTextFound) { inventoryTexts.push(`Class: ${text}`); }
+                    text = getTextFromPath(classData, 'prof_tools');
+                    if (text) { inventoryTexts.push(`Class Tool Proficiencies: ${text}`); }
                 }
 
                 // Access archetype data
                 const archetypeData = characterDataObject.step2_selected_archetype;
                 if (archetypeData) {
-                    let archetypeTextFound = false;
-                    // Assuming similar properties for archetypes, adjust as needed
-                    let text = getTextFromPath(archetypeData, 'starting_equipment.full_text');
-                    if (text) { inventoryTexts.push(`Archetype: ${text}`); archetypeTextFound = true; }
+                    const archetypeDesc = getTextFromPath(archetypeData, 'desc');
+                    if (archetypeDesc) {
+                        const lines = archetypeDesc.split('\n');
+                        let currentFeatureName = null;
 
-                    text = getTextFromPath(archetypeData, 'proficiencies_text'); // e.g. Artificer Specialist tool proficiency
-                    if (text) { inventoryTexts.push(`Archetype: ${text}`); archetypeTextFound = true; }
+                        for (const line of lines) {
+                            const trimmedLine = line.trim();
+                            if (!trimmedLine) {
+                                continue;
+                            }
 
-                    text = getTextFromPath(archetypeData, 'feature_description'); // Generic feature text
-                    if (text) { inventoryTexts.push(`Archetype: ${text}`); archetypeTextFound = true; }
+                            const featureMatch = trimmedLine.match(/^(?:#+\s*)(.+)/);
+                            if (featureMatch && featureMatch[1]) {
+                                currentFeatureName = featureMatch[1].trim();
+                            }
 
-                    text = getTextFromPath(archetypeData, 'desc');
-                    if (text && !archetypeTextFound) { inventoryTexts.push(`Archetype: ${text}`); }
+                            const lowerLine = trimmedLine.toLowerCase();
+                            let keywordFoundInLine = false;
+                            for (const keyword of inventoryKeywords) {
+                                if (lowerLine.includes(keyword)) {
+                                    keywordFoundInLine = true;
+                                    break;
+                                }
+                            }
+
+                            if (keywordFoundInLine) {
+                                if (currentFeatureName) {
+                                    if (trimmedLine !== currentFeatureName && !trimmedLine.startsWith("#")) {
+                                       inventoryTexts.push(`Archetype Feature (${currentFeatureName}): ${trimmedLine}`);
+                                    } else if (trimmedLine === currentFeatureName) {
+                                       inventoryTexts.push(`Archetype Feature (${currentFeatureName}): ${trimmedLine}`);
+                                    } else if (!trimmedLine.startsWith("#")) {
+                                       inventoryTexts.push(`Archetype Feature: ${trimmedLine}`);
+                                    }
+                                } else {
+                                    inventoryTexts.push(`Archetype Feature: ${trimmedLine}`);
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Access background data
-                const backgroundData = characterDataObject.step3_background_selection;
-                if (backgroundData) {
-                    let backgroundTextFound = false;
-                    let text = getTextFromPath(backgroundData, 'equipment_text');
-                    if (text) { inventoryTexts.push(`Background: ${text}`); backgroundTextFound = true; }
+                const backgroundSelection = characterDataObject.step3_background_selection;
+                if (backgroundSelection) {
+                    const benefits = backgroundSelection.benefits;
+                    if (Array.isArray(benefits)) {
+                        benefits.forEach(benefit => {
+                            const benefitType = getTextFromPath(benefit, 'type').toLowerCase();
+                            const benefitName = getTextFromPath(benefit, 'name', 'Details');
+                            const benefitDesc = getTextFromPath(benefit, 'desc');
 
-                    text = getTextFromPath(backgroundData, 'tool_proficiencies_text');
-                    if (text) { inventoryTexts.push(`Background: ${text}`); backgroundTextFound = true; }
-
-                    text = getTextFromPath(backgroundData, 'tools_text');
-                    if (text) { inventoryTexts.push(`Background: ${text}`); backgroundTextFound = true; }
-
-                    text = getTextFromPath(backgroundData, 'feature_description');
-                    if (text) { inventoryTexts.push(`Background: ${text}`); backgroundTextFound = true; }
-
-                    text = getTextFromPath(backgroundData, 'desc');
-                    if (text && !backgroundTextFound) { inventoryTexts.push(`Background: ${text}`); }
+                            if (benefitDesc) {
+                                if (benefitType === 'equipment') {
+                                    inventoryTexts.push(`Background Equipment (${benefitName}): ${benefitDesc}`);
+                                } else {
+                                    const lowerDesc = benefitDesc.toLowerCase();
+                                    let keywordFound = false;
+                                    for (const keyword of inventoryKeywords) {
+                                        if (lowerDesc.includes(keyword)) {
+                                            keywordFound = true;
+                                            break;
+                                        }
+                                    }
+                                    if (keywordFound) {
+                                        inventoryTexts.push(`Background Benefit (${benefitName}): ${benefitDesc}`);
+                                    }
+                                }
+                            }
+                        });
+                    }
                 }
 
-                const extractedInventoryInfo = inventoryTexts.join('\n');
-                console.log("--- Extracted Inventory Info ---");
+                // Finalize extracted inventory information for display
+                let extractedInventoryInfo;
+                if (inventoryTexts.length === 0) {
+                    extractedInventoryInfo = "--- No specific inventory info extracted from Race, Class, Archetype, or Background ---";
+                } else {
+                    extractedInventoryInfo = inventoryTexts.join('\n');
+                }
+
+                console.log("--- Extracted Inventory Info For Debug Display ---");
                 console.log(extractedInventoryInfo);
 
                 // Update debug div content
-                let debugContent = "";
-                if (extractedInventoryInfo) {
-                    debugContent += "--- Extracted Inventory Info ---\n" + extractedInventoryInfo + "\n\n";
-                } else {
-                    debugContent += "--- No Inventory Info Extracted ---\n\n";
-                }
+                let debugContent = "--- Extracted Inventory Info ---\n" + extractedInventoryInfo + "\n\n";
                 debugContent += "--- Full Data ---\n\n" + JSON.stringify(characterDataObject, null, 2);
                 debugDataPre.textContent = debugContent;
                 debugDiv.style.display = 'block';
 
             } else {
                 debugDataPre.textContent = 'characterCreationData not found in session storage.';
-                debugDiv.style.display = 'block'; // Show div to indicate missing data
+                debugDiv.style.display = 'block';
             }
         } catch (error) {
             console.error('Error processing character creation debug data:', error);
             debugDataPre.textContent = 'Error loading debug data. Check console for details.';
-            debugDiv.style.display = 'block'; // Show div to indicate error
+            debugDiv.style.display = 'block';
         }
     } else if (debugDiv) {
         debugDiv.style.display = 'none';
     }
 }
 
+// ... (rest of the script remains the same)
 // Since the character creation steps are loaded dynamically,
 // ensure loadStep7Logic is called when the step becomes active.
 // This might be handled by a central navigation script.
