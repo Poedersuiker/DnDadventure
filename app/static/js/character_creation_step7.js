@@ -1,3 +1,7 @@
+// API Endpoints
+const WEAPONS_API_URL = '/api/v2/weapons/';
+const ARMOR_API_URL = '/api/v2/armor/';
+
 // Helper function to safely extract text from nested properties
 function getTextFromPath(obj, path, defaultValue = '') {
     const keys = path.split('.');
@@ -12,7 +16,42 @@ function getTextFromPath(obj, path, defaultValue = '') {
     return typeof current === 'string' ? current : defaultValue;
 }
 
-function loadStep7Logic() {
+// Function to fetch data from Open5e API
+async function fetchOpen5eData(apiUrl) {
+    let allItems = [];
+    let nextUrl = apiUrl;
+
+    while (nextUrl) {
+        try {
+            const response = await fetch(nextUrl);
+            if (!response.ok) {
+                throw new Error(`API request failed with status ${response.status}: ${response.statusText}`);
+            }
+            const data = await response.json();
+            if (data.results && Array.isArray(data.results)) {
+                data.results.forEach(item => {
+                    if (item.name) {
+                        allItems.push(item.name);
+                    } else if (item.slug) {
+                        console.warn(`Item from ${apiUrl} is missing a 'name', falling back to slug: '${item.slug}'. Full item:`, item);
+                        allItems.push(item.slug);
+                    } else {
+                        console.warn(`Item from ${apiUrl} is missing both 'name' and 'slug'. Skipping item. Full item:`, item);
+                    }
+                });
+            }
+            nextUrl = data.next; // Get the next page URL
+        } catch (error) {
+            console.error(`Error fetching data from ${nextUrl}:`, error);
+            nextUrl = null; // Stop pagination on error
+            // Optionally, re-throw the error if you want Promise.all to fail
+            // throw error;
+        }
+    }
+    return allItems;
+}
+
+async function loadStep7Logic() {
     console.log("Step 7 JS loaded");
 
     // Ensure this global variable is set by the template
@@ -23,73 +62,180 @@ function loadStep7Logic() {
     const debugDiv = document.getElementById('character-creation-debug-div');
     const debugDataPre = document.getElementById('character-creation-debug-data');
 
+    let availableWeapons = [];
+    let availableArmor = [];
+
+    try {
+        console.log("Fetching weapon and armor data from Open5E API...");
+        const [weaponNames, armorNames] = await Promise.all([
+            fetchOpen5eData(WEAPONS_API_URL),
+            fetchOpen5eData(ARMOR_API_URL)
+        ]);
+
+        availableWeapons = weaponNames;
+        availableArmor = armorNames;
+
+        console.log(`Successfully fetched ${availableWeapons.length} weapons and ${availableArmor.length} armor items.`);
+        // console.log("Fetched Weapons:", availableWeapons); // Optional: log fetched items
+        // console.log("Fetched Armor:", availableArmor); // Optional: log fetched items
+
+    } catch (error) {
+        console.error("Failed to fetch data from Open5E API. Proceeding with empty lists.", error);
+        // Allow the script to continue with empty lists, error is already logged by fetchOpen5eData
+    }
+
     if (debugModeEnabled && debugDiv && debugDataPre) {
         try {
             const characterDataString = sessionStorage.getItem('characterCreationData');
             if (characterDataString) {
                 const characterDataObject = JSON.parse(characterDataString);
 
-                // --- Inventory Text Extraction Logic ---
-                const inventoryTexts = [];
-                const inventoryKeywords = ["armor", "weapon", "shield", "tool", "pack", "equipment", "proficiency"];
+                // --- Categorization Logic ---
+                let categorizedItems = {
+                    weapons: [],
+                    armor: [],
+                    tools: [],
+                    general_items: [],
+                    proficiencies: [] // For broad proficiencies like "all simple weapons"
+                };
+
+                const toolKeywords = ["kit", "tools", "artisan's tools", "thieves' tools", "disguise kit", "forgery kit", "herbalism kit", "navigator's tools", "poisoner's kit", "gaming set", "musical instrument"];
+                const generalItemKeywords = ["pack", "pouch", "rope", "rations", "waterskin", "tinderbox", "crowbar", "hammer", "piton", "tent", "bedroll", "mess kit", "holy symbol", "spellbook", "component pouch", "scroll", "potion", "ammunition", "arrows", "bolts", "sling bullets"];
+                // Old inventoryKeywords for broader check, might be less needed now
+                // const inventoryKeywords = ["armor", "weapon", "shield", "tool", "pack", "equipment", "proficiency"];
+
+                const lowerAvailableWeapons = availableWeapons.map(w => w.toLowerCase());
+                const lowerAvailableArmor = availableArmor.map(a => a.toLowerCase());
+
+                function cleanAndCategorizeText(text, source, isExplicitEquipment = false) {
+                    if (!text || typeof text !== 'string') return;
+
+                    let originalText = text; // Keep original for adding to categorizedItems if needed
+                    let cleanedTextForApiMatch = text.toLowerCase().trim();
+                    let categorized = false;
+
+                    // 1. Check against API-fetched weapons (using minimally cleaned text)
+                    for (const weapon of lowerAvailableWeapons) {
+                        if (cleanedTextForApiMatch.includes(weapon)) {
+                            if (!categorizedItems.weapons.includes(originalText)) categorizedItems.weapons.push(originalText);
+                            categorized = true;
+                            break;
+                        }
+                    }
+                    if (categorized) return;
+
+                    // 2. Check against API-fetched armor (using minimally cleaned text)
+                    for (const armor of lowerAvailableArmor) {
+                        // Special handling for "shield" as it's often listed with armor
+                        if (cleanedTextForApiMatch.includes(armor) || (armor === "shield" && cleanedTextForApiMatch.includes("shield"))) {
+                             if (!categorizedItems.armor.includes(originalText)) categorizedItems.armor.push(originalText);
+                            categorized = true;
+                            break;
+                        }
+                    }
+                    if (categorized) return;
+
+                    // If not matched with specific API items, then try more aggressive cleaning for proficiencies/keywords
+                    let cleanedTextForProficiency = cleanedTextForApiMatch;
+                    cleanedTextForProficiency = cleanedTextForProficiency.replace(/^proficiency with\s*/, '');
+                    // The following replacements are for broad categories like "light armor", "simple weapons"
+                    // Be careful if item names could end with "armor" or "weapons"
+                    let textForKeywordSearch = cleanedTextForProficiency;
+                    let tempCleanedForProficiency = cleanedTextForProficiency.replace(/\s*armor$/, '');
+                    tempCleanedForProficiency = tempCleanedForProficiency.replace(/\s*weapons$/, '');
+
+
+                    // Specific proficiency checks (e.g. "all simple weapons", "light armor")
+                    if (tempCleanedForProficiency.includes("all simple") || tempCleanedForProficiency.includes("simple weapon")) {
+                        if (!categorizedItems.proficiencies.includes(originalText)) categorizedItems.proficiencies.push(originalText + " (Proficiency)");
+                        categorized = true;
+                    }
+                    else if (tempCleanedForProficiency.includes("all martial") || tempCleanedForProficiency.includes("martial weapon")) {
+                        if (!categorizedItems.proficiencies.includes(originalText)) categorizedItems.proficiencies.push(originalText + " (Proficiency)");
+                        categorized = true;
+                    }
+                    else if (tempCleanedForProficiency.includes("light") || tempCleanedForProficiency.includes("medium") || tempCleanedForProficiency.includes("heavy") || tempCleanedForProficiency.includes("all armor") || tempCleanedForProficiency.includes("shields")) {
+                         if (!categorizedItems.proficiencies.includes(originalText)) categorizedItems.proficiencies.push(originalText + " (Proficiency)");
+                        categorized = true;
+                    }
+
+                    // If it's identified as a general proficiency and NOT an explicit piece of equipment,
+                    // then we can often return early. If it IS explicit equipment, it might also be a general item.
+                    if (categorized && !isExplicitEquipment) return;
+
+
+                    // 3. Check for Tools (using text that had "proficiency with" removed)
+                    for (const toolKeyword of toolKeywords) {
+                        if (textForKeywordSearch.includes(toolKeyword)) {
+                            if (!categorizedItems.tools.includes(originalText)) categorizedItems.tools.push(originalText);
+                            categorized = true;
+                            break;
+                        }
+                    }
+                    if (categorized) return;
+
+                    // 4. Check for General Items (using text that had "proficiency with" removed)
+                    for (const itemKeyword of generalItemKeywords) {
+                        if (textForKeywordSearch.includes(itemKeyword)) {
+                            if (!categorizedItems.general_items.includes(originalText)) categorizedItems.general_items.push(originalText);
+                            categorized = true;
+                            break;
+                        }
+                    }
+                    if (categorized) return;
+
+                    // 5. Fallback for items that are explicit equipment but not categorized yet
+                    if (isExplicitEquipment && !categorizedItems.general_items.includes(originalText) &&
+                        !categorizedItems.weapons.includes(originalText) &&
+                        !categorizedItems.armor.includes(originalText) &&
+                        !categorizedItems.tools.includes(originalText)) {
+                         categorizedItems.general_items.push(originalText + " (Uncategorized Equipment)");
+                    }
+                    // Note: General proficiencies not matching keywords are not added to a fallback category
+                    // to avoid noise, unless they were explicit equipment.
+                }
+
+                function processMultipleItemsText(text, source, isExplicitEquipment = false) {
+                    if (!text || typeof text !== 'string') return;
+                    // Split by common delimiters like comma, "and", or newline.
+                    // Handles "item1, item2 and item3"
+                    // Also handles lists like "20 arrows" - "20 arrows" will be processed as one item.
+                    // Further splitting of quantities from item names (e.g. "20 arrows" -> "arrows") can be a future enhancement.
+                    const items = text.split(/,\s*(?:and\s)?|\s+and\s+|\n/).map(item => item.trim()).filter(item => item);
+                    items.forEach(item => {
+                        // Basic preposition/article removal - can be expanded
+                        let cleanedItem = item.replace(/^(a|an|one|two|some)\s+/i, '');
+                        cleanAndCategorizeText(cleanedItem, source, isExplicitEquipment);
+                    });
+                }
+
 
                 // Access race data
                 const raceData = characterDataObject.step1_race_selection;
                 if (raceData) {
-                    let raceTextFound = false;
-                    let text = getTextFromPath(raceData, 'starting_proficiencies.armor');
-                    if (text) { inventoryTexts.push(`Race Starting Proficiency: ${text}`); raceTextFound = true; }
-
-                    text = getTextFromPath(raceData, 'starting_proficiencies.weapons');
-                    if (text) { inventoryTexts.push(`Race Starting Proficiency: ${text}`); raceTextFound = true; }
-
-                    text = getTextFromPath(raceData, 'starting_proficiencies.tools');
-                    if (text) { inventoryTexts.push(`Race Starting Proficiency: ${text}`); raceTextFound = true; }
+                    processMultipleItemsText(getTextFromPath(raceData, 'starting_proficiencies.armor'), "race_prof_armor");
+                    processMultipleItemsText(getTextFromPath(raceData, 'starting_proficiencies.weapons'), "race_prof_weapons");
+                    processMultipleItemsText(getTextFromPath(raceData, 'starting_proficiencies.tools'), "race_prof_tools");
 
                     const traits = raceData.traits;
                     if (Array.isArray(traits)) {
                         traits.forEach(trait => {
-                            const traitName = getTextFromPath(trait, 'name').toLowerCase();
-                            const traitDesc = getTextFromPath(trait, 'desc').toLowerCase();
-                            let traitHasKeyword = false;
-
-                            if (traitDesc) {
-                                for (const keyword of inventoryKeywords) {
-                                    if (traitName.includes(keyword) || traitDesc.includes(keyword)) {
-                                        traitHasKeyword = true;
-                                        break;
-                                    }
-                                }
-                                if (traitHasKeyword) {
-                                    inventoryTexts.push(`Race Trait (${getTextFromPath(trait, 'name', 'N/A')}): ${getTextFromPath(trait, 'desc')}`);
-                                }
-                            }
+                            const traitDesc = getTextFromPath(trait, 'desc');
+                            // Process trait descriptions carefully, don't mark as explicit equipment
+                            processMultipleItemsText(traitDesc, "trait_desc");
                         });
                     }
-
-                    if (!raceTextFound && inventoryTexts.filter(t => t.startsWith("Race Trait")).length === 0) {
-                        text = getTextFromPath(raceData, 'asi_description');
-                        if (text) { inventoryTexts.push(`Race Info: ${text}`); raceTextFound = true; }
-
-                        text = getTextFromPath(raceData, 'desc');
-                        if (text && !raceTextFound) { inventoryTexts.push(`Race Info: ${text}`);}
-                    }
+                     // Process general race description for keywords if other fields yielded little
+                    // processMultipleItemsText(getTextFromPath(raceData, 'desc'), "race_desc");
                 }
 
                 // Access class data
                 const classData = characterDataObject.step2_selected_base_class;
                 if (classData) {
-                    let text = getTextFromPath(classData, 'equipment');
-                    if (text) { inventoryTexts.push(`Class Equipment: ${text}`); }
-
-                    text = getTextFromPath(classData, 'prof_armor');
-                    if (text) { inventoryTexts.push(`Class Armor Proficiencies: ${text}`); }
-
-                    text = getTextFromPath(classData, 'prof_weapons');
-                    if (text) { inventoryTexts.push(`Class Weapon Proficiencies: ${text}`); }
-
-                    text = getTextFromPath(classData, 'prof_tools');
-                    if (text) { inventoryTexts.push(`Class Tool Proficiencies: ${text}`); }
+                    processMultipleItemsText(getTextFromPath(classData, 'equipment'), "class_equipment", true); // Explicit equipment
+                    processMultipleItemsText(getTextFromPath(classData, 'prof_armor'), "class_prof_armor");
+                    processMultipleItemsText(getTextFromPath(classData, 'prof_weapons'), "class_prof_weapons");
+                    processMultipleItemsText(getTextFromPath(classData, 'prof_tools'), "class_prof_tools");
                 }
 
                 // Access archetype data
@@ -98,42 +244,10 @@ function loadStep7Logic() {
                     const archetypeDesc = getTextFromPath(archetypeData, 'desc');
                     if (archetypeDesc) {
                         const lines = archetypeDesc.split('\n');
-                        let currentFeatureName = null;
-
-                        for (const line of lines) {
-                            const trimmedLine = line.trim();
-                            if (!trimmedLine) {
-                                continue;
-                            }
-
-                            const featureMatch = trimmedLine.match(/^(?:#+\s*)(.+)/);
-                            if (featureMatch && featureMatch[1]) {
-                                currentFeatureName = featureMatch[1].trim();
-                            }
-
-                            const lowerLine = trimmedLine.toLowerCase();
-                            let keywordFoundInLine = false;
-                            for (const keyword of inventoryKeywords) {
-                                if (lowerLine.includes(keyword)) {
-                                    keywordFoundInLine = true;
-                                    break;
-                                }
-                            }
-
-                            if (keywordFoundInLine) {
-                                if (currentFeatureName) {
-                                    if (trimmedLine !== currentFeatureName && !trimmedLine.startsWith("#")) {
-                                       inventoryTexts.push(`Archetype Feature (${currentFeatureName}): ${trimmedLine}`);
-                                    } else if (trimmedLine === currentFeatureName) {
-                                       inventoryTexts.push(`Archetype Feature (${currentFeatureName}): ${trimmedLine}`);
-                                    } else if (!trimmedLine.startsWith("#")) {
-                                       inventoryTexts.push(`Archetype Feature: ${trimmedLine}`);
-                                    }
-                                } else {
-                                    inventoryTexts.push(`Archetype Feature: ${trimmedLine}`);
-                                }
-                            }
-                        }
+                        lines.forEach(line => {
+                             // Process archetype features carefully
+                            processMultipleItemsText(line, "archetype_desc");
+                        });
                     }
                 }
 
@@ -144,44 +258,49 @@ function loadStep7Logic() {
                     if (Array.isArray(benefits)) {
                         benefits.forEach(benefit => {
                             const benefitType = getTextFromPath(benefit, 'type').toLowerCase();
-                            const benefitName = getTextFromPath(benefit, 'name', 'Details');
                             const benefitDesc = getTextFromPath(benefit, 'desc');
-
-                            if (benefitDesc) {
-                                if (benefitType === 'equipment') {
-                                    inventoryTexts.push(`Background Equipment (${benefitName}): ${benefitDesc}`);
-                                } else {
-                                    const lowerDesc = benefitDesc.toLowerCase();
-                                    let keywordFound = false;
-                                    for (const keyword of inventoryKeywords) {
-                                        if (lowerDesc.includes(keyword)) {
-                                            keywordFound = true;
-                                            break;
-                                        }
-                                    }
-                                    if (keywordFound) {
-                                        inventoryTexts.push(`Background Benefit (${benefitName}): ${benefitDesc}`);
-                                    }
-                                }
+                            if (benefitType === 'equipment') {
+                                processMultipleItemsText(benefitDesc, "background_equipment", true); // Explicit equipment
+                            } else {
+                                processMultipleItemsText(benefitDesc, "background_benefit");
                             }
                         });
                     }
                 }
 
-                // Finalize extracted inventory information for display
-                let extractedInventoryInfo;
-                if (inventoryTexts.length === 0) {
-                    extractedInventoryInfo = "--- No specific inventory info extracted from Race, Class, Archetype, or Background ---";
-                } else {
-                    extractedInventoryInfo = inventoryTexts.join('\n');
+                // --- Debug Output Update ---
+                let debugContent = "";
+                if (availableWeapons.length > 0) {
+                    debugContent += `--- Fetched Weapons (${availableWeapons.length}) ---\n${availableWeapons.join(', ')}\n\n`;
+                }
+                if (availableArmor.length > 0) {
+                    debugContent += `--- Fetched Armor (${availableArmor.length}) ---\n${availableArmor.join(', ')}\n\n`;
                 }
 
-                console.log("--- Extracted Inventory Info For Debug Display ---");
-                console.log(extractedInventoryInfo);
+                // Format categorized items for display
+                debugContent += "--- CATEGORIZED ITEMS ---\n";
+                const categoryOrder = ["weapons", "armor", "tools", "general_items", "proficiencies"];
+                const categoryTitles = {
+                    weapons: "WEAPONS",
+                    armor: "ARMOR",
+                    tools: "TOOLS",
+                    general_items: "GENERAL ITEMS",
+                    proficiencies: "PROFICIENCIES & OTHER"
+                };
 
-                // Update debug div content
-                let debugContent = "--- Extracted Inventory Info ---\n" + extractedInventoryInfo + "\n\n";
-                debugContent += "--- Full Data ---\n\n" + JSON.stringify(characterDataObject, null, 2);
+                for (const category of categoryOrder) {
+                    debugContent += `--- ${categoryTitles[category]} ---\n`;
+                    if (categorizedItems[category] && categorizedItems[category].length > 0) {
+                        categorizedItems[category].forEach(item => {
+                            debugContent += `- ${item}\n`;
+                        });
+                    } else {
+                        debugContent += "(None found)\n";
+                    }
+                    debugContent += "\n"; // Add a blank line after each category
+                }
+
+                debugContent += "--- FULL RAW DATA ---\n\n" + JSON.stringify(characterDataObject, null, 2);
                 debugDataPre.textContent = debugContent;
                 debugDiv.style.display = 'block';
 
