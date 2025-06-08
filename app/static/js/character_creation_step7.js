@@ -107,17 +107,69 @@ async function loadStep7Logic() {
                 const lowerAvailableWeapons = availableWeapons.map(w => w.toLowerCase());
                 const lowerAvailableArmor = availableArmor.map(a => a.toLowerCase());
 
-                function cleanAndCategorizeText(text, source, isExplicitEquipment = false) {
+                // List of descriptive phrases to ignore
+                const descriptivePhrases = [
+                    "you start with the following equipment",
+                    "in addition to the equipment granted by your background",
+                    "includes:",
+                    // Add more phrases as needed
+                ];
+
+                // Helper function to parse quantity from item strings
+                function parseQuantityAndName(text) {
+                    const quantityWords = {
+                        "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+                        "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10
+                        // Add more if common, e.g., "a dozen"
+                    };
+                    const parts = text.trim().split(/\s+/);
+                    let quantity = 1;
+                    let name = text;
+
+                    if (parts.length > 1) {
+                        const firstPart = parts[0].toLowerCase();
+                        if (!isNaN(parseInt(firstPart))) { // Check for digit quantity "20 arrows"
+                            quantity = parseInt(firstPart);
+                            name = parts.slice(1).join(" ");
+                        } else if (quantityWords[firstPart]) { // Check for word quantity "four javelins"
+                            quantity = quantityWords[firstPart];
+                            name = parts.slice(1).join(" ");
+                        }
+                    }
+                    // Return name and quantity. For now, format as "name (xQuantity)" if quantity > 1
+                    return quantity > 1 ? `${name} (x${quantity})` : name;
+                }
+
+
+                function cleanAndCategorizeText(text, source, isExplicitEquipment = false, isEquipmentChoice = false) {
                     if (!text || typeof text !== 'string') return;
 
                     let originalText = text; // Keep original for adding to categorizedItems if needed
-                    let cleanedTextForApiMatch = text.toLowerCase().trim();
+
+                    // Parse quantity and name first
+                    let textToCategorize = parseQuantityAndName(originalText);
+                    // Use the (potentially) quantity-modified text for subsequent operations
+                    // but keep originalText for adding to lists if you want the original formatting.
+                    // For now, we'll use textToCategorize for everything.
+
+                    let cleanedTextForApiMatch = textToCategorize.toLowerCase().trim();
+
+                    // Check if the text is a descriptive phrase
+                    // Use cleanedTextForApiMatch for this check as it's already lowercased and trimmed.
+                    for (const phrase of descriptivePhrases) {
+                        if (cleanedTextForApiMatch.startsWith(phrase.toLowerCase())) {
+                            console.log(`Skipping descriptive phrase: ${textToCategorize}`);
+                            return; // Skip this text
+                        }
+                    }
                     let categorized = false;
 
                     // 1. Check against API-fetched weapons (using minimally cleaned text)
+                    // We use cleanedTextForApiMatch here which has quantity already processed
                     for (const weapon of lowerAvailableWeapons) {
-                        if (cleanedTextForApiMatch.includes(weapon)) {
-                            if (!categorizedItems.weapons.includes(originalText)) categorizedItems.weapons.push(originalText);
+                        // Ensure the weapon name itself is present, not just as part of " (x4)"
+                        if (cleanedTextForApiMatch.includes(weapon) && cleanedTextForApiMatch.split(" (x")[0].includes(weapon)) {
+                            if (!categorizedItems.weapons.includes(textToCategorize)) categorizedItems.weapons.push(textToCategorize);
                             categorized = true;
                             break;
                         }
@@ -126,9 +178,10 @@ async function loadStep7Logic() {
 
                     // 2. Check against API-fetched armor (using minimally cleaned text)
                     for (const armor of lowerAvailableArmor) {
-                        // Special handling for "shield" as it's often listed with armor
-                        if (cleanedTextForApiMatch.includes(armor) || (armor === "shield" && cleanedTextForApiMatch.includes("shield"))) {
-                             if (!categorizedItems.armor.includes(originalText)) categorizedItems.armor.push(originalText);
+                        // Similar check for armor
+                        if ((cleanedTextForApiMatch.includes(armor) && cleanedTextForApiMatch.split(" (x")[0].includes(armor)) ||
+                            (armor === "shield" && cleanedTextForApiMatch.includes("shield"))) { // Shield doesn't usually have quantity
+                             if (!categorizedItems.armor.includes(textToCategorize)) categorizedItems.armor.push(textToCategorize);
                             categorized = true;
                             break;
                         }
@@ -136,77 +189,162 @@ async function loadStep7Logic() {
                     if (categorized) return;
 
                     // If not matched with specific API items, then try more aggressive cleaning for proficiencies/keywords
+                    // Use the potentially quantity-modified text for proficiency checks as well
                     let cleanedTextForProficiency = cleanedTextForApiMatch;
                     cleanedTextForProficiency = cleanedTextForProficiency.replace(/^proficiency with\s*/, '');
                     // The following replacements are for broad categories like "light armor", "simple weapons"
                     // Be careful if item names could end with "armor" or "weapons"
-                    let textForKeywordSearch = cleanedTextForProficiency;
-                    let tempCleanedForProficiency = cleanedTextForProficiency.replace(/\s*armor$/, '');
+                    let textForKeywordSearch = cleanedTextForProficiency; // This now includes (xN) if present
+                    let tempCleanedForProficiency = cleanedTextForProficiency.replace(/\s*\(x\d+\)$/, ''); // Remove (xN) for proficiency matching
+                    tempCleanedForProficiency = tempCleanedForProficiency.replace(/\s*armor$/, '');
                     tempCleanedForProficiency = tempCleanedForProficiency.replace(/\s*weapons$/, '');
 
+                    // Handle specific named proficiencies like "Elf Weapon Training"
+                    // We use originalText here if we want to capture the full description.
+                    // Or use textToCategorize if it has useful modifications (like quantity, though unlikely for profs).
+                    // Let's use originalText for now to get the full description.
+                    if (originalText.toLowerCase().includes("elf weapon training")) {
+                        if (!categorizedItems.proficiencies.includes(originalText)) {
+                            categorizedItems.proficiencies.push(originalText + " (Proficiency)");
+                        }
+                        categorized = true;
+                        // If this is *only* a proficiency and not also equipment, we can return.
+                        if (!isExplicitEquipment) return;
+                    }
+                    // Add similar checks for other specific proficiencies if needed
 
                     // Specific proficiency checks (e.g. "all simple weapons", "light armor")
-                    if (tempCleanedForProficiency.includes("all simple") || tempCleanedForProficiency.includes("simple weapon")) {
-                        if (!categorizedItems.proficiencies.includes(originalText)) categorizedItems.proficiencies.push(originalText + " (Proficiency)");
-                        categorized = true;
-                    }
-                    else if (tempCleanedForProficiency.includes("all martial") || tempCleanedForProficiency.includes("martial weapon")) {
-                        if (!categorizedItems.proficiencies.includes(originalText)) categorizedItems.proficiencies.push(originalText + " (Proficiency)");
-                        categorized = true;
-                    }
-                    else if (tempCleanedForProficiency.includes("light") || tempCleanedForProficiency.includes("medium") || tempCleanedForProficiency.includes("heavy") || tempCleanedForProficiency.includes("all armor") || tempCleanedForProficiency.includes("shields")) {
-                         if (!categorizedItems.proficiencies.includes(originalText)) categorizedItems.proficiencies.push(originalText + " (Proficiency)");
-                        categorized = true;
+                    // If it's an equipment choice, we delay these general proficiency checks.
+                    if (!categorized && !isEquipmentChoice) {
+                        if (tempCleanedForProficiency.includes("all simple") || tempCleanedForProficiency.includes("simple weapon")) {
+                            if (!categorizedItems.proficiencies.includes(textToCategorize)) categorizedItems.proficiencies.push(textToCategorize + " (Proficiency)");
+                            categorized = true;
+                        }
+                        else if (tempCleanedForProficiency.includes("all martial") || tempCleanedForProficiency.includes("martial weapon")) {
+                            if (!categorizedItems.proficiencies.includes(textToCategorize)) categorizedItems.proficiencies.push(textToCategorize + " (Proficiency)");
+                            categorized = true;
+                        }
+                        else if (tempCleanedForProficiency.includes("light") || tempCleanedForProficiency.includes("medium") || tempCleanedForProficiency.includes("heavy") || tempCleanedForProficiency.includes("all armor") || tempCleanedForProficiency.includes("shields")) {
+                             if (!categorizedItems.proficiencies.includes(textToCategorize)) categorizedItems.proficiencies.push(textToCategorize + " (Proficiency)");
+                            categorized = true;
+                        }
                     }
 
                     // If it's identified as a general proficiency and NOT an explicit piece of equipment,
-                    // then we can often return early. If it IS explicit equipment, it might also be a general item.
-                    if (categorized && !isExplicitEquipment) return;
+                    // AND it's not an equipment choice (which should try to be categorized as an item first),
+                    // then we can often return early.
+                    if (categorized && !isExplicitEquipment && !isEquipmentChoice) return;
+                    // If it IS an equipment choice and already categorized as weapon/armor, we can also return.
+                    if (isEquipmentChoice && categorized && (categorizedItems.weapons.includes(textToCategorize) || categorizedItems.armor.includes(textToCategorize)) ) return;
 
 
-                    // 3. Check for Tools (using text that had "proficiency with" removed)
-                    for (const toolKeyword of toolKeywords) {
-                        if (textForKeywordSearch.includes(toolKeyword)) {
-                            if (!categorizedItems.tools.includes(originalText)) categorizedItems.tools.push(originalText);
-                            categorized = true;
-                            break;
+                    // 3. Check for Tools
+                    if (!categorized) {
+                        for (const toolKeyword of toolKeywords) {
+                            if (textForKeywordSearch.includes(toolKeyword)) {
+                                if (!categorizedItems.tools.includes(textToCategorize)) categorizedItems.tools.push(textToCategorize);
+                                categorized = true;
+                                break;
+                            }
                         }
                     }
-                    if (categorized) return;
+                    // If an equipment choice is categorized as a tool, we can return.
+                    if (isEquipmentChoice && categorized && categorizedItems.tools.includes(textToCategorize)) return;
 
-                    // 4. Check for General Items (using text that had "proficiency with" removed)
-                    for (const itemKeyword of generalItemKeywords) {
-                        if (textForKeywordSearch.includes(itemKeyword)) {
-                            if (!categorizedItems.general_items.includes(originalText)) categorizedItems.general_items.push(originalText);
-                            categorized = true;
-                            break;
+
+                    // 4. Check for General Items
+                    if (!categorized) {
+                        for (const itemKeyword of generalItemKeywords) {
+                            if (textForKeywordSearch.includes(itemKeyword)) {
+                                if (!categorizedItems.general_items.includes(textToCategorize)) categorizedItems.general_items.push(textToCategorize);
+                                categorized = true;
+                                break;
+                            }
                         }
                     }
-                    if (categorized) return;
+                    // If an equipment choice is categorized as a general item, we can return.
+                    if (isEquipmentChoice && categorized && categorizedItems.general_items.includes(textToCategorize)) return;
 
-                    // 5. Fallback for items that are explicit equipment but not categorized yet
-                    if (isExplicitEquipment && !categorizedItems.general_items.includes(originalText) &&
-                        !categorizedItems.weapons.includes(originalText) &&
-                        !categorizedItems.armor.includes(originalText) &&
-                        !categorizedItems.tools.includes(originalText)) {
-                         categorizedItems.general_items.push(originalText + " (Uncategorized Equipment)");
+                    // 5. General proficiency checks for equipment choices (if not already categorized as an item)
+                    // This is where choices like "(b) any simple weapon" get classified as proficiency if they weren't matched as a specific weapon.
+                    if (isEquipmentChoice && !categorized) {
+                        if (tempCleanedForProficiency.includes("all simple") || tempCleanedForProficiency.includes("simple weapon")) {
+                            if (!categorizedItems.proficiencies.includes(textToCategorize)) categorizedItems.proficiencies.push(textToCategorize + " (Proficiency from Choice)");
+                            categorized = true;
+                        }
+                        else if (tempCleanedForProficiency.includes("all martial") || tempCleanedForProficiency.includes("martial weapon")) {
+                            if (!categorizedItems.proficiencies.includes(textToCategorize)) categorizedItems.proficiencies.push(textToCategorize + " (Proficiency from Choice)");
+                            categorized = true;
+                        }
+                        else if (tempCleanedForProficiency.includes("light") || tempCleanedForProficiency.includes("medium") || tempCleanedForProficiency.includes("heavy") || tempCleanedForProficiency.includes("all armor") || tempCleanedForProficiency.includes("shields")) {
+                             if (!categorizedItems.proficiencies.includes(textToCategorize)) categorizedItems.proficiencies.push(textToCategorize + " (Proficiency from Choice)");
+                            categorized = true;
+                        }
                     }
-                    // Note: General proficiencies not matching keywords are not added to a fallback category
-                    // to avoid noise, unless they were explicit equipment.
+                    if (categorized && isEquipmentChoice) return; // Done with equipment choice if it became a proficiency
+
+                    // 6. Fallback for items that are explicit equipment but not categorized yet
+                    // OR if it's an equipment choice and still not categorized (should be rare by now).
+                    if (!categorized && (isExplicitEquipment || isEquipmentChoice)) {
+                         if (!categorizedItems.general_items.includes(textToCategorize) &&
+                             !categorizedItems.weapons.includes(textToCategorize) &&
+                             !categorizedItems.armor.includes(textToCategorize) &&
+                             !categorizedItems.tools.includes(textToCategorize) &&
+                             !categorizedItems.proficiencies.some(p => p.startsWith(textToCategorize))) { // Avoid double adding if already a prof.
+                            const suffix = isEquipmentChoice ? " (Uncategorized from Choice)" : " (Uncategorized Equipment)";
+                            categorizedItems.general_items.push(textToCategorize + suffix);
+                         }
+                    }
                 }
 
                 function processMultipleItemsText(text, source, isExplicitEquipment = false) {
                     if (!text || typeof text !== 'string') return;
                     // Split by common delimiters like comma, "and", or newline.
-                    // Handles "item1, item2 and item3"
-                    // Also handles lists like "20 arrows" - "20 arrows" will be processed as one item.
-                    // Further splitting of quantities from item names (e.g. "20 arrows" -> "arrows") can be a future enhancement.
                     const items = text.split(/,\s*(?:and\s)?|\s+and\s+|\n/).map(item => item.trim()).filter(item => item);
                     items.forEach(item => {
                         // Basic preposition/article removal - can be expanded
-                        let cleanedItem = item.replace(/^(a|an|one|two|some)\s+/i, '');
-                        cleanAndCategorizeText(cleanedItem, source, isExplicitEquipment);
+                        // This removal should happen BEFORE quantity parsing, as "a" or "an" can be part of item names after quantity.
+                        // However, parseQuantityAndName handles "one", "two" etc.
+                        // Let's adjust where this cleaning happens.
+                        // For now, parseQuantityAndName is called first in cleanAndCategorizeText.
+                        // The "a ", "an " removal in processMultipleItemsText might be redundant or misplaced if parseQuantityAndName is robust.
+                        // Let's test current flow.
+
+                        // The primary role of this loop is to split multi-item strings.
+                        // The actual cleaning and categorization happens in cleanAndCategorizeText.
+                        // No need to call parseQuantityAndName or extensive cleaning here.
+
+                        // Check for item choices before general categorization
+                        if (parseItemChoices(item, source, isExplicitEquipment)) { // Pass 'item' directly
+                            return; // Item choices handled, no further processing needed for this line
+                        }
+                        cleanAndCategorizeText(item, source, isExplicitEquipment); // Pass 'item' directly
                     });
+                }
+
+                // Helper function to parse item choices like "(a)... or (b)..."
+                function parseItemChoices(text, source, isExplicitEquipment = false) {
+                    const choicePattern = /\((?:[a-z]|[ivx]+)\)\s*([^()]+?)(?:\s+or\s+\((?:[a-z]|[ivx]+)\)\s*([^()]+))?\.?/gi;
+                    let match;
+                    let choicesFound = false;
+                    while ((match = choicePattern.exec(text)) !== null) {
+                        choicesFound = true;
+                        // Extract the main part of choice (e.g., "a greataxe", "any martial melee weapon")
+                        // Match[1] is the first option, match[2] is the second (if present)
+                        const option1 = match[1]?.trim();
+                        const option2 = match[2]?.trim();
+
+                        if (option1) {
+                            // Prefix with "(Choice)" to indicate its origin, but categorize the item itself
+                            // cleanAndCategorizeText will handle the actual categorization
+                            // Pass true for isEquipmentChoice, and also inherit isExplicitEquipment
+                            cleanAndCategorizeText(option1, source + "_choice1", isExplicitEquipment, true);
+                        }
+                        if (option2) {
+                            cleanAndCategorizeText(option2, source + "_choice2", isExplicitEquipment, true);
+                        }
+                    }
+                    return choicesFound; // Return true if choices were processed
                 }
 
 
