@@ -2,9 +2,20 @@ import os
 import unittest
 from unittest.mock import patch, MagicMock
 
-# Add flask_app to path for import
 import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import os
+
+# Ensure the project root is in PYTHONPATH for `from app import ...`
+# When running `python -m unittest tests.test_app` from the project root,
+# the project root is usually automatically part of sys.path.
+# Explicitly adding it can help in some environments or if run differently.
+# os.path.dirname(__file__) is /path/to/project/tests
+# os.path.join(os.path.dirname(__file__), '..') is /path/to/project
+# This adds the project root directory to sys.path
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 
 # It's important to configure the app for testing BEFORE importing it if it initializes extensions at import time.
 # However, our app.py initializes extensions (like LoginManager) at the module level.
