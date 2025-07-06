@@ -49,8 +49,8 @@ if not app.config.get('SECRET_KEY'): # Check again, in case the default above al
 # OAuth 2 client setup
 client_id = app.config['GOOGLE_CLIENT_ID']
 client_secret = app.config['GOOGLE_CLIENT_SECRET']
-# Make redirect_uri configurable, defaulting for local development
-redirect_uri = app.config.get('GOOGLE_REDIRECT_URI', 'http://localhost:5000/google/callback')
+# Make redirect_uri configurable, defaulting for local development with the new path
+redirect_uri = app.config.get('GOOGLE_REDIRECT_URI', 'http://localhost:5000/auth/google/authorized')
 auth_url = 'https://accounts.google.com/o/oauth2/auth'
 token_url = 'https://accounts.google.com/o/oauth2/token'
 scope = ['openid', 'email', 'profile']
@@ -90,7 +90,7 @@ def login():
     session['oauth_state'] = state
     return redirect(authorization_url)
 
-@app.route('/google/callback')
+@app.route('/auth/google/authorized') # Changed route
 def callback():
     # Need to import request and render_template from flask
     from flask import request, render_template # Make sure render_template is imported

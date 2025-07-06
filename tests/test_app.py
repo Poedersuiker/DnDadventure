@@ -39,7 +39,7 @@ app.config['SERVER_NAME'] = 'localhost.test' # Required for url_for outside of r
 app.config['GOOGLE_CLIENT_ID'] = 'TEST_CLIENT_ID_FOR_UNITTEST'
 app.config['GOOGLE_CLIENT_SECRET'] = 'TEST_CLIENT_SECRET_FOR_UNITTEST'
 app.config['ADMIN_EMAIL'] = 'test_admin_for_unittest@example.com'
-app.config['GOOGLE_REDIRECT_URI'] = 'http://localhost.test/google/callback' # Test specific redirect URI
+app.config['GOOGLE_REDIRECT_URI'] = 'http://localhost.test/auth/google/authorized' # Test specific redirect URI with new path
 # The dummy config.py created by app.py might overwrite these if not careful.
 # It's better if tests manage their config explicitly.
 
@@ -99,7 +99,7 @@ class AuthTestCase(unittest.TestCase):
         with self.client.session_transaction() as sess:
             sess['oauth_state'] = 'test_state_callback'
 
-        response = self.client.get('/google/callback?state=test_state_callback&code=auth_code', follow_redirects=False)
+        response = self.client.get('/auth/google/authorized?state=test_state_callback&code=auth_code', follow_redirects=False) # Updated path
 
         self.assertEqual(response.status_code, 302) # Should redirect to home
         self.assertTrue('/home' in response.location)
@@ -157,7 +157,7 @@ class AuthTestCase(unittest.TestCase):
         with self.client.session_transaction() as sess:
             sess['oauth_state'] = 'test_state_error'
 
-        response = self.client.get('/google/callback?state=test_state_error&code=auth_code')
+        response = self.client.get('/auth/google/authorized?state=test_state_error&code=auth_code') # Updated path
         self.assertEqual(response.status_code, 500)
         self.assertIn(b"Error during authentication", response.data)
 
@@ -175,7 +175,7 @@ class AuthTestCase(unittest.TestCase):
         with self.client.session_transaction() as sess:
             sess['oauth_state'] = 'test_state_user_info_error'
 
-        response = self.client.get('/google/callback?state=test_state_user_info_error&code=auth_code')
+        response = self.client.get('/auth/google/authorized?state=test_state_user_info_error&code=auth_code') # Updated path
         self.assertEqual(response.status_code, 500)
         self.assertIn(b"Error fetching user information", response.data)
 
