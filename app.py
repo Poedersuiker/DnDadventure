@@ -3,11 +3,20 @@ from flask import Flask, redirect, url_for, session, render_template # Added ren
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required # Added login_required
 from requests_oauthlib import OAuth2Session
 
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 # Determine the absolute path to the instance folder
 # This ensures that it works correctly whether run directly or as part of a larger project/test suite
 INSTANCE_FOLDER_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'instance')
 
 app = Flask(__name__, instance_path=INSTANCE_FOLDER_PATH, instance_relative_config=True)
+
+# If the app is behind a proxy (common in production), ProxyFix helps it understand
+# the correct scheme (http/https), host, etc., from X-Forwarded-* headers.
+# x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1 specifies trusting one hop for these headers.
+# Adjust the number of hops if you have multiple proxies.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
 
 # Create a dummy config.py in the instance folder for development if it doesn't exist
 # In a production environment, this file would be created by Jenkins or a similar deployment tool.
@@ -143,7 +152,15 @@ def logout():
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    # This is important for OAuth2Session to work with HTTP.
-    # In production, you'd use HTTPS.
-    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+    # Set OAUTHLIB_INSECURE_TRANSPORT only if FLASK_ENV is development or app.debug is True.
+    # This allows HTTP for local development but expects HTTPS in production.
+    # How you set app.debug or FLASK_ENV for production (e.g. via Gunicorn/uWSGI config) is crucial.
+    # For direct `python app.py` runs, `debug=True` below will enable it.
+    if app.debug or os.environ.get('FLASK_ENV') == 'development':
+        os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+        app.logger.info("OAUTHLIB_INSECURE_TRANSPORT enabled for development (HTTP).")
+    else:
+        app.logger.info("OAUTHLIB_INSECURE_TRANSPORT is not set, HTTPS is expected for OAuth.")
+
+    # The debug=True argument to app.run() also sets app.debug = True
     app.run(debug=True)
