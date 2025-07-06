@@ -49,7 +49,8 @@ if not app.config.get('SECRET_KEY'): # Check again, in case the default above al
 # OAuth 2 client setup
 client_id = app.config['GOOGLE_CLIENT_ID']
 client_secret = app.config['GOOGLE_CLIENT_SECRET']
-redirect_uri = 'http://localhost:5000/google/callback' # Make sure this matches the one in Google Console
+# Make redirect_uri configurable, defaulting for local development
+redirect_uri = app.config.get('GOOGLE_REDIRECT_URI', 'http://localhost:5000/google/callback')
 auth_url = 'https://accounts.google.com/o/oauth2/auth'
 token_url = 'https://accounts.google.com/o/oauth2/token'
 scope = ['openid', 'email', 'profile']

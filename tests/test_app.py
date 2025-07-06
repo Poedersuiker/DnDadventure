@@ -39,6 +39,7 @@ app.config['SERVER_NAME'] = 'localhost.test' # Required for url_for outside of r
 app.config['GOOGLE_CLIENT_ID'] = 'TEST_CLIENT_ID_FOR_UNITTEST'
 app.config['GOOGLE_CLIENT_SECRET'] = 'TEST_CLIENT_SECRET_FOR_UNITTEST'
 app.config['ADMIN_EMAIL'] = 'test_admin_for_unittest@example.com'
+app.config['GOOGLE_REDIRECT_URI'] = 'http://localhost.test/google/callback' # Test specific redirect URI
 # The dummy config.py created by app.py might overwrite these if not careful.
 # It's better if tests manage their config explicitly.
 
