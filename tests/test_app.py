@@ -16,6 +16,8 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+# Import requests for mocking exceptions
+import requests
 
 # It's important to configure the app for testing BEFORE importing it if it initializes extensions at import time.
 # However, our app.py initializes extensions (like LoginManager) at the module level.
@@ -27,12 +29,14 @@ if PROJECT_ROOT not in sys.path:
 # This is a common challenge with Flask app testing without a factory.
 
 from app import app, User # login_manager is already configured in app.py
+from flask import current_app # For new tests
 
 # Apply test configurations. This should ideally be done before the app is fully "used".
 app.config['TESTING'] = True
 app.config['WTF_CSRF_ENABLED'] = False  # Disable CSRF for testing forms if any
 app.config['SECRET_KEY'] = 'test_secret_key_for_unittest' # Ensure a consistent secret key for session for tests
 app.config['SERVER_NAME'] = 'localhost.test' # Required for url_for outside of request context in some cases
+app.config['LOGIN_DISABLED'] = False # Explicitly enable login for tests
 
 # Override sensitive or environment-specific configs for tests
 # Ensure these are applied before any test client makes requests.
@@ -43,12 +47,14 @@ app.config['GOOGLE_REDIRECT_URI'] = 'http://localhost.test/auth/google/authorize
 # The dummy config.py created by app.py might overwrite these if not careful.
 # It's better if tests manage their config explicitly.
 
-class AuthTestCase(unittest.TestCase):
+class FeatureTestCase(unittest.TestCase): # Renamed class
 
     def setUp(self):
         # The app is already configured with TESTING = True etc. from above.
         # Create a new test client for each test.
         self.client = app.test_client()
+        self.app_context = app.app_context() # Create an app context
+        self.app_context.push() # Push it to make it active
 
         # Create a dummy user for login simulation
         self.test_user_id = '12345'
@@ -59,6 +65,15 @@ class AuthTestCase(unittest.TestCase):
     def tearDown(self):
         with self.client.session_transaction() as sess:
             sess.clear()
+        self.app_context.pop() # Pop the app context
+
+    # Helper to simulate login
+    def _simulate_login(self):
+        with self.client.session_transaction() as sess:
+            sess['user_data'] = self.user_data
+            sess['_user_id'] = self.test_user_id
+            sess['_fresh'] = True
+            # No need for a special login route if User.get loads from session correctly
 
     def test_01_index_redirects_to_login_page_when_not_logged_in(self):
         response = self.client.get('/', follow_redirects=False)
@@ -126,27 +141,41 @@ class AuthTestCase(unittest.TestCase):
 
         response = self.client.get('/home')
         self.assertEqual(response.status_code, 200)
-        self.assertIn(bytes(f'Hello, {self.test_user_name}!', 'utf-8'), response.data)
+        # Check for new home page content
+        self.assertIn(bytes(f'Welcome, {self.test_user_name}!', 'utf-8'), response.data)
+        self.assertIn(b"Character Creation", response.data)
+        self.assertIn(b"Admin", response.data)
+        self.assertIn(b"1. Choose a Race", response.data) # Character creation step
+        self.assertIn(b"Enter REST API URL", response.data) # Admin tab content
 
     def test_07_logout(self):
         # First, log in the user
-        with self.client.session_transaction() as sess:
-            sess['user_data'] = self.user_data
-            sess['_user_id'] = self.test_user_id
-            sess['_fresh'] = True
+        self._simulate_login() # Use helper
 
         # Verify user is logged in by accessing home
         response = self.client.get('/home', follow_redirects=False)
         self.assertEqual(response.status_code, 200)
+        self.assertIn(bytes(f'Welcome, {self.test_user_name}!', 'utf-8'), response.data)
+
 
         # Then, log out
-        response = self.client.get('/logout', follow_redirects=False)
-        self.assertEqual(response.status_code, 302)
-        self.assertTrue('/login_page' in response.location or '/' in response.location) # Redirects to index, which then redirects to login_page
+        response = self.client.get('/logout', follow_redirects=True) # Follow redirect to index then to login_page
+        self.assertEqual(response.status_code, 200) # Final page is login_page
+        self.assertIn(b'Login with Google', response.data)
+
 
         with self.client.session_transaction() as sess:
             self.assertIsNone(sess.get('_user_id'))
             self.assertIsNone(sess.get('user_data'))
+
+        # Verify current_user is anonymous after logout
+        # This needs to be in a request context, self.client provides this
+        with self.client:
+            # current_user is proxied, direct access might not work as expected outside a view
+            # A simple way is to check a protected route redirects
+            home_response = self.client.get('/home', follow_redirects=False)
+            self.assertEqual(home_response.status_code, 302) # Should redirect to login
+
 
     @patch('app.OAuth2Session')
     def test_08_google_callback_token_fetch_failure(self, mock_oauth_session):
@@ -178,6 +207,94 @@ class AuthTestCase(unittest.TestCase):
         response = self.client.get('/auth/google/authorized?state=test_state_user_info_error&code=auth_code') # Updated path
         self.assertEqual(response.status_code, 500)
         self.assertIn(b"Error fetching user information", response.data)
+
+    # --- New tests for Admin page structure fetching ---
+    @patch('app.requests.get') # Mock the requests.get call within app.py
+    def test_10_admin_get_structure_success(self, mock_get):
+        self._simulate_login()
+
+        mock_api_response = MagicMock()
+        mock_api_response.status_code = 200
+        mock_api_response.json.return_value = {"key1": "value1", "nested": {"key2": "value2"}}
+        mock_api_response.raise_for_status.return_value = None # Simulate no HTTP error
+        mock_get.return_value = mock_api_response
+
+        target_url = "http://fakeapi.com/data"
+        response = self.client.get(f'/admin/get_structure?url={target_url}')
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["key1"], "value1")
+        self.assertEqual(data["nested"]["key2"], "value2")
+        mock_get.assert_called_once_with(target_url)
+
+    @patch('app.requests.get')
+    def test_11_admin_get_structure_handles_request_exception(self, mock_get):
+        self._simulate_login()
+
+        mock_get.side_effect = requests.exceptions.RequestException("Network error")
+
+        target_url = "http://fakeapi.com/data_error"
+        response = self.client.get(f'/admin/get_structure?url={target_url}')
+
+        self.assertEqual(response.status_code, 500)
+        data = response.get_json()
+        self.assertIn("error", data)
+        self.assertEqual(data["error"], "Network error")
+
+    @patch('app.requests.get')
+    def test_12_admin_get_structure_handles_http_error_status(self, mock_get):
+        self._simulate_login()
+
+        mock_api_response = MagicMock()
+        mock_api_response.status_code = 404 # Simulate Not Found
+        mock_api_response.raise_for_status.side_effect = requests.exceptions.HTTPError("404 Client Error: Not Found for url")
+        mock_get.return_value = mock_api_response
+
+        target_url = "http://fakeapi.com/nonexistent"
+        response = self.client.get(f'/admin/get_structure?url={target_url}')
+
+        self.assertEqual(response.status_code, 500) # Our handler returns 500 for upstream errors
+        data = response.get_json()
+        self.assertIn("error", data)
+        # The error message comes from requests.exceptions.HTTPError
+        self.assertTrue("404 Client Error: Not Found for url" in data["error"])
+
+
+    @patch('app.requests.get')
+    def test_13_admin_get_structure_handles_invalid_json(self, mock_get):
+        self._simulate_login()
+
+        mock_api_response = MagicMock()
+        mock_api_response.status_code = 200
+        mock_api_response.raise_for_status.return_value = None
+        mock_api_response.json.side_effect = ValueError("Decoding JSON has failed") # Simulate invalid JSON
+        mock_get.return_value = mock_api_response
+
+        target_url = "http://fakeapi.com/badjson"
+        response = self.client.get(f'/admin/get_structure?url={target_url}')
+
+        self.assertEqual(response.status_code, 500)
+        data = response.get_json()
+        self.assertIn("error", data)
+        self.assertEqual(data["error"], "Invalid JSON response")
+
+    def test_14_admin_get_structure_missing_url_parameter(self):
+        self._simulate_login()
+        response = self.client.get('/admin/get_structure') # No URL parameter
+        self.assertEqual(response.status_code, 400)
+        data = response.get_json()
+        self.assertIn("error", data)
+        self.assertEqual(data["error"], "URL parameter is missing")
+
+    def test_15_admin_get_structure_requires_login(self):
+        # Ensure user is logged out for this test
+        with self.client.session_transaction() as sess:
+            sess.clear()
+
+        response = self.client.get('/admin/get_structure?url=http://test.com', follow_redirects=False)
+        self.assertEqual(response.status_code, 302) # Redirect to login
+        self.assertTrue('/login_page' in response.location)
 
 
 if __name__ == '__main__':

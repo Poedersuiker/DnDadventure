@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome, {{ current_user.name }}!</h1>
+        <div class="tabs">
+            <button class="tablink" onclick="openTab(event, 'CharacterCreation')" id="defaultOpen">Character Creation</button>
+            <button class="tablink" onclick="openTab(event, 'Admin')">Admin</button>
+        </div>
+
+        <div id="CharacterCreation" class="tabcontent">
+            <h3>Character Creation Steps (D&D 5e)</h3>
+            <ul>
+                <!-- Steps will be populated by Flask -->
+                {% for step in character_creation_steps %}
+                <li>{{ step }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div id="Admin" class="tabcontent">
+            <h3>Admin Page</h3>
+            <p>Enter a REST endpoint URL to retrieve and display its structure.</p>
+            <input type="text" id="restUrl" placeholder="Enter REST API URL">
+            <button onclick="fetchStructure()">Get structure</button>
+            <div id="treeView">
+                <!-- Tree view will be populated here -->
+            </div>
+        </div>
+
+        <a href="{{ url_for('logout') }}">Logout</a>
+    </div>
+
+    <script>
+        function openTab(evt, tabName) {
+            var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tabcontent");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+            }
+            tablinks = document.getElementsByClassName("tablink");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            document.getElementById(tabName).style.display = "block";
+            evt.currentTarget.className += " active";
+        }
+
+        // Get the element with id="defaultOpen" and click on it
+        document.getElementById("defaultOpen").click();
+
+        async function fetchStructure() {
+            const url = document.getElementById('restUrl').value;
+            const treeView = document.getElementById('treeView');
+            treeView.innerHTML = 'Loading...';
+
+            if (!url) {
+                treeView.innerHTML = 'Please enter a URL.';
+                return;
+            }
+
+            try {
+                // We'll use a new Flask endpoint to handle the backend fetching and processing
+                const response = await fetch(`/admin/get_structure?url=${encodeURIComponent(url)}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                // Clear previous tree
+                treeView.innerHTML = '';
+
+                // Create and append the tree
+                const ul = createTree(data);
+                treeView.appendChild(ul);
+
+            } catch (error) {
+                treeView.innerHTML = `Error: ${error.message}`;
+                console.error('Error fetching structure:', error);
+            }
+        }
+
+        function createTree(data) {
+            const ul = document.createElement('ul');
+            for (const key in data) {
+                const li = document.createElement('li');
+                let content = `<strong>${key}:</strong> `;
+
+                if (typeof data[key] === 'object' && data[key] !== null) {
+                    if (Array.isArray(data[key])) {
+                        content += `[Array (${data[key].length} items)]`;
+                        // Optionally expand arrays - for simplicity, keeping it collapsed
+                        // const subUl = createTree(data[key]);
+                        // li.appendChild(subUl);
+                    } else {
+                         // It's an object
+                        const subUl = createTree(data[key]);
+                        li.appendChild(document.createTextNode(content)); // Add key before sub-tree
+                        li.appendChild(subUl);
+                        ul.appendChild(li);
+                        continue; // Skip default text appending for objects
+                    }
+                } else {
+                    content += data[key];
+                }
+                li.innerHTML = content; // Use innerHTML for simple values, textNode for complex
+                ul.appendChild(li);
+            }
+            return ul;
+        }
+    </script>
+</body>
+</html>

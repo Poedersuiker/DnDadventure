@@ -52,3 +52,83 @@ p {
     padding: 2px; /* Optional: adds a little space around the logo */
     border-radius: 50%; /* Optional: makes the logo background circular */
 }
+
+/* Tab styles */
+.tabs {
+    overflow: hidden;
+    border: 1px solid #ccc;
+    background-color: #f1f1f1;
+    margin-bottom: 20px;
+}
+
+.tabs button {
+    background-color: inherit;
+    float: left;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    padding: 14px 16px;
+    transition: 0.3s;
+    font-size: 17px;
+}
+
+.tabs button:hover {
+    background-color: #ddd;
+}
+
+.tabs button.active {
+    background-color: #ccc;
+}
+
+.tabcontent {
+    display: none;
+    padding: 6px 12px;
+    border: 1px solid #ccc;
+    border-top: none;
+    text-align: left;
+}
+
+.tabcontent h3 {
+    margin-top: 0;
+}
+
+/* Admin page specific styles */
+#Admin input[type="text"] {
+    width: calc(100% - 120px); /* Adjust width as needed */
+    padding: 10px;
+    margin-right: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+#Admin button {
+    padding: 10px 15px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#Admin button:hover {
+    background-color: #45a049;
+}
+
+#treeView {
+    margin-top: 20px;
+    padding: 10px;
+    border: 1px solid #eee;
+    background-color: #f9f9f9;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+#treeView ul {
+    list-style-type: none;
+    padding-left: 20px;
+}
+
+#treeView li {
+    padding: 3px 0;
+}
