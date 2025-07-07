@@ -1,4 +1,5 @@
 import os
+import json # Added for loading races_database.json
 from flask import Flask, redirect, url_for, session, render_template, jsonify, request as flask_request # Added render_template, jsonify, flask_request
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required # Added login_required
 from requests_oauthlib import OAuth2Session
@@ -157,7 +158,12 @@ def home():
         "5. Choose Equipment",
         "6. Come Together"
     ]
-    return render_template('home.html', character_creation_steps=character_creation_steps)
+    # Placeholder for actual character data
+    user_characters = [
+        # {"name": "Gandalf", "race": "Human", "class": "Wizard"},
+        # {"name": "Legolas", "race": "Elf", "class": "Ranger"}
+    ]
+    return render_template('home.html', character_creation_steps=character_creation_steps, characters=user_characters)
 
 @app.route('/logout')
 @login_required # Should be logged in to logout
@@ -303,6 +309,142 @@ def get_race_processing_status():
     return jsonify(current_status_copy)
 
 # --- End Race Processing ---
+
+# --- Character Creation ---
+RACES_FILE = 'races_database.json'
+
+def load_races():
+    try:
+        with open(RACES_FILE, 'r') as f:
+            races_data = json.load(f)
+
+        # Process races to identify subraces
+        # This is a simplified approach. A more robust solution might involve
+        # checking for common base race names in descriptions or specific subrace fields if they existed.
+        # For now, we assume a subrace might mention its parent in its name or description.
+        # Example: "High Elf" is a subrace of "Elf". "Hill Dwarf" is a subrace of "Dwarf".
+
+        races_with_subraces = []
+        processed_races = {} # To keep track of base races and their subraces
+
+        # First pass: identify potential base races (those without obvious parent race names in their own names)
+        base_race_names = ["Dwarf", "Elf", "Gnome", "Halfling", "Minotaur", "Mushroomfolk", "Drow", "Derro", "Catfolk", "Gearforged", "Darakhul"]
+
+        all_races_map = {race['name']: race for race in races_data}
+
+        for race in races_data:
+            processed_races[race['name']] = {
+                'name': race['name'],
+                'description': race.get('description', ''),
+                'ability_score_increase': race.get('ability_score_increase', ''),
+                'languages': race.get('languages', ''),
+                'damage_resistance': race.get('damage_resistance', ''),
+                'other_traits_html': race.get('other_traits_html', ''),
+                'subraces': []
+            }
+
+        # Second pass: assign subraces to their parents
+        # This logic is quite heuristic and depends on naming conventions.
+        # E.g. "High Elf" contains "Elf", "Hill Dwarf" contains "Dwarf".
+        # "Darakhul" and "Derro" also have "Heritage" subraces.
+        # "Gearforged" have "Chassis" subraces.
+        # "Mushroomfolk" has named subraces like "Acid Cap".
+        # "Catfolk" has "Malkin", "Pantheran".
+        # "Minotaur" has "Bhain Kwai", "Boghaid".
+        # "Drow" has "Delver", "Fever-Bit", "Purified".
+        # "Derro" has "Far-Touched", "Mutated", "Uncorrupted".
+
+        # More explicit parent-subrace mapping might be needed if names are not indicative
+        parent_map = {
+            "High Elf": "Elf", "Wood Elf": "Elf", # Assuming Wood Elf might exist or be added
+            "Hill Dwarf": "Dwarf", "Mountain Dwarf": "Dwarf", # Assuming Mountain Dwarf
+            "Rock Gnome": "Gnome", "Forest Gnome": "Gnome", # Assuming Forest Gnome
+            "Lightfoot": "Halfling", "Stout Halfling": "Halfling", # Assuming Stout Halfling
+            "Acid Cap": "Mushroomfolk", "Favored": "Mushroomfolk", "Morel": "Mushroomfolk",
+            "Malkin": "Catfolk", "Pantheran": "Catfolk",
+            "Bhain Kwai": "Minotaur", "Boghaid": "Minotaur",
+            "Delver": "Drow", "Fever-Bit": "Drow", "Purified": "Drow",
+            "Far-Touched": "Derro", "Mutated": "Derro", "Uncorrupted": "Derro",
+            # Heritage races for Darakhul
+            "Derro Heritage": "Darakhul", "Dragonborn Heritage": "Darakhul", "Drow Heritage": "Darakhul",
+            "Dwarf Heritage": "Darakhul", "Elf/Shadow Fey Heritage": "Darakhul", "Gnome Heritage": "Darakhul",
+            "Halfling Heritage": "Darakhul", "Human/Half-Elf Heritage": "Darakhul", "Kobold Heritage": "Darakhul",
+            "Ravenfolk Heritage": "Darakhul", "Tiefling Heritage": "Darakhul", "Trollkin Heritage": "Darakhul",
+            # Chassis for Gearforged
+            "Dwarf Chassis": "Gearforged", "Gnome Chassis": "Gearforged",
+            "Human Chassis": "Gearforged", "Kobold Chassis": "Gearforged"
+        }
+
+        temp_races_list = []
+        subrace_names = set(parent_map.keys())
+
+        for race_name, race_details in processed_races.items():
+            if race_name not in subrace_names:
+                temp_races_list.append(race_details)
+
+        for sub_name, parent_name in parent_map.items():
+            if sub_name in processed_races and parent_name in processed_races:
+                # Ensure the parent race exists in temp_races_list or add it if it's missing (e.g. base "Elf" is also selectable)
+                parent_entry = next((r for r in temp_races_list if r['name'] == parent_name), None)
+                if not parent_entry: # If parent itself wasn't added (e.g. "Elf" might be a subrace of something else in a complex hierarchy or just a base)
+                    # This case needs careful handling. For now, assume base races are added if not subraces themselves.
+                    # If "Elf" is a base race, it should already be in temp_races_list.
+                    pass # Parent should already be in the list
+
+                # Add subrace to parent
+                if parent_name in processed_races: # Check if parent is a known race
+                     # Find the parent in temp_races_list and add the subrace
+                    for r_detail in temp_races_list:
+                        if r_detail['name'] == parent_name:
+                            r_detail['subraces'].append(processed_races[sub_name])
+                            break
+            elif sub_name in processed_races and parent_name not in processed_races:
+                # This is a subrace whose defined parent is not in the main list (e.g. "Wood Elf" but no "Elf")
+                # Add it as a top-level race for now.
+                temp_races_list.append(processed_races[sub_name])
+
+
+        # Sort alphabetically by name for consistent order
+        temp_races_list.sort(key=lambda r: r['name'])
+        for race_detail in temp_races_list:
+            race_detail['subraces'].sort(key=lambda sr: sr['name'])
+
+        return temp_races_list, all_races_map
+
+    except FileNotFoundError:
+        app.logger.error(f"{RACES_FILE} not found.")
+        return [], {}
+    except json.JSONDecodeError:
+        app.logger.error(f"Error decoding {RACES_FILE}.")
+        return [], {}
+
+@app.route('/character_creation/select_race')
+@login_required
+def select_race():
+    races_list, _ = load_races()
+    if not races_list:
+        # Handle case where races couldn't be loaded
+        return "Error: Could not load race data. Please check server logs.", 500
+    return render_template('select_race.html', races=races_list)
+
+@app.route('/api/race_details/<race_name>')
+@login_required
+def api_race_details(race_name):
+    _, all_races_map = load_races()
+    race_detail = all_races_map.get(race_name)
+    if race_detail:
+        # Ensure all expected fields are present, provide defaults if not
+        return jsonify({
+            'name': race_detail.get('name', 'N/A'),
+            'description': race_detail.get('description', 'No description available.'),
+            'ability_score_increase': race_detail.get('ability_score_increase', 'N/A'),
+            'languages': race_detail.get('languages', 'N/A'),
+            'damage_resistance': race_detail.get('damage_resistance', 'None'),
+            'other_traits_html': race_detail.get('other_traits_html', '<p>No other traits listed.</p>')
+        })
+    return jsonify({"error": "Race not found"}), 404
+
+# --- End Character Creation ---
 
 
 if __name__ == '__main__':
