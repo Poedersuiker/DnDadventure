@@ -170,16 +170,46 @@ def get_structure():
     if not url:
         return jsonify({"error": "URL parameter is missing"}), 400
 
+    all_results = []
+    current_url = url
+    first_page_data = None
+
     try:
-        response = requests.get(url)
-        response.raise_for_status()  # Raises an HTTPError for bad responses (4XX or 5XX)
-        data = response.json()
-        return jsonify(data)
+        while current_url:
+            response = requests.get(current_url)
+            response.raise_for_status()  # Raises an HTTPError for bad responses
+            data = response.json()
+
+            if not first_page_data:
+                first_page_data = data.copy() # Keep a copy of the first page structure
+                # Remove 'results' from first_page_data if it will be replaced by combined list
+                # Or, ensure it's correctly updated later. For now, we'll build it up.
+
+            if 'results' in data and isinstance(data['results'], list):
+                all_results.extend(data['results'])
+
+            current_url = data.get('next') # Get the next page URL
+
+        # Combine results: start with the structure of the first page,
+        # then update 'results' and potentially 'count'.
+        if first_page_data:
+            final_data = first_page_data
+            final_data['results'] = all_results
+            final_data['count'] = len(all_results) # Update count to reflect all fetched results
+            if not all_results and 'results' not in final_data: # Ensure 'results' key exists
+                 final_data['results'] = []
+            # Remove 'next' and 'previous' if they relate to the last fetched page
+            final_data.pop('next', None)
+            final_data.pop('previous', None) # Or set to None if appropriate for the combined view
+        else: # Should not happen if initial URL is valid and returns data
+            return jsonify({"error": "No data received from the initial URL"}), 500
+
+        return jsonify(final_data)
+
     except requests.exceptions.RequestException as e:
-        # This catches connection errors, timeouts, too many redirects, etc.
         app.logger.error(f"Error fetching URL {url}: {e}")
         return jsonify({"error": str(e)}), 500
-    except ValueError as e: # Catches JSON decoding errors
+    except ValueError as e:  # Catches JSON decoding errors
         app.logger.error(f"Error decoding JSON from {url}: {e}")
         return jsonify({"error": "Invalid JSON response"}), 500
 

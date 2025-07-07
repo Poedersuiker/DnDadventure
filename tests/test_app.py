@@ -229,6 +229,54 @@ class FeatureTestCase(unittest.TestCase): # Renamed class
         mock_get.assert_called_once_with(target_url)
 
     @patch('app.requests.get')
+    def test_10a_admin_get_structure_pagination(self, mock_get):
+        self._simulate_login()
+
+        # Mock responses for pagination
+        mock_response_page1 = MagicMock()
+        mock_response_page1.status_code = 200
+        mock_response_page1.json.return_value = {
+            "count": 2,
+            "next": "http://fakeapi.com/data?page=2",
+            "previous": None,
+            "results": [{"id": 1, "name": "Item 1"}]
+        }
+        mock_response_page1.raise_for_status.return_value = None
+
+        mock_response_page2 = MagicMock()
+        mock_response_page2.status_code = 200
+        mock_response_page2.json.return_value = {
+            "count": 2, # Original count might still be there
+            "next": None,
+            "previous": "http://fakeapi.com/data?page=1",
+            "results": [{"id": 2, "name": "Item 2"}]
+        }
+        mock_response_page2.raise_for_status.return_value = None
+
+        # Configure mock_get to return page1 then page2
+        mock_get.side_effect = [mock_response_page1, mock_response_page2]
+
+        initial_url = "http://fakeapi.com/data"
+        response = self.client.get(f'/admin/get_structure?url={initial_url}')
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+
+        # Verify calls to requests.get
+        self.assertEqual(mock_get.call_count, 2)
+        mock_get.assert_any_call(initial_url)
+        mock_get.assert_any_call("http://fakeapi.com/data?page=2")
+
+        # Check combined results
+        self.assertEqual(len(data["results"]), 2)
+        self.assertEqual(data["results"][0]["name"], "Item 1")
+        self.assertEqual(data["results"][1]["name"], "Item 2")
+        self.assertEqual(data["count"], 2) # Updated count
+        self.assertIsNone(data.get("next")) # 'next' should be removed or None
+        # 'previous' from the first page is preserved by current logic if not explicitly removed
+        # self.assertIsNone(data.get("previous"))
+
+    @patch('app.requests.get')
     def test_11_admin_get_structure_handles_request_exception(self, mock_get):
         self._simulate_login()
 

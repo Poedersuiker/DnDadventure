@@ -77,7 +77,7 @@
                 treeView.innerHTML = '';
 
                 // Create and append the tree
-                const ul = createTree(data);
+                const ul = createTree(data, true); // Pass true for root level
                 treeView.appendChild(ul);
 
             } catch (error) {
@@ -86,30 +86,89 @@
             }
         }
 
-        function createTree(data) {
+        function createTree(data, isRoot = false) {
             const ul = document.createElement('ul');
+            if (isRoot) {
+                ul.className = 'tree-root';
+            }
+
             for (const key in data) {
                 const li = document.createElement('li');
-                let content = `<strong>${key}:</strong> `;
 
-                if (typeof data[key] === 'object' && data[key] !== null) {
-                    if (Array.isArray(data[key])) {
-                        content += `[Array (${data[key].length} items)]`;
-                        // Optionally expand arrays - for simplicity, keeping it collapsed
-                        // const subUl = createTree(data[key]);
-                        // li.appendChild(subUl);
-                    } else {
-                         // It's an object
-                        const subUl = createTree(data[key]);
-                        li.appendChild(document.createTextNode(content)); // Add key before sub-tree
+                const keySpan = document.createElement('strong');
+                keySpan.textContent = `${key}: `;
+                li.appendChild(keySpan);
+
+                const value = data[key];
+
+                if (typeof value === 'object' && value !== null) {
+                    if (Array.isArray(value)) {
+                        // Special handling for 'results' array or any array of objects
+                        if (value.every(item => typeof item === 'object' && item !== null && !Array.isArray(item))) {
+                            const itemSummary = document.createElement('span');
+                            itemSummary.className = 'array-summary';
+                            itemSummary.textContent = `[Array of ${value.length} objects] `;
+                            li.appendChild(itemSummary);
+
+                            const expandButton = document.createElement('button');
+                            expandButton.textContent = 'Expand';
+                            expandButton.className = 'expand-btn';
+                            li.appendChild(expandButton);
+
+                            const subUl = document.createElement('ul');
+                            subUl.className = 'collapsible-content';
+                            subUl.style.display = 'none'; // Initially collapsed
+
+                            value.forEach((item, index) => {
+                                const itemLi = document.createElement('li');
+                                const itemKeySpan = document.createElement('strong');
+                                // Try to find a 'name' or 'id' for a more descriptive summary, otherwise use index
+                                let itemTitle = item.name || item.id || `Item ${index + 1}`;
+                                itemKeySpan.textContent = `${itemTitle}: `;
+                                itemLi.appendChild(itemKeySpan);
+
+                                const itemExpandButton = document.createElement('button');
+                                itemExpandButton.textContent = 'Details';
+                                itemExpandButton.className = 'expand-btn';
+                                itemLi.appendChild(itemExpandButton);
+
+                                const itemSubUl = createTree(item);
+                                itemSubUl.className = 'collapsible-content';
+                                itemSubUl.style.display = 'none';
+                                itemLi.appendChild(itemSubUl);
+
+                                itemExpandButton.onclick = () => {
+                                    const isHidden = itemSubUl.style.display === 'none';
+                                    itemSubUl.style.display = isHidden ? 'block' : 'none';
+                                    itemExpandButton.textContent = isHidden ? 'Collapse' : 'Details';
+                                };
+                                subUl.appendChild(itemLi);
+                            });
+                            li.appendChild(subUl);
+
+                            expandButton.onclick = () => {
+                                const isHidden = subUl.style.display === 'none';
+                                subUl.style.display = isHidden ? 'block' : 'none';
+                                expandButton.textContent = isHidden ? 'Collapse' : 'Expand';
+                            };
+
+                        } else { // Array of simple types or mixed
+                            const valueSpan = document.createElement('span');
+                            valueSpan.textContent = `[Array (${value.length} items)]`;
+                            li.appendChild(valueSpan);
+                            // Optionally, could still expand simple arrays if needed
+                            const subUl = createTree(value); // Recursive call for arrays
+                            li.appendChild(subUl);
+                        }
+                    } else { // It's an object
+                        const subUl = createTree(value);
                         li.appendChild(subUl);
-                        ul.appendChild(li);
-                        continue; // Skip default text appending for objects
                     }
-                } else {
-                    content += data[key];
+                } else { // Simple value (string, number, boolean)
+                    const valueSpan = document.createElement('span');
+                    valueSpan.textContent = value;
+                    li.appendChild(valueSpan);
                 }
-                li.innerHTML = content; // Use innerHTML for simple values, textNode for complex
                 ul.appendChild(li);
             }
             return ul;
