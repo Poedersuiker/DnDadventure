@@ -85,55 +85,63 @@ def process_races(races_data, status_updater=_default_status_updater):
             "other_traits_html": ""
         }
 
-        current_traits_list = race.get("traits", []) # Start with the race's own traits
+        # Initial setup for traits and description, defaults to the race's own.
+        current_traits_list = list(race.get("traits", []))
+        processed_race["description"] = race.get('desc', "")
 
         if race.get("is_subrace") and race.get("subrace_of"):
             parent_url = race["subrace_of"]
             parent_name_for_log = parent_url.split('/')[-2] if parent_url.endswith('/') else parent_url.split('/')[-1]
+            status_updater({"message": f"Race {race_name} is a subrace. Processing parent {parent_name_for_log}."})
 
-            status_updater({"message": f"Race {race_name} is a subrace. Checking for parent {parent_name_for_log}."})
+            parent_data = None # Initialize parent_data to None
 
-            if parent_url not in parent_race_cache:
-                parent_data_fetched = fetch_race_data(parent_url, f"parent ({parent_name_for_log})", status_updater)
-                if parent_data_fetched:
-                    parent_race_cache[parent_url] = parent_data_fetched
-                else: # Failed to fetch parent
-                    status_updater({"message": f"CRITICAL: Failed to fetch parent race data for {parent_name_for_log}. Subrace {race_name} might be incomplete."})
-                    # Decide: skip this subrace, or process with only its own data? For now, continue with what we have.
-                    parent_data = {}
-            else:
+            if parent_url in parent_race_cache:
                 parent_data = parent_race_cache[parent_url]
-                status_updater({"message": f"Found parent {parent_name_for_log} in cache for {race_name}."})
-
-            # Ensure parent_data (even if from cache) has its traits, fetch if necessary (though ideally fetched once)
-            if parent_data and ('traits' not in parent_data or 'desc' not in parent_data):
-                status_updater({"message": f"Parent {parent_name_for_log} from cache missing details. Attempting re-fetch..."})
-                detailed_parent_data = fetch_race_data(parent_data['url'], f"parent ({parent_name_for_log}) details", status_updater)
-                if detailed_parent_data:
-                    parent_data.update(detailed_parent_data)
-                    parent_race_cache[parent_url] = parent_data # Update cache
-
-            # Combine descriptions
-            parent_desc = parent_data.get('desc', '')
-            subrace_desc = race.get('desc', '')
-            processed_race["description"] = f"{parent_desc}\n\n{subrace_desc}".strip() if parent_desc else subrace_desc
-
-            # Combine traits: parent traits first, then subrace traits (subrace can override or add)
-            temp_combined_traits = {}
-            for trait in parent_data.get('traits', []):
-                temp_combined_traits[trait['name']] = trait['desc']
-
-            for trait in race.get('traits', []): # Subrace's own traits
-                if trait['name'] == "Ability Score Increase" and "Ability Score Increase" in temp_combined_traits:
-                    # Append subrace ASI to parent's ASI
-                    temp_combined_traits[trait['name']] = f"{temp_combined_traits[trait['name']]}. {trait['desc']}"
+                if parent_data: # Ensure cached data is not None
+                    status_updater({"message": f"Found parent {parent_name_for_log} in cache for {race_name}."})
                 else:
-                    # Subrace trait overrides or adds new
-                    temp_combined_traits[trait['name']] = trait['desc']
+                    status_updater({"message": f"Parent {parent_name_for_log} in cache was None/invalid. Will attempt re-fetch."})
+                    del parent_race_cache[parent_url] # Remove invalid entry
 
-            current_traits_list = [{"name": name, "desc": desc} for name, desc in temp_combined_traits.items()]
+            if not parent_data: # If not found in cache or cache was invalid
+                fetched_parent = fetch_race_data(parent_url, f"parent ({parent_name_for_log})", status_updater)
+                if fetched_parent:
+                    parent_data = fetched_parent
+                    parent_race_cache[parent_url] = parent_data # Cache successfully fetched data
+                else:
+                    status_updater({"message": f"WARNING: Failed to fetch parent race data for {parent_name_for_log}. Subrace {race_name} will not include parent traits."})
 
-        # Process the final list of traits for the race/subrace
+            if parent_data: # Proceed with merging only if parent_data is valid.
+                # Further check if parent_data needs its details fetched/updated
+                if 'traits' not in parent_data or 'desc' not in parent_data:
+                    if 'url' in parent_data: # Check if URL exists for re-fetch
+                        status_updater({"message": f"Parent {parent_name_for_log} data is missing details. Attempting re-fetch..."})
+                        detailed_parent_data = fetch_race_data(parent_data['url'], f"parent ({parent_name_for_log}) details", status_updater)
+                        if detailed_parent_data:
+                            parent_data.update(detailed_parent_data)
+                            parent_race_cache[parent_url] = parent_data # Update cache
+                    else:
+                        status_updater({"message": f"WARNING: Parent {parent_name_for_log} data is incomplete (no URL for re-fetch)."})
+
+                parent_desc = parent_data.get('desc', '')
+                subrace_desc = race.get('desc', '')
+                if parent_desc:
+                    processed_race["description"] = f"{parent_desc}\n\n{subrace_desc}".strip()
+
+                # Combine traits: parent traits first, then subrace traits
+                final_traits_map = {trait['name']: trait['desc'] for trait in parent_data.get('traits', [])}
+
+                for trait_entry in race.get('traits', []): # Subrace's original traits
+                    trait_name = trait_entry['name']
+                    trait_desc = trait_entry['desc']
+                    if trait_name == "Ability Score Increase" and trait_name in final_traits_map:
+                        final_traits_map[trait_name] = f"{final_traits_map[trait_name]}. {trait_desc}"
+                    else:
+                        final_traits_map[trait_name] = trait_desc
+                current_traits_list = [{'name': name, 'desc': desc} for name, desc in final_traits_map.items()]
+
+        # Process the final list of traits (either subrace's own or combined)
         other_traits_html_parts = []
         for trait in current_traits_list:
             trait_name = trait.get("name", "Unnamed Trait")
