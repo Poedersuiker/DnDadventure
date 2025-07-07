@@ -2,6 +2,7 @@ import os
 from flask import Flask, redirect, url_for, session, render_template # Added render_template
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required # Added login_required
 from requests_oauthlib import OAuth2Session
+import requests # Moved import requests to top level
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -142,7 +143,15 @@ def index(): # Renamed to index, home will be protected
 @app.route('/home') # Protected home page
 @login_required # Add this decorator
 def home():
-    return f'Hello, {current_user.name}! You are logged in. <a href="/logout">Logout</a>'
+    character_creation_steps = [
+        "1. Choose a Race",
+        "2. Choose a Class",
+        "3. Determine Ability Scores",
+        "4. Describe Your Character",
+        "5. Choose Equipment",
+        "6. Come Together"
+    ]
+    return render_template('home.html', character_creation_steps=character_creation_steps)
 
 @app.route('/logout')
 @login_required # Should be logged in to logout
@@ -150,6 +159,60 @@ def logout():
     logout_user()
     session.clear() # Clear the session to remove user_data and oauth_state
     return redirect(url_for('index'))
+
+@app.route('/admin/get_structure')
+@login_required
+def get_structure():
+    from flask import request, jsonify # Import jsonify
+    # import requests # Import requests module -> Moved to top
+
+    url = request.args.get('url')
+    if not url:
+        return jsonify({"error": "URL parameter is missing"}), 400
+
+    all_results = []
+    current_url = url
+    first_page_data = None
+
+    try:
+        while current_url:
+            response = requests.get(current_url)
+            response.raise_for_status()  # Raises an HTTPError for bad responses
+            data = response.json()
+
+            if not first_page_data:
+                first_page_data = data.copy() # Keep a copy of the first page structure
+                # Remove 'results' from first_page_data if it will be replaced by combined list
+                # Or, ensure it's correctly updated later. For now, we'll build it up.
+
+            if 'results' in data and isinstance(data['results'], list):
+                all_results.extend(data['results'])
+
+            current_url = data.get('next') # Get the next page URL
+
+        # Combine results: start with the structure of the first page,
+        # then update 'results' and potentially 'count'.
+        if first_page_data:
+            final_data = first_page_data
+            final_data['results'] = all_results
+            final_data['count'] = len(all_results) # Update count to reflect all fetched results
+            if not all_results and 'results' not in final_data: # Ensure 'results' key exists
+                 final_data['results'] = []
+            # Remove 'next' and 'previous' if they relate to the last fetched page
+            final_data.pop('next', None)
+            final_data.pop('previous', None) # Or set to None if appropriate for the combined view
+        else: # Should not happen if initial URL is valid and returns data
+            return jsonify({"error": "No data received from the initial URL"}), 500
+
+        return jsonify(final_data)
+
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"Error fetching URL {url}: {e}")
+        return jsonify({"error": str(e)}), 500
+    except ValueError as e:  # Catches JSON decoding errors
+        app.logger.error(f"Error decoding JSON from {url}: {e}")
+        return jsonify({"error": "Invalid JSON response"}), 500
+
 
 if __name__ == '__main__':
     # Set OAUTHLIB_INSECURE_TRANSPORT only if FLASK_ENV is development or app.debug is True.
