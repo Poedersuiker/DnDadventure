@@ -32,12 +32,28 @@
             <div id="treeView">
                 <!-- Tree view will be populated here -->
             </div>
+
+            <hr style="margin-top: 20px; margin-bottom: 20px;">
+
+            <div>
+                <h4>Process D&D Races Database</h4>
+                <button id="processRacesBtn" onclick="startRaceProcessing()">Process Races from Open5E</button>
+                <div id="progressBarContainer" style="width: 100%; background-color: #ddd; margin-top: 10px; display: none;">
+                    <div id="progressBar" style="width: 0%; height: 30px; background-color: #4CAF50; text-align: center; line-height: 30px; color: white;">
+                        0%
+                    </div>
+                </div>
+                <div id="processStatus" style="margin-top: 10px;"></div>
+            </div>
+
         </div>
 
         <a href="{{ url_for('logout') }}">Logout</a>
     </div>
 
     <script>
+        let raceProcessIntervalId = null; // To store the interval ID for polling
+
         function openTab(evt, tabName) {
             var i, tabcontent, tablinks;
             tabcontent = document.getElementsByClassName("tabcontent");
@@ -173,6 +189,116 @@
             }
             return ul;
         }
+
+        // --- Race Processing Script ---
+        async function startRaceProcessing() {
+            const processBtn = document.getElementById('processRacesBtn');
+            const progressBarContainer = document.getElementById('progressBarContainer');
+            const progressBar = document.getElementById('progressBar');
+            const processStatusDiv = document.getElementById('processStatus');
+
+            processBtn.disabled = true;
+            processStatusDiv.textContent = 'Initiating processing...';
+            progressBar.style.width = '0%';
+            progressBar.textContent = '0%';
+            progressBarContainer.style.display = 'block';
+
+            if (raceProcessIntervalId) {
+                clearInterval(raceProcessIntervalId); // Clear any existing interval
+            }
+
+            try {
+                const response = await fetch('/admin/run-race-processing', { method: 'POST' });
+                const data = await response.json();
+
+                if (response.ok) {
+                    processStatusDiv.textContent = data.message || 'Processing started. Waiting for progress...';
+                    // Start polling for status
+                    raceProcessIntervalId = setInterval(getRaceProcessingStatus, 2000); // Poll every 2 seconds
+                } else {
+                    processStatusDiv.textContent = `Error: ${data.error || 'Unknown error starting process.'}`;
+                    processBtn.disabled = false;
+                    progressBarContainer.style.display = 'none';
+                }
+            } catch (error) {
+                processStatusDiv.textContent = `Network or client-side error: ${error.message}`;
+                processBtn.disabled = false;
+                progressBarContainer.style.display = 'none';
+                console.error('Error starting race processing:', error);
+            }
+        }
+
+        async function getRaceProcessingStatus() {
+            const processBtn = document.getElementById('processRacesBtn');
+            const progressBarContainer = document.getElementById('progressBarContainer');
+            const progressBar = document.getElementById('progressBar');
+            const processStatusDiv = document.getElementById('processStatus');
+
+            try {
+                const response = await fetch('/admin/get-race-processing-status');
+                if (!response.ok) {
+                    // If status endpoint itself fails, show an error but keep polling for a bit
+                    processStatusDiv.textContent = `Error fetching status: ${response.statusText}. Retrying...`;
+                    console.error('Error fetching status:', response.statusText);
+                    return;
+                }
+                const data = await response.json();
+
+                processStatusDiv.textContent = data.message || 'Polling...';
+
+                if (data.total > 0) {
+                    const percentage = Math.round((data.current / data.total) * 100);
+                    progressBar.style.width = `${percentage}%`;
+                    progressBar.textContent = `${percentage}% (${data.current}/${data.total})`;
+                } else if (data.status === 'running') {
+                    // Still running but total might not be known yet (e.g. fetching list)
+                    progressBar.style.width = '5%'; // Small indication of activity
+                    progressBar.textContent = 'Processing...';
+                }
+
+
+                if (data.status === 'complete' || data.status === 'error') {
+                    clearInterval(raceProcessIntervalId);
+                    raceProcessIntervalId = null;
+                    processBtn.disabled = false;
+                    if (data.status === 'complete') {
+                        processStatusDiv.textContent = data.message || 'Processing complete!';
+                        progressBar.style.width = '100%';
+                        progressBar.textContent = '100%';
+                        if(data.output_file) {
+                            processStatusDiv.innerHTML += `<br>Output file: ${data.output_file}`;
+                        }
+                    } else { // Error
+                        processStatusDiv.textContent = `Error: ${data.message || data.error_details || 'Unknown error during processing.'}`;
+                        progressBar.style.backgroundColor = 'red'; // Indicate error on progress bar
+                    }
+                } else if (data.status === 'idle' && !raceProcessIntervalId) {
+                    // This case might happen if page is reloaded and status was idle
+                    processBtn.disabled = false;
+                    progressBarContainer.style.display = 'none';
+                    processStatusDiv.textContent = 'Ready to process.';
+                }
+
+
+            } catch (error) {
+                processStatusDiv.textContent = `Error polling status: ${error.message}. Polling stopped.`;
+                console.error('Error polling race processing status:', error);
+                clearInterval(raceProcessIntervalId);
+                raceProcessIntervalId = null;
+                processBtn.disabled = false;
+                 progressBarContainer.style.display = 'none';
+            }
+        }
+        // Initial check in case processing was ongoing from a previous interaction on this page load
+        // or if the server restarted and status is now idle.
+        // However, for simplicity, we'll rely on the user to click the button to start.
+        // If you need to pick up an ongoing process, you'd call getRaceProcessingStatus() on page load
+        // and potentially restart polling if status is 'running'.
+        // For now, let's ensure the button is enabled if the initial state is idle.
+        // document.addEventListener('DOMContentLoaded', () => {
+        //     getRaceProcessingStatus(); // Check status on load to set initial button/UI state
+        // });
+
     </script>
 </body>
 </html>

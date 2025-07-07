@@ -1,8 +1,14 @@
 import os
-from flask import Flask, redirect, url_for, session, render_template # Added render_template
+from flask import Flask, redirect, url_for, session, render_template, jsonify, request as flask_request # Added render_template, jsonify, flask_request
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required # Added login_required
 from requests_oauthlib import OAuth2Session
 import requests # Moved import requests to top level
+import threading # For background tasks
+import time # For managing background task status
+
+# Import the main function from your script
+from process_races import main as process_races_main
+
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -163,10 +169,10 @@ def logout():
 @app.route('/admin/get_structure')
 @login_required
 def get_structure():
-    from flask import request, jsonify # Import jsonify
+    # from flask import request, jsonify # Import jsonify -> request is now flask_request
     # import requests # Import requests module -> Moved to top
 
-    url = request.args.get('url')
+    url = flask_request.args.get('url')
     if not url:
         return jsonify({"error": "URL parameter is missing"}), 400
 
@@ -213,6 +219,91 @@ def get_structure():
         app.logger.error(f"Error decoding JSON from {url}: {e}")
         return jsonify({"error": "Invalid JSON response"}), 500
 
+# --- Race Processing ---
+# Global state for race processing
+processing_status = {
+    'status': 'idle', # idle, running, complete, error
+    'message': 'Not started.',
+    'current': 0,
+    'total': 0,
+    'output_file': None,
+    'error_details': None
+}
+processing_lock = threading.Lock() # To prevent multiple concurrent processing runs
+
+def update_processing_status(update_dict):
+    """Callback function for process_races.py to update Flask app's status."""
+    with processing_lock:
+        for key, value in update_dict.items():
+            processing_status[key] = value
+        # Ensure essential keys always exist
+        if 'status' not in processing_status: processing_status['status'] = 'unknown'
+        if 'message' not in processing_status: processing_status['message'] = ''
+        if 'current' not in processing_status: processing_status['current'] = 0
+        if 'total' not in processing_status: processing_status['total'] = 0
+    app.logger.info(f"Race processing status updated: {processing_status}")
+
+
+def run_race_processing_task():
+    """The actual task that runs process_races_main."""
+    app.logger.info("Background race processing task started.")
+    try:
+        # Initialize status before starting
+        update_processing_status({
+            'status': 'running',
+            'message': 'Initializing race data processing...',
+            'current': 0,
+            'total': 0,
+            'output_file': None,
+            'error_details': None
+        })
+        process_races_main(status_updater=update_processing_status)
+        # The script itself should call update_processing_status with 'complete' or 'error'
+    except Exception as e:
+        app.logger.error(f"Exception in race processing thread: {e}", exc_info=True)
+        update_processing_status({
+            'status': 'error',
+            'message': 'An unexpected error occurred in the processing thread.',
+            'error_details': str(e),
+            'output_file': None
+        })
+    app.logger.info("Background race processing task finished.")
+
+
+@app.route('/admin/run-race-processing', methods=['POST'])
+@login_required
+def start_race_processing():
+    with processing_lock:
+        if processing_status['status'] == 'running':
+            return jsonify({"error": "Race processing is already in progress."}), 409 # Conflict
+
+        # Reset status for a new run
+        processing_status.update({
+            'status': 'running',
+            'message': 'Starting race data processing...',
+            'current': 0,
+            'total': 0,
+            'output_file': None,
+            'error_details': None
+        })
+
+        app.logger.info("Attempting to start race processing thread.")
+        thread = threading.Thread(target=run_race_processing_task)
+        thread.daemon = True # Allows main program to exit even if threads are running
+        thread.start()
+        app.logger.info("Race processing thread started.")
+        return jsonify({"message": "Race processing initiated."})
+
+@app.route('/admin/get-race-processing-status', methods=['GET'])
+@login_required
+def get_race_processing_status():
+    with processing_lock:
+        # Make a copy to avoid issues if the dict is modified while creating the response
+        current_status_copy = processing_status.copy()
+    return jsonify(current_status_copy)
+
+# --- End Race Processing ---
+
 
 if __name__ == '__main__':
     # Set OAUTHLIB_INSECURE_TRANSPORT only if FLASK_ENV is development or app.debug is True.
@@ -226,4 +317,4 @@ if __name__ == '__main__':
         app.logger.info("OAUTHLIB_INSECURE_TRANSPORT is not set, HTTPS is expected for OAuth.")
 
     # The debug=True argument to app.run() also sets app.debug = True
-    app.run(debug=True)
+    app.run(debug=True, threaded=True) # Added threaded=True for background tasks
