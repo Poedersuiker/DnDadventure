@@ -15,13 +15,34 @@
         </div>
 
         <div id="CharacterCreation" class="tabcontent">
+            <h3>Your Characters</h3>
+            <div id="characterList">
+                {% if characters %}
+                    <ul>
+                        {% for char in characters %}
+                            <li>{{ char.name }} - {{ char.race }} {{ char.class }}</li>
+                        {% else %}
+                            <li>No characters created yet.</li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p>No characters created yet.</p>
+                {% endif %}
+            </div>
+            <a href="{{ url_for('select_race') }}" class="button">Create New Character</a>
+
+            <hr style="margin-top: 20px; margin-bottom: 20px;">
+
             <h3>Character Creation Steps (D&D 5e)</h3>
-            <ul>
-                <!-- Steps will be populated by Flask -->
+            <ol>
                 {% for step in character_creation_steps %}
-                <li>{{ step }}</li>
+                    {% if loop.first %}
+                        <li><a href="{{ url_for('select_race') }}">{{ step }}</a></li>
+                    {% else %}
+                        <li>{{ step }} (Currently unavailable)</li>
+                    {% endif %}
                 {% endfor %}
-            </ul>
+            </ol>
         </div>
 
         <div id="Admin" class="tabcontent">
