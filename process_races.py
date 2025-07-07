@@ -20,7 +20,7 @@ def fetch_all_races(status_updater=_default_status_updater):
     while url:
         try:
             status_updater({"message": f"Fetching page {page_num} from {url}..."})
-            response = requests.get(url, timeout=10) # Added timeout
+            response = requests.get(url, timeout=30) # Increased timeout
             response.raise_for_status()
             data = response.json()
             all_races_data.extend(data["results"])
@@ -41,7 +41,7 @@ def fetch_race_data(race_url, race_name_for_log, status_updater=_default_status_
     """Fetches data for a single race if not already present."""
     status_updater({"message": f"Fetching detailed data for {race_name_for_log} from {race_url}..."})
     try:
-        response = requests.get(race_url, timeout=10)
+        response = requests.get(race_url, timeout=30) # Increased timeout
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
