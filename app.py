@@ -57,8 +57,8 @@ def initialize_oauth_client(current_app):
         name='google',
         client_id=current_app.config.get('GOOGLE_CLIENT_ID'),
         client_secret=current_app.config.get('GOOGLE_CLIENT_SECRET'),
-        authorize_url='https://accounts.google.com/o/oauth2/auth',
-        access_token_url='https://accounts.google.com/o/oauth2/token',
+        # authorize_url is discovered via server_metadata_url
+        # access_token_url is discovered via server_metadata_url
         server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
         client_kwargs={
             'scope': 'openid email profile',
