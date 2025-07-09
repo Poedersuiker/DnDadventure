@@ -59,8 +59,15 @@ def initialize_oauth_client(current_app):
         client_secret=current_app.config.get('GOOGLE_CLIENT_SECRET'),
         authorize_url='https://accounts.google.com/o/oauth2/auth',
         access_token_url='https://accounts.google.com/o/oauth2/token',
-        client_kwargs={'scope': 'openid email profile'},
-        server_metadata_url='https://accounts.google.com/.well-known/openid-configuration'
+        server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+        client_kwargs={
+            'scope': 'openid email profile',
+            # Explicitly define expected issuer for the ID token to resolve 'invalid_claim: Invalid claim 'iss'' errors.
+            # Google's standard issuer is 'https://accounts.google.com'.
+            'claims_options': {
+                'iss': {'essential': True, 'values': ['https://accounts.google.com']}
+            }
+        }
     )
 
 # --- Google Authorization View Function (no decorator here) ---
