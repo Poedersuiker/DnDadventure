@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+env/
+develop-eggs/
+sdist/
+var/
+*.log
+*.pot
+
+# Flask specific
+instance/config.py
+instance/*.db # If you store SQLite DBs in instance folder and don't want to track them
+*.sqlite
+*.sqlite3
+
+# Secrets
+.env
+secrets.py
+
+# IDE / Editor specific
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace

@@ -104,7 +104,9 @@
 
     <div class="tab-container">
         <button class="tab-button active" onclick="openTab(event, 'Home')">Home</button>
+        {% if current_user.is_authenticated and current_user.is_admin %}
         <button class="tab-button" onclick="openTab(event, 'Admin')">Admin</button>
+        {% endif %}
     </div>
 
     <div class="tab-content-area">
@@ -117,6 +119,7 @@
                         <p><strong>Name:</strong> {{ current_user.name }}</p>
                         <p><strong>Email:</strong> {{ current_user.email }}</p>
                         <p><strong>Google ID:</strong> {{ current_user.google_id }}</p>
+                        <p><strong>Admin Status:</strong> {{ "Yes" if current_user.is_admin else "No" }}</p>
                     </div>
                     <a href="{{ url_for('logout') }}" class="logout-button">Logout</a>
                 {% else %}
@@ -126,12 +129,15 @@
             </div>
         </div>
 
+        {% if current_user.is_authenticated and current_user.is_admin %}
         <div id="Admin" class="tab-pane">
             <div class="home-content-container"> <!-- Using similar container for consistency -->
                 <h2>Admin Section</h2>
                 <p>This is the placeholder for Admin content.</p>
+                <p>Welcome, Admin User! You have access to administrative functions.</p>
             </div>
         </div>
+        {% endif %}
     </div>
 
     <script>
