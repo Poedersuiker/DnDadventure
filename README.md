@@ -50,6 +50,7 @@ This project implements a Flask-based web application with Google OAuth for user
                 *   `DB_PASSWORD`: Database password.
                 *   `DB_NAME`: Database name.
             *   `SECRET_KEY`: A long, random string used to secure sessions. Generate a strong one for production.
+            *   `ADMIN_EMAIL` (Optional): Set this to the email address of a user who should automatically be granted administrator privileges upon login. If a user logs in with this email, their `is_admin` flag will be set to `True`.
 
 5.  **Set up Google OAuth 2.0 Credentials:**
     *   Go to the [Google Cloud Console](https://console.cloud.google.com/).

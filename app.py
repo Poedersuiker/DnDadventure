@@ -42,6 +42,7 @@ class User(UserMixin, db.Model):
     google_id = db.Column(db.String(120), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     name = db.Column(db.String(100), nullable=True)
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
 
     def get_id(self): # Required by Flask-Login
         return str(self.id)
@@ -108,15 +109,40 @@ def google_authorize_view():
         return redirect(url_for('login'))
 
     user = User.query.filter_by(google_id=google_id).first()
+    admin_email_from_config = app.config.get('ADMIN_EMAIL')
+    made_changes = False
+
     if not user:
         user = User(google_id=google_id, email=email, name=name)
+        # Set admin status based on email match during creation
+        if admin_email_from_config and email == admin_email_from_config:
+            user.is_admin = True
+        else:
+            user.is_admin = False # Explicitly set for new users
         try:
             db.session.add(user)
+            # No commit here yet, will commit after potential admin status update
+            made_changes = True
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error creating user in database: {str(e)}", "error")
+            print(f"DB Error (create user): {e}")
+            return redirect(url_for('login'))
+    else:
+        # User exists, check if admin status needs to be updated
+        # This handles cases where ADMIN_EMAIL might change or was set after user creation
+        should_be_admin = bool(admin_email_from_config and email == admin_email_from_config)
+        if user.is_admin != should_be_admin:
+            user.is_admin = should_be_admin
+            made_changes = True
+
+    if made_changes:
+        try:
             db.session.commit()
         except Exception as e:
             db.session.rollback()
-            flash(f"Error saving user to database: {str(e)}", "error")
-            print(f"DB Error: {e}")
+            flash(f"Error updating user data in database: {str(e)}", "error")
+            print(f"DB Error (update user): {e}")
             return redirect(url_for('login'))
 
     login_user(user, remember=True)
