@@ -1,8 +1,0 @@
-GOOGLE_CLIENT_ID = 'YOUR_ACTUAL_GOOGLE_CLIENT_ID'
-GOOGLE_CLIENT_SECRET = 'YOUR_ACTUAL_GOOGLE_CLIENT_SECRET'
-GEMINI_API_KEY = 'YOUR_ACTUAL_GEMINI_API_KEY'
-ADMIN_EMAIL = 'your_admin_email@example.com'
-SECRET_KEY = 'REPLACE_WITH_A_REAL_SECRET_KEY_IN_CONFIG.PY'
-# For local development, this is usually http://localhost:5000/auth/google/authorized
-# For production, this MUST match the URI registered in Google Cloud Console (e.g., https://yourdomain.com/auth/google/authorized)
-GOOGLE_REDIRECT_URI = 'http://localhost:5000/auth/google/authorized'
