@@ -1,7 +1,12 @@
 # Google OAuth Configuration
 GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID"
 GOOGLE_CLIENT_SECRET = "YOUR_GOOGLE_CLIENT_SECRET"
-# This should match the Authorized redirect URIs in your Google Cloud Console project
+# This is the full redirect URI that you register in your Google Cloud Console project.
+# The Flask application will dynamically use the *path component* of this URI
+# (e.g., "/authorize" from "http://localhost:5000/authorize") as its callback endpoint.
+# Ensure this URI is one of the "Authorized redirect URIs" in your Google OAuth 2.0 client settings.
+# For local development, "http://localhost:5000/authorize" is a common default.
+# For production, it might be "https://yourdomain.com/auth/google/callback" or similar.
 GOOGLE_REDIRECT_URI = "http://localhost:5000/authorize"
 
 # Database Configuration

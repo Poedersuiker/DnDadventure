@@ -38,7 +38,7 @@ This project implements a Flask-based web application with Google OAuth for user
         *   **Google OAuth Credentials:**
             *   `GOOGLE_CLIENT_ID`: Your Google Cloud project's OAuth 2.0 Client ID.
             *   `GOOGLE_CLIENT_SECRET`: Your Google Cloud project's OAuth 2.0 Client Secret.
-            *   `GOOGLE_REDIRECT_URI`: This **must** match one of the Authorized redirect URIs you configured in your Google Cloud Console for the OAuth client. By default, for local development, this is `http://localhost:5000/authorize`.
+            *   `GOOGLE_REDIRECT_URI`: This **must** be an absolute URI (e.g., `http://localhost:5000/authorize` or `https://your.domain.com/callback/google`) and **must** match one of the Authorized redirect URIs you configured in your Google Cloud Console. The Flask application will dynamically use the *path component* of this URI (e.g., `/authorize` or `/callback/google`) as its callback endpoint.
         *   **Database Configuration:**
             *   `DB_TYPE`: Set to `"sqlite"` (default), `"mysql"`, or `"postgresql"`.
             *   If `DB_TYPE` is `"sqlite"`:
