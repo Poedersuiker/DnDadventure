@@ -3,6 +3,7 @@ Flask-SQLAlchemy>=2.5
 Flask-Login>=0.5
 Authlib>=1.0
 python-dotenv>=0.19
+requests>=2.20
 # For MySQL/MariaDB, uncomment the line below and run: pip install pymysql
 # pymysql
 # For PostgreSQL, uncomment the line below and run: pip install psycopg2-binary
