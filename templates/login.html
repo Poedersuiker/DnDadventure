@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f4f4f4; }
+        .container { background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 0 15px rgba(0,0,0,0.1); text-align: center; }
+        h1 { color: #333; margin-bottom: 20px; }
+        .login-button { display: inline-block; background-color: #4285F4; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-size: 16px; transition: background-color 0.3s; }
+        .login-button:hover { background-color: #357ae8; }
+        .flashes { list-style: none; padding: 0; margin-bottom: 20px; }
+        .flashes li { padding: 10px; margin-bottom: 10px; border-radius: 4px; }
+        .flashes .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .flashes .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .flashes .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome!</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <ul class="flashes">
+                {% for category, message in messages %}
+                    <li class="{{ category }}">{{ message }}</li>
+                {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+
+        <p>Please log in to continue.</p>
+        <a href="{{ url_for('login_google_route') }}" class="login-button">
+            <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google logo" style="width:20px; height:20px; vertical-align: middle; margin-right: 8px;">
+            Login with Google
+        </a>
+    </div>
+</body>
+</html>
