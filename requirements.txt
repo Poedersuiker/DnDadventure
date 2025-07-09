@@ -1,0 +1,10 @@
+Flask
+Flask-SQLAlchemy
+Flask-SocketIO
+python-dotenv
+mysqlclient
+SocketIO
+gunicorn
+eventlet
+Werkzeug
+Jinja2
