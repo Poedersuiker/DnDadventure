@@ -1,0 +1,22 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Importer Tool{% endblock %}
+
+{% block content %}
+<div class="admin-content-container"> <!-- Re-using admin style for consistency -->
+    <h2>Importer Tool</h2>
+    <hr>
+    <p>Importer tab content will go here.</p>
+    <p>This page is dedicated to importer functionalities and is separate from the main user interface.</p>
+    <!-- Future importer UI elements will be added here -->
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{# Add any importer-specific JavaScript here in the future #}
+<script>
+    // Placeholder for any importer-specific JS
+    console.log("Importer panel page loaded.");
+</script>
+{% endblock %}

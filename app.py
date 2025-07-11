@@ -300,7 +300,25 @@ def logout():
     flash("You have been logged out.", "info")
     return redirect(url_for('login'))
 
-# --- Admin Routes ---
+# --- Admin Panel Page Route ---
+@app.route('/admin_panel')
+@login_required
+def admin_panel_route():
+    if not current_user.is_admin:
+        flash("You are not authorized to access this page.", "error")
+        return redirect(url_for('index'))
+    return render_template('admin_panel.html')
+
+# --- Importer Panel Page Route ---
+@app.route('/importer_panel')
+@login_required
+def importer_panel_route():
+    if not current_user.is_admin:
+        flash("You are not authorized to access this page.", "error")
+        return redirect(url_for('index'))
+    return render_template('importer_panel.html')
+
+# --- Admin API/Action Routes (still need protection) ---
 @app.route('/admin/db_status')
 @login_required
 def admin_db_status():
