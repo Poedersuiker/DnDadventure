@@ -34,149 +34,81 @@
         .flashes .info { background-color: #d1ecf1; color: #0c5460; }
         .flashes .success { background-color: #d4edda; color: #155724; }
 
-        .tab-container {
+        /* Top Navigation Styles (copied from admin_base.html) */
+        .top-nav {
             display: flex;
             background-color: #333;
-            padding-top: 40px; /* Adjust if flashes are present and fixed */
+            padding: 10px 20px;
+            padding-top: 50px; /* Account for flashes */
+            align-items: center;
         }
-        .tab-button {
-            background-color: #555;
+        .top-nav a { /* General link styling within top-nav */
             color: white;
-            border: none;
-            padding: 14px 20px;
-            cursor: pointer;
+            padding: 10px 15px;
+            text-decoration: none;
             font-size: 17px;
             transition: background-color 0.3s;
-            border-right: 1px solid #444; /* Separator for tabs */
         }
-        .tab-button:last-child {
-            border-right: none;
-        }
-        .tab-button:hover {
+        .top-nav a:hover {
             background-color: #777;
         }
-        .tab-button.active {
+        .top-nav a.active { /* Specific style for active link */
             background-color: #007bff;
         }
+        .top-nav .nav-title { /* For "Application Home" or similar title */
+            color: white;
+            font-size: 20px;
+            margin-right: 20px;
+        }
+        .top-nav .nav-links-right {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+        }
+        .top-nav .nav-links-right a { /* Links within the right group */
+            margin-left: 10px;
+        }
+        /* Styles for logout button if it's a link, or general button styling if preferred */
+        .top-nav .logout-button {
+            background-color: #dc3545;
+            color: white;
+            padding: 8px 15px; /* Adjusted padding */
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 16px; /* Adjusted font size */
+            transition: background-color 0.3s;
+        }
+        .top-nav .logout-button:hover {
+            background-color: #c82333;
+        }
 
-        .tab-content-area {
-            flex-grow: 1; /* Takes remaining vertical space */
+        /* Content Area and Home Content Container Styles */
+        .content-area { /* Renamed from tab-content-area for clarity */
+            flex-grow: 1;
             padding: 20px;
             background-color: #fff;
-            overflow-y: auto; /* Add scroll if content overflows */
+            overflow-y: auto;
         }
-        .tab-pane {
-            display: none; /* Hidden by default */
-        }
-        .tab-pane.active {
-            display: block; /* Shown when active */
-        }
-
-        /* Original container styles for the home content, adapted */
         .home-content-container {
             background-color: #fff;
             padding: 30px;
             border-radius: 8px;
-            /* box-shadow: 0 0 15px rgba(0,0,0,0.1); Removed as content area has bg */
             text-align: center;
         }
         .home-content-container h1 { color: #333; margin-bottom: 10px; }
         .home-content-container p { color: #555; margin-bottom: 20px; font-size: 1.1em; }
         .user-info { margin-bottom: 25px; }
         .user-info strong { color: #333; }
-        .logout-button { display: inline-block; background-color: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-size: 16px; transition: background-color 0.3s; }
+
+        /* General button styles previously in index.html, kept for login/logout if not using .top-nav styles for them */
+        .logout-button { /* This class is now also used in top-nav, ensure consistency or specificity */
+             display: inline-block; background-color: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-size: 16px; transition: background-color 0.3s;
+        }
         .logout-button:hover { background-color: #c82333; }
         .login-button { display: inline-block; background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-size: 16px; transition: background-color 0.3s; }
         .login-button:hover { background-color: #0056b3; }
 
-        /* Admin tab specific styles */
-        .admin-content-container {
-            background-color: #fff;
-            padding: 20px; /* Reduced padding a bit */
-            border-radius: 8px;
-            text-align: left; /* Align text to left for forms and info */
-        }
-        .admin-content-container h2, .admin-content-container h3, .admin-content-container h4 {
-            color: #333;
-        }
-        .admin-content-container hr {
-            margin-top: 20px;
-            margin-bottom: 20px;
-            border: 0;
-            border-top: 1px solid #eee;
-        }
-        .admin-button {
-            background-color: #007bff;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background-color 0.3s;
-            margin-right: 10px;
-            margin-top: 5px;
-            margin-bottom: 10px;
-        }
-        .admin-button:hover {
-            background-color: #0056b3;
-        }
-        .migrate-button {
-            background-color: #28a745; /* Green for migration */
-        }
-        .migrate-button:hover {
-            background-color: #218838;
-        }
-        #check-sqlite {
-            background-color: #17a2b8; /* Info blue */
-        }
-        #check-sqlite:hover {
-            background-color: #138496;
-        }
-        #check-mariadb {
-            background-color: #17a2b8; /* Info blue */
-        }
-        #check-mariadb:hover {
-            background-color: #138496;
-        }
-        .status-message {
-            padding: 10px;
-            margin-top: 10px;
-            border-radius: 4px;
-            font-size: 0.9em;
-        }
-        .status-message.success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        .status-message.error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        .status-message.info {
-            background-color: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-        }
-        #db-config-status p, #db-config-status h4 {
-            margin: 5px 0;
-        }
-        #db-config-status span {
-            font-weight: normal;
-            color: #555;
-        }
-        #migration-progress-area progress {
-            width: 100%;
-            height: 25px;
-            margin-bottom: 10px;
-        }
-        #migration-log {
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 0.9em;
-            line-height: 1.4;
-        }
+        /* Removed .tab-container, .tab-button, .tab-pane, and all admin-specific styles like .admin-content-container, .admin-button etc. */
 
     </style>
 </head>
@@ -191,18 +123,27 @@
         {% endif %}
     {% endwith %}
 
-    <div class="tab-container">
-        <a href="{{ url_for('index') }}" class="tab-button active">Home</a> {# Home is always active on this page #}
-        {% if current_user.is_authenticated and current_user.is_admin %}
-        <a href="{{ url_for('admin_panel_route') }}" class="tab-button">Admin Panel</a>
-        <a href="{{ url_for('importer_panel_route') }}" class="tab-button">Importer</a>
-        {% endif %}
+    <div class="top-nav">
+        <span class="nav-title">Application Home</span>
+        <a href="{{ url_for('index') }}" class="active">Home</a> {# Home is always active on this page #}
+        <div class="nav-links-right">
+            {% if current_user.is_authenticated and current_user.is_admin %}
+            <a href="{{ url_for('admin_panel_route') }}">Admin Panel</a>
+            <a href="{{ url_for('importer_panel_route') }}">Importer</a>
+            {% endif %}
+            {% if current_user.is_authenticated %}
+                <a href="{{ url_for('logout') }}" class="logout-button">Logout</a>
+            {% else %}
+                {# Optionally, add a login link here if desired in the top bar when logged out #}
+                {# <a href="{{ url_for('login') }}" class="login-button">Login</a> #}
+            {% endif %}
+        </div>
     </div>
 
-    <div class="tab-content-area">
-        <div id="Home" class="tab-pane active"> {# Home is the only tab content now, always active #}
-            <div class="home-content-container">
-                <h1>Welcome to the Application!</h1>
+    <div class="content-area"> {# Renamed from tab-content-area #}
+        {# Removed the .tab-pane wrapper as it's the only content now #}
+        <div class="home-content-container">
+            <h1>Welcome to the Application!</h1>
                 {% if current_user.is_authenticated %}
                     <div class="user-info">
                         <p>You are logged in as:</p>
