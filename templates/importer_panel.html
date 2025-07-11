@@ -63,9 +63,8 @@ document.addEventListener('DOMContentLoaded', function () {
         fetch("{{ url_for('admin_import_races') }}", {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                // Include CSRF token if your app uses Flask-WTF or similar for CSRF protection
-                // 'X-CSRFToken': '{{ csrf_token() }}' // Example if using Flask-WTF
+                'Content-Type': 'application/json'
+                // CSRF token would be included here if needed and configured
             }
         })
         .then(response => {
