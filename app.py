@@ -1,10 +1,12 @@
 import os
-from flask import Flask, redirect, url_for, session, render_template, flash
+from flask import Flask, redirect, url_for, session, render_template, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 from urllib.parse import urlparse
+from sqlalchemy import create_engine, MetaData, text
+from sqlalchemy.exc import OperationalError, ArgumentError
 
 # Load environment variables from .env if it exists, for local development
 if os.path.exists('.env'):
@@ -297,6 +299,357 @@ def logout():
     logout_user()
     flash("You have been logged out.", "info")
     return redirect(url_for('login'))
+
+# --- Admin Routes ---
+@app.route('/admin/db_status')
+@login_required
+def admin_db_status():
+    if not current_user.is_admin:
+        return {"error": "Unauthorized"}, 403
+
+    config_data = {
+        "current_db_type": app.config.get('DB_TYPE'),
+        "sqlite": {
+            "path": app.config.get('DB_PATH')
+        },
+        "mariadb": {
+            "host": app.config.get('DB_HOST'),
+            "port": app.config.get('DB_PORT'),
+            "user": app.config.get('DB_USER'),
+            "name": app.config.get('DB_NAME'),
+            # Password is intentionally omitted for security
+        }
+    }
+    return config_data
+
+@app.route('/admin/check_sqlite', methods=['POST'])
+@login_required
+def admin_check_sqlite():
+    if not current_user.is_admin:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    db_path_config = app.config.get('DB_PATH', 'default_check.db')
+    instance_path = app.instance_path
+
+    if not os.path.isabs(db_path_config):
+        sqlite_db_full_path = os.path.join(instance_path, db_path_config)
+    else:
+        sqlite_db_full_path = db_path_config
+
+    db_dir = os.path.dirname(sqlite_db_full_path)
+
+    messages = []
+    errors = []
+
+    # Check 1: Directory path and permissions
+    if not os.path.exists(db_dir):
+        errors.append(f"Directory for SQLite database does not exist: {db_dir}")
+    elif not os.access(db_dir, os.W_OK | os.X_OK): # Check for write and execute (needed for directory access)
+        errors.append(f"Directory for SQLite database is not writable or accessible: {db_dir}")
+    else:
+        messages.append(f"SQLite directory exists and is accessible: {db_dir}")
+
+    # Check 2: File path and permissions (if file exists)
+    if os.path.exists(sqlite_db_full_path):
+        messages.append(f"SQLite file found at: {sqlite_db_full_path}")
+        if not os.access(sqlite_db_full_path, os.R_OK):
+            errors.append(f"SQLite file is not readable: {sqlite_db_full_path}")
+        if not os.access(sqlite_db_full_path, os.W_OK):
+            errors.append(f"SQLite file is not writable: {sqlite_db_full_path}")
+        else:
+            messages.append(f"SQLite file appears readable and writable: {sqlite_db_full_path}")
+    else:
+        messages.append(f"SQLite file does not exist at: {sqlite_db_full_path}. Will be created if used.")
+        # If the file doesn't exist, we primarily rely on directory writability.
+
+    # Check 3: Attempt connection and simple query
+    if not errors: # Only attempt if basic path checks are somewhat okay
+        sqlite_uri = f'sqlite:///{sqlite_db_full_path}'
+        try:
+            engine = create_engine(sqlite_uri)
+            with engine.connect() as connection:
+                connection.execute(db.text("SELECT 1"))
+            messages.append("Successfully connected to SQLite and executed a test query.")
+        except OperationalError as e:
+            errors.append(f"SQLite connection/query failed: {str(e)}")
+        except ArgumentError as e: # Handles issues like malformed URI
+            errors.append(f"SQLite configuration error (e.g. bad path): {str(e)}")
+        except Exception as e:
+            errors.append(f"An unexpected error occurred with SQLite: {str(e)}")
+
+    if errors:
+        return jsonify({"status": "error", "messages": errors, "details": messages}), 400
+    else:
+        return jsonify({"status": "success", "messages": messages})
+
+
+@app.route('/admin/check_mariadb', methods=['POST'])
+@login_required
+def admin_check_mariadb():
+    if not current_user.is_admin:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    messages = []
+    errors = []
+
+    user = app.config.get('DB_USER')
+    password = app.config.get('DB_PASSWORD')
+    host = app.config.get('DB_HOST')
+    port = app.config.get('DB_PORT')
+    dbname = app.config.get('DB_NAME')
+
+    if not all([user, host, port, dbname]): # Password can be empty for some setups
+        errors.append("MariaDB/MySQL connection parameters (user, host, port, dbname) are not fully configured in instance/config.py.")
+        return jsonify({"status": "error", "messages": errors}), 400
+
+    #pymysql is specified in create_app_instance, so using it here too for consistency
+    mariadb_uri = f'mysql+pymysql://{user}:{password}@{host}:{port}/{dbname}'
+
+    try:
+        engine = create_engine(mariadb_uri, connect_args={'connect_timeout': 5}) # 5 second timeout
+        with engine.connect() as connection:
+            connection.execute(db.text("SELECT 1"))
+        messages.append("Successfully connected to MariaDB/MySQL and executed a test query.")
+    except OperationalError as e: # Catches incorrect password, host not found, db not found, access denied etc.
+        errors.append(f"MariaDB/MySQL connection/query failed: {str(e)}")
+    except ArgumentError as e: # Handles issues like malformed URI / driver not found
+         errors.append(f"MariaDB/MySQL configuration error (e.g. driver issue): {str(e)}")
+    except Exception as e:
+        errors.append(f"An unexpected error occurred with MariaDB/MySQL: {str(e)}")
+
+    if errors:
+        return jsonify({"status": "error", "messages": errors, "details": messages}), 400
+    else:
+        return jsonify({"status": "success", "messages": messages})
+
+# --- Database Helper Functions for Migration ---
+def get_sqlite_engine(current_app):
+    db_path_config = current_app.config.get('DB_PATH')
+    if not db_path_config:
+        raise ValueError("SQLite DB_PATH is not configured.")
+
+    instance_path = current_app.instance_path
+    if not os.path.isabs(db_path_config):
+        sqlite_db_full_path = os.path.join(instance_path, db_path_config)
+    else:
+        sqlite_db_full_path = db_path_config
+
+    sqlite_uri = f'sqlite:///{sqlite_db_full_path}'
+    return create_engine(sqlite_uri)
+
+def get_mariadb_engine(current_app):
+    user = current_app.config.get('DB_USER')
+    password = current_app.config.get('DB_PASSWORD')
+    host = current_app.config.get('DB_HOST')
+    port = current_app.config.get('DB_PORT')
+    dbname = current_app.config.get('DB_NAME')
+
+    if not all([user, host, port, dbname]): # Password can be empty
+        raise ValueError("MariaDB/MySQL connection parameters are not fully configured.")
+
+    mariadb_uri = f'mysql+pymysql://{user}:{password}@{host}:{port}/{dbname}'
+    return create_engine(mariadb_uri)
+
+# --- Core Migration Logic ---
+def perform_migration(source_engine, target_engine, app_context, log_callback):
+    log_callback("Starting migration...")
+
+    # We will use the tables defined in the Flask app's db.Model (db.metadata)
+    # as the canonical schema for both source and target.
+    with app_context: # Ensures db.metadata is correctly populated based on models
+        # db.metadata.tables is an ImmutableProperties dictionary.
+        # Convert to a regular dictionary for consistent iteration order if needed,
+        # or just iterate directly if order isn't critical beyond SQLAlchemy's own handling.
+        # For foreign key reasons, SQLAlchemy usually orders them correctly for create/drop.
+        defined_tables_map = db.metadata.tables
+        log_callback(f"Canonical tables defined in models: {list(defined_tables_map.keys())}")
+
+        # Prepare target database: drop and recreate tables based on canonical schema
+        log_callback(f"Preparing target database: dropping and recreating tables...")
+        try:
+            # Create a new MetaData object for target operations to avoid conflicts
+            # if db.metadata is globally bound or used by the main app.
+            # Then, reflect the app's table definitions into this new MetaData object.
+            target_operation_metadata = MetaData()
+            for table_name, table_obj in defined_tables_map.items():
+                table_obj.to_metadata(target_operation_metadata) # This copies table definitions
+
+            # Drop tables using the new metadata object, ensuring it's against the target_engine
+            target_operation_metadata.drop_all(bind=target_engine, checkfirst=True)
+            log_callback("Dropped existing tables in target.")
+
+            # Recreate tables using the new metadata object
+            target_operation_metadata.create_all(bind=target_engine, checkfirst=True)
+            log_callback("Recreated tables in target based on current models.")
+
+        except Exception as e:
+            err_msg = f"Error preparing target database: {str(e)}"
+            log_callback(err_msg)
+            print(f"[Migration Error] {err_msg}") # Also print to console
+            raise # Re-raise to stop migration if target prep fails
+
+        # Transfer data for each table defined in our models
+        total_rows_transferred = 0
+        processed_tables_count = 0
+
+        # Use a single connection for source and target for the duration of data copy
+        with source_engine.connect() as s_conn, target_engine.connect() as t_conn:
+            # It's often better to process tables in an order that respects dependencies,
+            # though for simple cases or if all tables are independent, this might not be an issue.
+            # SQLAlchemy's db.metadata.sorted_tables can be useful here if explicit order is needed.
+            # For now, iterating through defined_tables_map.items() which has User as the only table.
+            for table_name, table_obj_from_model in defined_tables_map.items():
+                log_callback(f"Processing table: {table_name}...")
+                print(f"[Migration] Processing table: {table_name}...")
+
+                try:
+                    # Fetch all data from the source table.
+                    # The table_obj_from_model (from db.metadata) is used to construct the SELECT.
+                    # This assumes the source table has at least these columns.
+                    select_stmt = table_obj_from_model.select()
+                    result = s_conn.execute(select_stmt)
+                    rows = result.fetchall() # Fetches all rows as RowProxy objects
+
+                    if not rows:
+                        log_callback(f"Table {table_name} is empty in source. Skipping.")
+                        print(f"[Migration] Table {table_name} is empty in source.")
+                        processed_tables_count += 1
+                        continue
+
+                    log_callback(f"Fetched {len(rows)} rows from source table {table_name}.")
+                    print(f"[Migration] Fetched {len(rows)} rows from source table {table_name}.")
+
+                    # Convert RowProxy objects to dictionaries for insertion.
+                    data_to_insert = [dict(row._mapping) for row in rows]
+
+                    if data_to_insert:
+                        # Perform insertion into the target table.
+                        # The table_obj_from_model is also our target table schema.
+                        transaction = t_conn.begin()
+                        try:
+                            # Using the table object from our models (db.metadata) for insert.
+                            t_conn.execute(table_obj_from_model.insert(), data_to_insert)
+                            transaction.commit()
+                            log_callback(f"Successfully inserted {len(rows)} rows into target table {table_name}.")
+                            print(f"[Migration] Successfully inserted {len(rows)} rows into target table {table_name}.")
+                            total_rows_transferred += len(rows)
+                        except Exception as e_insert:
+                            transaction.rollback()
+                            err_msg = f"Error inserting data into {table_name}: {str(e_insert)}. Rolled back changes for this table."
+                            log_callback(err_msg)
+                            print(f"[Migration Error] {err_msg}")
+                    else:
+                        log_callback(f"No data to insert for table {table_name} after processing fetched rows.")
+                        print(f"[Migration] No data to insert for table {table_name}.")
+
+                except Exception as e_table_process:
+                    err_msg = f"Error processing table {table_name}: {str(e_table_process)}"
+                    log_callback(err_msg)
+                    print(f"[Migration Error] {err_msg}")
+
+                processed_tables_count += 1
+                log_callback(f"Progress: {processed_tables_count}/{len(defined_tables_map)} tables processed.")
+                print(f"[Migration] Progress: {processed_tables_count}/{len(defined_tables_map)} tables processed.")
+
+    log_callback(f"Migration finished. Total rows transferred: {total_rows_transferred}.")
+    print(f"[Migration] Migration finished. Total rows transferred: {total_rows_transferred}.")
+
+# --- Migration Routes ---
+@app.route('/admin/migrate_to_mariadb', methods=['POST'])
+@login_required
+def admin_migrate_to_mariadb():
+    if not current_user.is_admin:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    logs = []
+    def log_callback(message):
+        logs.append(message)
+        print(f"[MigrateToMariaDB] {message}") # Also print to server console
+
+    try:
+        log_callback("Attempting migration from SQLite to MariaDB/MySQL...")
+        source_engine = get_sqlite_engine(app)
+        target_engine = get_mariadb_engine(app)
+
+        # Check source connection
+        try:
+            with source_engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            log_callback("Source SQLite engine connected successfully.")
+        except Exception as e:
+            log_callback(f"Failed to connect to source SQLite engine: {e}")
+            return jsonify({"status": "error", "logs": logs, "message": f"Failed to connect to source SQLite: {e}"}), 500
+
+        # Check target connection
+        try:
+            with target_engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            log_callback("Target MariaDB/MySQL engine connected successfully.")
+        except Exception as e:
+            log_callback(f"Failed to connect to target MariaDB/MySQL engine: {e}")
+            return jsonify({"status": "error", "logs": logs, "message": f"Failed to connect to target MariaDB/MySQL: {e}"}), 500
+
+        perform_migration(source_engine, target_engine, app.app_context(), log_callback)
+
+        # IMPORTANT: After migration, the main app's db object is still using the OLD connection.
+        # The app needs to be reconfigured to use the new DB_TYPE and re-initialize SQLAlchemy.
+        # This is a complex step. For now, we'll just inform the user.
+        log_callback("Migration process complete. IMPORTANT: You may need to update DB_TYPE in config.py to 'mysql' (or similar) and RESTART the application for it to use the new MariaDB/MySQL database.")
+        return jsonify({"status": "success", "logs": logs, "message": "Migration to MariaDB/MySQL completed. Restart required."})
+
+    except ValueError as ve: # From get_engine if config is missing
+        log_callback(f"Configuration error: {str(ve)}")
+        return jsonify({"status": "error", "logs": logs, "message": str(ve)}), 400
+    except Exception as e:
+        log_callback(f"Migration failed: {str(e)}")
+        return jsonify({"status": "error", "logs": logs, "message": f"An unexpected error occurred: {str(e)}"}), 500
+
+
+@app.route('/admin/migrate_to_sqlite', methods=['POST'])
+@login_required
+def admin_migrate_to_sqlite():
+    if not current_user.is_admin:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    logs = []
+    def log_callback(message):
+        logs.append(message)
+        print(f"[MigrateToSQLite] {message}") # Also print to server console
+
+    try:
+        log_callback("Attempting migration from MariaDB/MySQL to SQLite...")
+        source_engine = get_mariadb_engine(app)
+        target_engine = get_sqlite_engine(app)
+
+        # Check source connection
+        try:
+            with source_engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            log_callback("Source MariaDB/MySQL engine connected successfully.")
+        except Exception as e:
+            log_callback(f"Failed to connect to source MariaDB/MySQL engine: {e}")
+            return jsonify({"status": "error", "logs": logs, "message": f"Failed to connect to source MariaDB/MySQL: {e}"}), 500
+
+        # Check target connection
+        try:
+            with target_engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            log_callback("Target SQLite engine connected successfully.")
+        except Exception as e:
+            log_callback(f"Failed to connect to target SQLite engine: {e}")
+            return jsonify({"status": "error", "logs": logs, "message": f"Failed to connect to target SQLite: {e}"}), 500
+
+        perform_migration(source_engine, target_engine, app.app_context(), log_callback)
+
+        log_callback("Migration process complete. IMPORTANT: You may need to update DB_TYPE in config.py to 'sqlite' and RESTART the application for it to use the new SQLite database.")
+        return jsonify({"status": "success", "logs": logs, "message": "Migration to SQLite completed. Restart required."})
+
+    except ValueError as ve: # From get_engine if config is missing
+        log_callback(f"Configuration error: {str(ve)}")
+        return jsonify({"status": "error", "logs": logs, "message": str(ve)}), 400
+    except Exception as e:
+        log_callback(f"Migration failed: {str(e)}")
+        return jsonify({"status": "error", "logs": logs, "message": f"An unexpected error occurred: {str(e)}"}), 500
 
 
 if __name__ == '__main__':

@@ -89,6 +89,95 @@
         .login-button { display: inline-block; background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-size: 16px; transition: background-color 0.3s; }
         .login-button:hover { background-color: #0056b3; }
 
+        /* Admin tab specific styles */
+        .admin-content-container {
+            background-color: #fff;
+            padding: 20px; /* Reduced padding a bit */
+            border-radius: 8px;
+            text-align: left; /* Align text to left for forms and info */
+        }
+        .admin-content-container h2, .admin-content-container h3, .admin-content-container h4 {
+            color: #333;
+        }
+        .admin-content-container hr {
+            margin-top: 20px;
+            margin-bottom: 20px;
+            border: 0;
+            border-top: 1px solid #eee;
+        }
+        .admin-button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+            margin-right: 10px;
+            margin-top: 5px;
+            margin-bottom: 10px;
+        }
+        .admin-button:hover {
+            background-color: #0056b3;
+        }
+        .migrate-button {
+            background-color: #28a745; /* Green for migration */
+        }
+        .migrate-button:hover {
+            background-color: #218838;
+        }
+        #check-sqlite {
+            background-color: #17a2b8; /* Info blue */
+        }
+        #check-sqlite:hover {
+            background-color: #138496;
+        }
+        #check-mariadb {
+            background-color: #17a2b8; /* Info blue */
+        }
+        #check-mariadb:hover {
+            background-color: #138496;
+        }
+        .status-message {
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .status-message.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status-message.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status-message.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        #db-config-status p, #db-config-status h4 {
+            margin: 5px 0;
+        }
+        #db-config-status span {
+            font-weight: normal;
+            color: #555;
+        }
+        #migration-progress-area progress {
+            width: 100%;
+            height: 25px;
+            margin-bottom: 10px;
+        }
+        #migration-log {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+
     </style>
 </head>
 <body>
@@ -131,10 +220,45 @@
 
         {% if current_user.is_authenticated and current_user.is_admin %}
         <div id="Admin" class="tab-pane">
-            <div class="home-content-container"> <!-- Using similar container for consistency -->
-                <h2>Admin Section</h2>
-                <p>This is the placeholder for Admin content.</p>
-                <p>Welcome, Admin User! You have access to administrative functions.</p>
+            <div class="admin-content-container"> <!-- Using a more specific class -->
+                <h2>Database Migration Tool</h2>
+                <hr>
+
+                <h3>Current Configuration</h3>
+                <div id="db-config-status">
+                    <p><strong>Current Active DB Type:</strong> <span id="current-db-type">Loading...</span></p>
+                    <h4>SQLite Configuration:</h4>
+                    <p>Path: <span id="sqlite-path">Loading...</span></p>
+                    <button id="check-sqlite" class="admin-button">Check SQLite Connection</button>
+                    <div id="sqlite-status" class="status-message"></div>
+
+                    <h4>MariaDB/MySQL Configuration:</h4>
+                    <p>Host: <span id="mariadb-host">Loading...</span></p>
+                    <p>Port: <span id="mariadb-port">Loading...</span></p>
+                    <p>User: <span id="mariadb-user">Loading...</span></p>
+                    <p>Database: <span id="mariadb-name">Loading...</span></p>
+                    <button id="check-mariadb" class="admin-button">Check MariaDB Connection</button>
+                    <div id="mariadb-status" class="status-message"></div>
+                </div>
+                <hr>
+
+                <h3>Migration</h3>
+                <div class="migration-controls">
+                    <p>Ensure your `instance/config.py` is correctly set for BOTH databases before attempting migration.</p>
+                    <button id="migrate-to-mariadb" class="admin-button migrate-button">Migrate SQLite to MariaDB</button>
+                    <button id="migrate-to-sqlite" class="admin-button migrate-button">Migrate MariaDB to SQLite</button>
+                    <p><small><strong>Warning:</strong> Migration will WIPE all data in the target database before transferring.</small></p>
+                </div>
+                <hr>
+
+                <h3>Migration Log & Progress</h3>
+                <div id="migration-progress-area">
+                    <label for="migration-progressbar">Progress:</label>
+                    <progress id="migration-progressbar" value="0" max="100"></progress>
+                    <div id="migration-log" style="height: 200px; overflow-y: scroll; border: 1px solid #ccc; padding: 10px; background-color: #f9f9f9; margin-top:10px;">
+                        Log will appear here...
+                    </div>
+                </div>
             </div>
         </div>
         {% endif %}
@@ -169,6 +293,155 @@
         // });
         // The first tab is already set to active by default in HTML, so this might not be strictly needed
         // unless complex dynamic tab generation is involved.
+
+        async function fetchDbStatus() {
+            try {
+                const response = await fetch("{{ url_for('admin_db_status') }}");
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                document.getElementById('current-db-type').textContent = data.current_db_type || 'Not set';
+                document.getElementById('sqlite-path').textContent = data.sqlite?.path || 'Not set';
+                document.getElementById('mariadb-host').textContent = data.mariadb?.host || 'Not set';
+                document.getElementById('mariadb-port').textContent = data.mariadb?.port || 'Not set';
+                document.getElementById('mariadb-user').textContent = data.mariadb?.user || 'Not set';
+                document.getElementById('mariadb-name').textContent = data.mariadb?.name || 'Not set';
+
+            } catch (error) {
+                console.error("Failed to fetch DB status:", error);
+                document.getElementById('current-db-type').textContent = 'Error loading status';
+                // Optionally display error in more places
+            }
+        }
+
+        // Load DB status when Admin tab is made active
+        // We need to observe when the 'Admin' tab becomes active.
+        // A simple way is to check when its display style changes to 'block'.
+        const adminTabPane = document.getElementById('Admin');
+        if (adminTabPane) {
+            const observer = new MutationObserver(function(mutationsList, observer) {
+                for(const mutation of mutationsList) {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                        if (adminTabPane.classList.contains('active')) {
+                           fetchDbStatus();
+                        }
+                    }
+                }
+            });
+            observer.observe(adminTabPane, { attributes: true });
+
+            // Also fetch if it's already active on page load (e.g. if URL directly targets admin tab in future)
+            if (adminTabPane.classList.contains('active')) {
+                fetchDbStatus();
+            }
+        }
+
+        function displayStatusMessage(elementId, data) {
+            const el = document.getElementById(elementId);
+            el.innerHTML = ''; // Clear previous messages
+
+            let content = '';
+            if (data.messages && data.messages.length > 0) {
+                content += data.messages.join('<br>');
+            }
+            if (data.details && data.details.length > 0) {
+                content += '<br>Details:<br>' + data.details.join('<br>');
+            }
+
+            el.innerHTML = content;
+            el.className = 'status-message'; // Reset class
+            if (data.status === 'success') {
+                el.classList.add('success');
+            } else if (data.status === 'error') {
+                el.classList.add('error');
+            } else {
+                el.classList.add('info');
+            }
+        }
+
+        document.getElementById('check-sqlite').addEventListener('click', async () => {
+            const statusEl = document.getElementById('sqlite-status');
+            statusEl.textContent = 'Checking...';
+            statusEl.className = 'status-message info';
+            try {
+                const response = await fetch("{{ url_for('admin_check_sqlite') }}", { method: 'POST' });
+                const data = await response.json();
+                displayStatusMessage('sqlite-status', data);
+            } catch (error) {
+                displayStatusMessage('sqlite-status', { status: 'error', messages: ['Request failed: ' + error.toString()] });
+            }
+        });
+
+        document.getElementById('check-mariadb').addEventListener('click', async () => {
+            const statusEl = document.getElementById('mariadb-status');
+            statusEl.textContent = 'Checking...';
+            statusEl.className = 'status-message info';
+            try {
+                const response = await fetch("{{ url_for('admin_check_mariadb') }}", { method: 'POST' });
+                const data = await response.json();
+                displayStatusMessage('mariadb-status', data);
+            } catch (error) {
+                displayStatusMessage('mariadb-status', { status: 'error', messages: ['Request failed: ' + error.toString()] });
+            }
+        });
+
+        function clearMigrationUI() {
+            document.getElementById('migration-log').innerHTML = 'Log will appear here...';
+            document.getElementById('migration-progressbar').value = 0;
+        }
+
+        async function handleMigration(url, operationName) {
+            clearMigrationUI();
+            const logEl = document.getElementById('migration-log');
+            const progressEl = document.getElementById('migration-progressbar');
+
+            if (!confirm(`Are you sure you want to ${operationName}?\nThis will WIPE ALL DATA in the TARGET database before migrating.`)) {
+                logEl.innerHTML = 'Migration cancelled by user.';
+                return;
+            }
+
+            logEl.innerHTML = `Starting ${operationName}... Please wait.\n`;
+            progressEl.value = 50; // Indeterminate or initial progress
+
+            try {
+                const response = await fetch(url, { method: 'POST' });
+                const data = await response.json();
+
+                let logOutput = `<strong>${operationName} ${data.status}:</strong> ${data.message}\n\n<strong>Logs:</strong>\n`;
+                if (data.logs && data.logs.length > 0) {
+                    logOutput += data.logs.join('\n');
+                } else {
+                    logOutput += 'No detailed logs provided.';
+                }
+                logEl.innerHTML = logOutput.replace(/\n/g, '<br>'); // Display logs
+
+                if (data.status === 'success') {
+                    progressEl.value = 100;
+                    // After successful migration, refresh the displayed DB config
+                    fetchDbStatus();
+                } else {
+                    progressEl.value = 0; // Or keep at 50 to indicate it didn't complete fully
+                }
+                 // Scroll to bottom of log
+                logEl.scrollTop = logEl.scrollHeight;
+
+            } catch (error) {
+                logEl.innerHTML += `\nRequest failed: ${error.toString()}`.replace(/\n/g, '<br>');
+                progressEl.value = 0;
+                logEl.scrollTop = logEl.scrollHeight;
+            }
+        }
+
+        document.getElementById('migrate-to-mariadb').addEventListener('click', () => {
+            handleMigration("{{ url_for('admin_migrate_to_mariadb') }}", "Migration to MariaDB/MySQL");
+        });
+
+        document.getElementById('migrate-to-sqlite').addEventListener('click', () => {
+            handleMigration("{{ url_for('admin_migrate_to_sqlite') }}", "Migration to SQLite");
+        });
+
     </script>
 </body>
 </html>
