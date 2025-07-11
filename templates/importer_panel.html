@@ -8,15 +8,111 @@
     <hr>
     <p>Importer tab content will go here.</p>
     <p>This page is dedicated to importer functionalities and is separate from the main user interface.</p>
+
+    <hr>
+    <h3>Race Importer (Open5e API)</h3>
+    <button id="importRacesBtn" class="btn btn-primary">Import Races</button>
+    <div class="progress mt-2" style="height: 25px; display: none;" id="racesProgressBarContainer">
+        <div id="racesProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+            <span id="racesProgressText">0%</span>
+        </div>
+    </div>
+    <div id="racesImportStatus" class="mt-2"></div>
+
     <!-- Future importer UI elements will be added here -->
 </div>
 {% endblock %}
 
 {% block scripts %}
 {{ super() }}
-{# Add any importer-specific JavaScript here in the future #}
 <script>
-    // Placeholder for any importer-specific JS
-    console.log("Importer panel page loaded.");
+document.addEventListener('DOMContentLoaded', function () {
+    const importButton = document.getElementById('importRacesBtn');
+    const progressBarContainer = document.getElementById('racesProgressBarContainer');
+    const progressBar = document.getElementById('racesProgressBar');
+    const progressText = document.getElementById('racesProgressText');
+    const importStatus = document.getElementById('racesImportStatus');
+
+    importButton.addEventListener('click', function () {
+        importButton.disabled = true;
+        importButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Importing...';
+
+        progressBar.style.width = '0%';
+        progressBar.setAttribute('aria-valuenow', 0);
+        progressText.textContent = '0%';
+        progressBarContainer.style.display = 'block';
+        importStatus.innerHTML = ''; // Clear previous status
+
+        // For this initial version, we'll simulate progress updates as the backend doesn't stream them.
+        // A more advanced version might use polling or WebSockets.
+        let simulatedProgress = 0;
+        const progressInterval = setInterval(function() {
+            simulatedProgress += 5; // Simulate some progress
+            if (simulatedProgress <= 95) { // Don't let simulated progress hit 100% until AJAX completes
+                progressBar.style.width = simulatedProgress + '%';
+                progressBar.setAttribute('aria-valuenow', simulatedProgress);
+                progressText.textContent = simulatedProgress + '%';
+            } else {
+                // Hold at 95% to avoid showing 100% before actual completion
+                progressBar.style.width = '95%';
+                progressBar.setAttribute('aria-valuenow', 95);
+                progressText.textContent = '95%';
+            }
+        }, 200); // Update progress every 200ms
+
+        fetch("{{ url_for('admin_import_races') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                // Include CSRF token if your app uses Flask-WTF or similar for CSRF protection
+                // 'X-CSRFToken': '{{ csrf_token() }}' // Example if using Flask-WTF
+            }
+        })
+        .then(response => {
+            clearInterval(progressInterval); // Stop simulating progress
+            if (!response.ok) {
+                // Try to parse error JSON if server sends it
+                return response.json().then(errData => {
+                    throw new Error(errData.message || `Server error: ${response.status}`);
+                }).catch(() => {
+                    // Fallback if no JSON error message
+                    throw new Error(`Server error: ${response.status}`);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            progressBar.style.width = '100%';
+            progressBar.setAttribute('aria-valuenow', 100);
+            progressText.textContent = '100%';
+
+            if (data.status === 'success') {
+                progressBar.classList.remove('bg-danger');
+                progressBar.classList.add('bg-success');
+                importStatus.innerHTML = `<div class="alert alert-success mt-2">${data.message} (Total from API: ${data.total_races_api}, Imported: ${data.races_imported}, Traits: ${data.traits_imported})</div>`;
+            } else if (data.status === 'warning') {
+                progressBar.classList.remove('bg-danger');
+                progressBar.classList.add('bg-warning');
+                importStatus.innerHTML = `<div class="alert alert-warning mt-2">${data.message}</div>`;
+            } else { // error or other status
+                progressBar.classList.add('bg-danger');
+                importStatus.innerHTML = `<div class="alert alert-danger mt-2">Error: ${data.message}</div>`;
+            }
+        })
+        .catch(error => {
+            clearInterval(progressInterval); // Stop simulating progress
+            progressBar.style.width = '100%'; // Mark as 'finished' but with error
+            progressBar.setAttribute('aria-valuenow', 100);
+            progressBar.classList.add('bg-danger');
+            progressText.textContent = 'Error';
+            importStatus.innerHTML = `<div class="alert alert-danger mt-2">Request failed: ${error.message}</div>`;
+            console.error("Import error:", error);
+        })
+        .finally(() => {
+            importButton.disabled = false;
+            importButton.innerHTML = 'Import Races';
+        });
+    });
+});
 </script>
 {% endblock %}
