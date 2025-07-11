@@ -777,7 +777,7 @@ def _import_races_data(app_context):
             page_num = 1
 
             # First, get the total count of races
-            response = requests.get(api_url)
+            response = requests.get(api_url, timeout=30) # Added timeout
             response.raise_for_status()
             data = response.json()
             total_races_api = data.get('count', 0)
@@ -789,7 +789,7 @@ def _import_races_data(app_context):
             current_url = api_url
             while current_url:
                 app.logger.info(f"Fetching races from: {current_url}")
-                response = requests.get(current_url)
+                response = requests.get(current_url, timeout=30) # Added timeout
                 response.raise_for_status()
                 page_data = response.json()
                 races_on_page = page_data.get('results', [])
@@ -890,7 +890,7 @@ def _import_classes_data(app_context):
             total_classes_api = 0
             page_num = 1
 
-            response = requests.get(api_url)
+            response = requests.get(api_url, timeout=30) # Added timeout
             response.raise_for_status()
             data = response.json()
             total_classes_api = data.get('count', 0)
@@ -902,7 +902,7 @@ def _import_classes_data(app_context):
             current_url = api_url
             while current_url:
                 app.logger.info(f"Fetching D&D classes from: {current_url}")
-                response = requests.get(current_url)
+                response = requests.get(current_url, timeout=30) # Added timeout
                 response.raise_for_status()
                 page_data = response.json()
                 classes_on_page = page_data.get('results', [])
@@ -1014,7 +1014,7 @@ def _import_backgrounds_data(app_context):
             page_num = 1
 
             # First, get the total count
-            response = requests.get(api_url)
+            response = requests.get(api_url, timeout=30) # Added timeout
             response.raise_for_status()
             data = response.json()
             total_backgrounds_api = data.get('count', 0)
@@ -1026,7 +1026,7 @@ def _import_backgrounds_data(app_context):
             current_url = api_url
             while current_url:
                 app.logger.info(f"Fetching backgrounds from: {current_url}")
-                response = requests.get(current_url)
+                response = requests.get(current_url, timeout=30) # Added timeout
                 response.raise_for_status()
                 page_data = response.json()
                 backgrounds_on_page = page_data.get('results', [])
@@ -1108,7 +1108,7 @@ def _import_magic_items_data(app_context):
             page_num = 1
 
             # First, get the total count of magic items
-            response = requests.get(api_url)
+            response = requests.get(api_url, timeout=30) # Added timeout
             response.raise_for_status()
             data = response.json()
             total_items_api = data.get('count', 0)
@@ -1120,7 +1120,7 @@ def _import_magic_items_data(app_context):
             current_url = api_url
             while current_url:
                 app.logger.info(f"Fetching magic items from: {current_url}")
-                response = requests.get(current_url)
+                response = requests.get(current_url, timeout=30) # Added timeout
                 response.raise_for_status()
                 page_data = response.json()
                 items_on_page = page_data.get('results', [])
