@@ -113,6 +113,20 @@ class Benefit(db.Model):
     desc = db.Column(db.Text, nullable=False)
     type = db.Column(db.String(100), nullable=True) # e.g., "ability_score", "skill_proficiency"
 
+# --- Magic Item Model ---
+class MagicItem(db.Model):
+    __tablename__ = 'magic_item' # Explicit table name
+    id = db.Column(db.Integer, primary_key=True)
+    slug = db.Column(db.String(255), unique=True, nullable=False)
+    name = db.Column(db.String(255), nullable=False)
+    type = db.Column(db.String(100), nullable=True)
+    desc = db.Column(db.Text, nullable=False)
+    rarity = db.Column(db.String(50), nullable=True)
+    requires_attunement = db.Column(db.String(255), nullable=True) # Store as string, e.g. "requires attunement" or ""
+    document__slug = db.Column(db.String(100), nullable=True) # Source document slug
+    document__title = db.Column(db.String(255), nullable=True) # Source document title
+    document__url = db.Column(db.String(255), nullable=True) # Source document URL
+
 
 class Archetype(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -1081,6 +1095,90 @@ def _import_backgrounds_data(app_context):
             app.logger.error(f"An error occurred during background import: {str(e)}")
             return {"status": "error", "message": f"An unexpected error occurred during background import: {str(e)}"}
 
+# --- Helper function for Magic Item Importer ---
+def _import_magic_items_data(app_context):
+    with app_context:
+        app.logger.info("Starting magic item import process...")
+        try:
+            import requests # Ensure requests is imported
+
+            api_url = "https://api.open5e.com/v1/magicitems/"
+            items_imported_count = 0
+            total_items_api = 0
+            page_num = 1
+
+            # First, get the total count of magic items
+            response = requests.get(api_url)
+            response.raise_for_status()
+            data = response.json()
+            total_items_api = data.get('count', 0)
+
+            if total_items_api == 0:
+                app.logger.warning("No magic items found in API during import.")
+                return {"status": "warning", "message": "No magic items found in API.", "magic_items_imported": 0, "total_magic_items_api": 0}
+
+            current_url = api_url
+            while current_url:
+                app.logger.info(f"Fetching magic items from: {current_url}")
+                response = requests.get(current_url)
+                response.raise_for_status()
+                page_data = response.json()
+                items_on_page = page_data.get('results', [])
+
+                for item_data in items_on_page:
+                    item_slug = item_data.get('slug')
+                    if not item_slug:
+                        app.logger.warning(f"Skipping magic item with no slug: {item_data.get('name')}")
+                        continue
+
+                    existing_item = MagicItem.query.filter_by(slug=item_slug).first()
+                    if existing_item:
+                        app.logger.info(f"Magic item '{item_slug}' already exists. Skipping.")
+                        continue
+
+                    new_item = MagicItem(
+                        slug=item_slug,
+                        name=item_data.get('name'),
+                        type=item_data.get('type'),
+                        desc=item_data.get('desc'),
+                        rarity=item_data.get('rarity'),
+                        requires_attunement=item_data.get('requires_attunement', ''), # Default to empty string if not present
+                        document__slug=item_data.get('document__slug'),
+                        document__title=item_data.get('document__title'),
+                        document__url=item_data.get('document__url')
+                    )
+                    db.session.add(new_item)
+                    items_imported_count += 1
+
+                try:
+                    db.session.commit() # Commit items for the page
+                except Exception as e_commit_items:
+                    db.session.rollback()
+                    app.logger.error(f"Error committing magic items for page {page_num}: {str(e_commit_items)}")
+                    # Optionally, decide if you want to stop the whole import or skip this page
+
+                current_url = page_data.get('next')
+                page_num += 1
+                app.logger.info(f"Processed page {page_num -1}. Total items imported so far: {items_imported_count}")
+
+
+            app.logger.info(f"Magic item import finished. Imported {items_imported_count} items.")
+            return {
+                "status": "success",
+                "message": f"Imported {items_imported_count} magic items.",
+                "magic_items_imported": items_imported_count,
+                "total_magic_items_api": total_items_api
+            }
+
+        except requests.exceptions.RequestException as e_req:
+            app.logger.error(f"Magic Item API request failed: {str(e_req)}")
+            db.session.rollback() # Ensure rollback on request failure
+            return {"status": "error", "message": f"Magic Item API request failed: {str(e_req)}"}
+        except Exception as e:
+            db.session.rollback() # Ensure rollback on general exception
+            app.logger.error(f"An error occurred during magic item import: {str(e)}")
+            return {"status": "error", "message": f"An unexpected error occurred during magic item import: {str(e)}"}
+
 
 # --- Combined Data Importer Route ---
 @app.route('/admin/import_data', methods=['POST'])
@@ -1092,6 +1190,7 @@ def admin_import_data():
     race_import_results = _import_races_data(app.app_context())
     class_import_results = _import_classes_data(app.app_context())
     background_import_results = _import_backgrounds_data(app.app_context())
+    magic_item_import_results = _import_magic_items_data(app.app_context())
 
     # Combine results
     final_status = "success"
@@ -1115,6 +1214,12 @@ def admin_import_data():
     else:
         messages.append(f"Background import: {background_import_results.get('message', 'Completed')}")
 
+    if magic_item_import_results["status"] == "error":
+        final_status = "error" if final_status != "success" else "partial_error"
+        messages.append(f"Magic Item import error: {magic_item_import_results.get('message', 'Unknown error')}")
+    else:
+        messages.append(f"Magic Item import: {magic_item_import_results.get('message', 'Completed')}")
+
     combined_message = ". ".join(messages)
     http_status_code = 500 if final_status == "error" else 200 # Adjusted based on overall success
 
@@ -1129,7 +1234,9 @@ def admin_import_data():
         "total_classes_api": class_import_results.get("total_classes_api", 0),
         "backgrounds_imported": background_import_results.get("backgrounds_imported", 0),
         "benefits_imported": background_import_results.get("benefits_imported", 0),
-        "total_backgrounds_api": background_import_results.get("total_backgrounds_api", 0)
+        "total_backgrounds_api": background_import_results.get("total_backgrounds_api", 0),
+        "magic_items_imported": magic_item_import_results.get("magic_items_imported", 0),
+        "total_magic_items_api": magic_item_import_results.get("total_magic_items_api", 0)
     }), http_status_code
 
 

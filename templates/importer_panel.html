@@ -45,9 +45,9 @@ document.addEventListener('DOMContentLoaded', function () {
         progressBarContainer.style.display = 'block';
         importStatusDiv.innerHTML = ''; // Clear previous status
 
-        // Simulate progress for three phases (races, classes, backgrounds)
+        // Simulate progress for four phases (races, classes, backgrounds, magic items)
         let currentOverallProgress = 0;
-        const totalPhases = 3;
+        const totalPhases = 4; // Updated to 4
         let currentPhase = 1;
 
         // Update progress function
@@ -55,16 +55,27 @@ document.addEventListener('DOMContentLoaded', function () {
             // Calculate overall progress: each phase contributes 1/totalPhases to the total.
             // The current phase's progress is phaseProgress (0-100), scaled to its portion of the total bar.
             // Previous phases are considered 100% complete.
-            let overallProgress = ((currentPhase - 1) * (100 / totalPhases)) + (phaseProgress / totalPhases);
-            overallProgress = Math.min(overallProgress, 100); // Cap at 100
+            // This is a simplified simulation; actual progress would be more complex to track across multiple async calls.
+            // For this UI, we'll just show a generic "Processing Data..." and then "Complete".
+            // A more robust solution would involve server-sent events or polling for real-time phase updates.
 
-            progressBar.style.width = overallProgress + '%';
-            progressBar.setAttribute('aria-valuenow', overallProgress);
-            progressText.textContent = `${Math.round(overallProgress)}% (${phaseName})`;
+            // Simplified progress update for this example:
+            // We'll show "Importing..." until all data is fetched, then "Complete".
+            // The detailed breakdown will appear in the summary.
+            if (phaseName === "Complete" || phaseName === "Error") {
+                 progressBar.style.width = '100%';
+                 progressBar.setAttribute('aria-valuenow', 100);
+                 progressText.textContent = `100% (${phaseName})`;
+            } else {
+                // Show a generic "Importing..." or the specific phase if we were tracking it
+                 progressBar.style.width = '50%'; // Mid-way point as a generic indicator
+                 progressBar.setAttribute('aria-valuenow', 50);
+                 progressText.textContent = `Importing... (${phaseName})`;
+            }
         }
 
         // Initial state
-        updateProgress(0, "Starting...");
+        updateProgress(0, "Starting..."); // This will show "Importing... (Starting...)"
         importStatusDiv.innerHTML = '<p>Preparing to import data...</p>';
 
 
@@ -75,8 +86,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         })
         .then(response => {
-            // Indicate completion of all fetch operations, actual data processing next
-            updateProgress(100, "Processing data..."); // Visually jump to near end
+            updateProgress(100, "Processing server response..."); // Update after fetch is done
             if (!response.ok) {
                 return response.json().then(errData => {
                     throw new Error(errData.message || `Server error: ${response.status}`);
@@ -117,6 +127,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 logHtml += `<p>Benefits Imported: ${data.benefits_imported}</p>`;
             } else {
                 logHtml += `<p>Background data not reported.</p>`;
+            }
+
+            logHtml += `<h5>Magic Items:</h5>`;
+            if (data.magic_items_imported !== undefined) {
+                logHtml += `<p>Magic Items Imported: ${data.magic_items_imported} (API total: ${data.total_magic_items_api || 'N/A'})</p>`;
+            } else {
+                logHtml += `<p>Magic Item data not reported.</p>`;
             }
 
             if (data.status === 'success') {
