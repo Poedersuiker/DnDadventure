@@ -49,6 +49,28 @@ class User(UserMixin, db.Model):
     def get_id(self): # Required by Flask-Login
         return str(self.id)
 
+# --- Race and Trait Models ---
+class Race(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    url = db.Column(db.String(255), nullable=True)
+    key = db.Column(db.String(100), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    desc = db.Column(db.Text, nullable=True)
+    is_subrace = db.Column(db.Boolean, default=False)
+    document = db.Column(db.String(255), nullable=True) # URL to the document
+    subrace_of_key = db.Column(db.String(100), db.ForeignKey('race.key'), nullable=True) # Foreign key to self for subraces
+
+    traits = db.relationship('Trait', backref='race', lazy=True, cascade="all, delete-orphan")
+    subraces = db.relationship('Race', backref=db.backref('parent_race', remote_side=[key]), lazy='dynamic')
+
+
+class Trait(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    race_id = db.Column(db.Integer, db.ForeignKey('race.id'), nullable=False)
+    name = db.Column(db.String(255), nullable=False)
+    desc = db.Column(db.Text, nullable=False)
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -668,6 +690,149 @@ def admin_migrate_to_sqlite():
     except Exception as e:
         log_callback(f"Migration failed: {str(e)}")
         return jsonify({"status": "error", "logs": logs, "message": f"An unexpected error occurred: {str(e)}"}), 500
+
+# --- Race Importer Route ---
+@app.route('/admin/import_races', methods=['POST'])
+@login_required
+def admin_import_races():
+    if not current_user.is_admin:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    try:
+        import requests # Ensure requests is imported
+
+        api_url = "https://api.open5e.com/v2/races/"
+        races_imported_count = 0
+        traits_imported_count = 0
+        total_races_api = 0
+        page_num = 1
+
+        # First, get the total count of races
+        response = requests.get(api_url)
+        response.raise_for_status() # Raise an exception for HTTP errors
+        data = response.json()
+        total_races_api = data.get('count', 0)
+
+        if total_races_api == 0:
+            return jsonify({"status": "warning", "message": "No races found in API.", "races_imported": 0, "total_races_api": 0}), 200
+
+        # Loop through all pages
+        current_url = api_url
+        while current_url:
+            app.logger.info(f"Fetching races from: {current_url}")
+            response = requests.get(current_url)
+            response.raise_for_status()
+            page_data = response.json()
+
+            races_on_page = page_data.get('results', [])
+
+            for race_data in races_on_page:
+                race_key = race_data.get('key')
+                if not race_key:
+                    app.logger.warning(f"Skipping race with no key: {race_data.get('name')}")
+                    continue
+
+                # Check if race already exists
+                existing_race = Race.query.filter_by(key=race_key).first()
+                if existing_race:
+                    # Optionally, update existing race data here if needed
+                    # For now, we'll skip if it exists to avoid duplicates or complex update logic
+                    app.logger.info(f"Race '{race_key}' already exists. Skipping.")
+                    # If we were to update, we'd need to handle traits carefully (e.g., delete old ones)
+                    continue # Or implement update logic
+
+                new_race = Race(
+                    url=race_data.get('url'),
+                    key=race_key,
+                    name=race_data.get('name'),
+                    desc=race_data.get('desc'),
+                    is_subrace=race_data.get('is_subrace', False),
+                    document=race_data.get('document'),
+                    # subrace_of_key will be handled in a second pass or requires careful ordering
+                    # For now, we'll store the key and might need a separate step to link foreign keys if 'subrace_of' points to a non-yet-imported race.
+                    # Let's assume for now `subrace_of` contains the key of the parent.
+                    subrace_of_key=race_data.get('subrace_of_key') # Assuming API provides parent key directly
+                )
+
+                # If the API provides subrace_of as a URL, we need to extract the key
+                subrace_of_url = race_data.get('subrace_of')
+                if subrace_of_url and isinstance(subrace_of_url, str):
+                    # Example: "https://api.open5e.com/v2/races/srd_elf/" -> "srd_elf"
+                    parsed_subrace_url = urlparse(subrace_of_url)
+                    path_parts = parsed_subrace_url.path.strip('/').split('/')
+                    if path_parts:
+                        new_race.subrace_of_key = path_parts[-1]
+
+
+                db.session.add(new_race)
+                # We need to commit here so the race gets an ID for trait association
+                # However, committing per race can be slow. A bulk approach or committing per page might be better.
+                # For simplicity in this step, commit per race to get ID.
+                try:
+                    db.session.commit() # Commit to get race.id for traits
+                except Exception as e_commit_race:
+                    db.session.rollback()
+                    app.logger.error(f"Error committing race {race_key}: {str(e_commit_race)}")
+                    # Potentially skip this race or add to a list of failures
+                    continue
+
+                races_imported_count += 1
+
+                for trait_data in race_data.get('traits', []):
+                    new_trait = Trait(
+                        race_id=new_race.id, # Associate with the newly created race
+                        name=trait_data.get('name'),
+                        desc=trait_data.get('desc')
+                    )
+                    db.session.add(new_trait)
+                    traits_imported_count += 1
+
+            # Commit traits for the current page/batch of races
+            try:
+                db.session.commit()
+            except Exception as e_commit_traits:
+                db.session.rollback()
+                app.logger.error(f"Error committing traits for page {page_num}: {str(e_commit_traits)}")
+                # Decide how to handle this: stop, or log and continue?
+                # For now, log and continue to try importing subsequent pages.
+
+            current_url = page_data.get('next') # Get URL for the next page
+            page_num += 1
+            # Optional: Send progress update to client after each page
+            # This would require a more complex setup with streaming or websockets for real-time updates.
+            # For a simple POST, we return status at the end.
+
+        # Second pass to link subraces if subrace_of_key was stored and parent exists
+        all_races = Race.query.all()
+        for race in all_races:
+            if race.subrace_of_key:
+                parent = Race.query.filter_by(key=race.subrace_of_key).first()
+                if parent:
+                    # SQLAlchemy relationship `parent_race` should handle this if Race.subrace_of_key is a ForeignKey
+                    # However, the FK is on `subrace_of_key` to `race.key`.
+                    # The relationship `subraces` and `parent_race` via `race.key` should work.
+                    # If direct object linking is needed: race.parent_race = parent
+                    pass # The relationship should handle it.
+                else:
+                    app.logger.warning(f"Parent race with key '{race.subrace_of_key}' not found for subrace '{race.key}'.")
+        db.session.commit() # Commit any updates from linking subraces (if any were made directly)
+
+
+        return jsonify({
+            "status": "success",
+            "message": f"Imported {races_imported_count} races and {traits_imported_count} traits.",
+            "races_imported": races_imported_count,
+            "traits_imported": traits_imported_count,
+            "total_races_api": total_races_api
+        }), 200
+
+    except requests.exceptions.RequestException as e_req:
+        app.logger.error(f"API request failed: {str(e_req)}")
+        return jsonify({"status": "error", "message": f"API request failed: {str(e_req)}"}), 500
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"An error occurred during race import: {str(e)}")
+        return jsonify({"status": "error", "message": f"An unexpected error occurred: {str(e)}"}), 500
 
 
 if __name__ == '__main__':
