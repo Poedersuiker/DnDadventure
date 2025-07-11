@@ -70,6 +70,45 @@ class Trait(db.Model):
     name = db.Column(db.String(255), nullable=False)
     desc = db.Column(db.Text, nullable=False)
 
+# --- D&D Class and Archetype Models ---
+class DndClass(db.Model):
+    __tablename__ = 'dnd_class' # Explicit table name
+    id = db.Column(db.Integer, primary_key=True)
+    slug = db.Column(db.String(100), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    desc = db.Column(db.Text, nullable=True)
+    hit_dice = db.Column(db.String(50), nullable=True)
+    hp_at_1st_level = db.Column(db.String(255), nullable=True)
+    hp_at_higher_levels = db.Column(db.String(255), nullable=True)
+    prof_armor = db.Column(db.String(255), nullable=True)
+    prof_weapons = db.Column(db.String(255), nullable=True)
+    prof_tools = db.Column(db.String(255), nullable=True)
+    prof_saving_throws = db.Column(db.String(255), nullable=True)
+    prof_skills = db.Column(db.Text, nullable=True) # Can be long
+    equipment = db.Column(db.Text, nullable=True)
+    table = db.Column(db.Text, nullable=True) # For class progression tables
+    spellcasting_ability = db.Column(db.String(50), nullable=True)
+    subtypes_name = db.Column(db.String(100), nullable=True) # e.g., "Primal Paths"
+    document_slug = db.Column(db.String(100), nullable=True)
+    document_title = db.Column(db.String(255), nullable=True)
+    # document_license_url = db.Column(db.String(255), nullable=True) # Not critical for now
+    # document_url = db.Column(db.String(255), nullable=True) # Not critical for now
+
+    archetypes = db.relationship('Archetype', backref='dnd_class', lazy=True, cascade="all, delete-orphan")
+
+class Archetype(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    dnd_class_slug = db.Column(db.String(100), db.ForeignKey('dnd_class.slug'), nullable=False)
+    slug = db.Column(db.String(100), nullable=False) # Archetype specific slug
+    name = db.Column(db.String(255), nullable=False)
+    desc = db.Column(db.Text, nullable=True)
+    document_slug = db.Column(db.String(100), nullable=True)
+    document_title = db.Column(db.String(255), nullable=True)
+    # document_license_url = db.Column(db.String(255), nullable=True)
+    # document_url = db.Column(db.String(255), nullable=True)
+
+    __table_args__ = (db.UniqueConstraint('dnd_class_slug', 'slug', name='uq_archetype_class_slug'),)
+
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -691,148 +730,284 @@ def admin_migrate_to_sqlite():
         log_callback(f"Migration failed: {str(e)}")
         return jsonify({"status": "error", "logs": logs, "message": f"An unexpected error occurred: {str(e)}"}), 500
 
-# --- Race Importer Route ---
-@app.route('/admin/import_races', methods=['POST'])
+# --- Helper function for Race Importer ---
+# (This function will be refactored from the original admin_import_races)
+def _import_races_data(app_context):
+    with app_context:
+        app.logger.info("Starting race import process...")
+        try:
+            import requests # Ensure requests is imported
+
+            api_url = "https://api.open5e.com/v2/races/"
+            races_imported_count = 0
+            traits_imported_count = 0
+            total_races_api = 0
+            page_num = 1
+
+            # First, get the total count of races
+            response = requests.get(api_url)
+            response.raise_for_status()
+            data = response.json()
+            total_races_api = data.get('count', 0)
+
+            if total_races_api == 0:
+                app.logger.warning("No races found in API during import.")
+                return {"status": "warning", "message": "No races found in API.", "races_imported": 0, "traits_imported": 0, "total_races_api": 0}
+
+            current_url = api_url
+            while current_url:
+                app.logger.info(f"Fetching races from: {current_url}")
+                response = requests.get(current_url)
+                response.raise_for_status()
+                page_data = response.json()
+                races_on_page = page_data.get('results', [])
+
+                for race_data in races_on_page:
+                    race_key = race_data.get('key')
+                    if not race_key:
+                        app.logger.warning(f"Skipping race with no key: {race_data.get('name')}")
+                        continue
+
+                    existing_race = Race.query.filter_by(key=race_key).first()
+                    if existing_race:
+                        app.logger.info(f"Race '{race_key}' already exists. Skipping.")
+                        continue
+
+                    new_race = Race(
+                        url=race_data.get('url'),
+                        key=race_key,
+                        name=race_data.get('name'),
+                        desc=race_data.get('desc'),
+                        is_subrace=race_data.get('is_subrace', False),
+                        document=race_data.get('document'),
+                        subrace_of_key=race_data.get('subrace_of_key')
+                    )
+                    subrace_of_url = race_data.get('subrace_of')
+                    if subrace_of_url and isinstance(subrace_of_url, str):
+                        parsed_subrace_url = urlparse(subrace_of_url)
+                        path_parts = parsed_subrace_url.path.strip('/').split('/')
+                        if path_parts:
+                            new_race.subrace_of_key = path_parts[-1]
+
+                    db.session.add(new_race)
+                    try:
+                        db.session.commit()
+                    except Exception as e_commit_race:
+                        db.session.rollback()
+                        app.logger.error(f"Error committing race {race_key}: {str(e_commit_race)}")
+                        continue
+
+                    races_imported_count += 1
+
+                    for trait_data in race_data.get('traits', []):
+                        new_trait = Trait(
+                            race_id=new_race.id,
+                            name=trait_data.get('name'),
+                            desc=trait_data.get('desc')
+                        )
+                        db.session.add(new_trait)
+                        traits_imported_count += 1
+
+                try:
+                    db.session.commit() # Commit traits for the page
+                except Exception as e_commit_traits:
+                    db.session.rollback()
+                    app.logger.error(f"Error committing traits for page {page_num}: {str(e_commit_traits)}")
+
+                current_url = page_data.get('next')
+                page_num += 1
+
+            # Second pass to link subraces (no changes needed here for now)
+            all_races = Race.query.all()
+            for race in all_races:
+                if race.subrace_of_key:
+                    parent = Race.query.filter_by(key=race.subrace_of_key).first()
+                    if not parent:
+                         app.logger.warning(f"Parent race with key '{race.subrace_of_key}' not found for subrace '{race.key}'.")
+            db.session.commit()
+
+            app.logger.info(f"Race import finished. Imported {races_imported_count} races and {traits_imported_count} traits.")
+            return {
+                "status": "success",
+                "message": f"Imported {races_imported_count} races and {traits_imported_count} traits.",
+                "races_imported": races_imported_count,
+                "traits_imported": traits_imported_count,
+                "total_races_api": total_races_api
+            }
+
+        except requests.exceptions.RequestException as e_req:
+            app.logger.error(f"Race API request failed: {str(e_req)}")
+            # Ensure db.session.rollback() is called if an error occurs mid-transaction
+            db.session.rollback()
+            return {"status": "error", "message": f"Race API request failed: {str(e_req)}"}
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"An error occurred during race import: {str(e)}")
+            return {"status": "error", "message": f"An unexpected error occurred during race import: {str(e)}"}
+
+# --- Helper function for Class Importer ---
+def _import_classes_data(app_context):
+    with app_context:
+        app.logger.info("Starting D&D class import process...")
+        try:
+            import requests
+
+            api_url = "https://api.open5e.com/v1/classes/"
+            classes_imported_count = 0
+            archetypes_imported_count = 0
+            total_classes_api = 0
+            page_num = 1
+
+            response = requests.get(api_url)
+            response.raise_for_status()
+            data = response.json()
+            total_classes_api = data.get('count', 0)
+
+            if total_classes_api == 0:
+                app.logger.warning("No D&D classes found in API during import.")
+                return {"status": "warning", "message": "No D&D classes found in API.", "classes_imported": 0, "archetypes_imported": 0, "total_classes_api": 0}
+
+            current_url = api_url
+            while current_url:
+                app.logger.info(f"Fetching D&D classes from: {current_url}")
+                response = requests.get(current_url)
+                response.raise_for_status()
+                page_data = response.json()
+                classes_on_page = page_data.get('results', [])
+
+                for class_data in classes_on_page:
+                    class_slug = class_data.get('slug')
+                    if not class_slug:
+                        app.logger.warning(f"Skipping D&D class with no slug: {class_data.get('name')}")
+                        continue
+
+                    existing_class = DndClass.query.filter_by(slug=class_slug).first()
+                    if existing_class:
+                        app.logger.info(f"D&D class '{class_slug}' already exists. Skipping.")
+                        # To implement update logic, one might delete existing archetypes here before adding new ones,
+                        # or perform a more granular update. For now, skipping.
+                        continue
+
+                    new_dnd_class = DndClass(
+                        slug=class_slug,
+                        name=class_data.get('name'),
+                        desc=class_data.get('desc'),
+                        hit_dice=class_data.get('hit_dice'),
+                        hp_at_1st_level=class_data.get('hp_at_1st_level'),
+                        hp_at_higher_levels=class_data.get('hp_at_higher_levels'),
+                        prof_armor=class_data.get('prof_armor'),
+                        prof_weapons=class_data.get('prof_weapons'),
+                        prof_tools=class_data.get('prof_tools'),
+                        prof_saving_throws=class_data.get('prof_saving_throws'),
+                        prof_skills=class_data.get('prof_skills'),
+                        equipment=class_data.get('equipment'),
+                        table=class_data.get('table'),
+                        spellcasting_ability=class_data.get('spellcasting_ability'),
+                        subtypes_name=class_data.get('subtypes_name'),
+                        document_slug=class_data.get('document__slug'),
+                        document_title=class_data.get('document__title')
+                    )
+                    db.session.add(new_dnd_class)
+                    # Commit here to ensure the class exists for archetype foreign key reference.
+                    # Consider batching commits per page for performance if this becomes an issue.
+                    try:
+                        db.session.commit()
+                    except Exception as e_commit_class:
+                        db.session.rollback()
+                        app.logger.error(f"Error committing D&D class {class_slug}: {str(e_commit_class)}")
+                        continue
+
+                    classes_imported_count += 1
+
+                    for archetype_data in class_data.get('archetypes', []):
+                        archetype_slug = archetype_data.get('slug')
+                        if not archetype_slug:
+                            app.logger.warning(f"Skipping archetype with no slug for class '{class_slug}': {archetype_data.get('name')}")
+                            continue
+
+                        existing_archetype = Archetype.query.filter_by(dnd_class_slug=class_slug, slug=archetype_slug).first()
+                        if existing_archetype:
+                            app.logger.info(f"Archetype '{archetype_slug}' for class '{class_slug}' already exists. Skipping.")
+                            continue
+
+                        new_archetype = Archetype(
+                            dnd_class_slug=class_slug,
+                            slug=archetype_slug,
+                            name=archetype_data.get('name'),
+                            desc=archetype_data.get('desc'),
+                            document_slug=archetype_data.get('document__slug'),
+                            document_title=archetype_data.get('document__title')
+                        )
+                        db.session.add(new_archetype)
+                        archetypes_imported_count += 1
+
+                try:
+                    db.session.commit() # Commit archetypes for the page
+                except Exception as e_commit_archetypes:
+                    db.session.rollback()
+                    app.logger.error(f"Error committing archetypes for D&D classes on page {page_num}: {str(e_commit_archetypes)}")
+
+                current_url = page_data.get('next')
+                page_num += 1
+
+            app.logger.info(f"D&D Class import finished. Imported {classes_imported_count} classes and {archetypes_imported_count} archetypes.")
+            return {
+                "status": "success",
+                "message": f"Imported {classes_imported_count} D&D classes and {archetypes_imported_count} archetypes.",
+                "classes_imported": classes_imported_count,
+                "archetypes_imported": archetypes_imported_count,
+                "total_classes_api": total_classes_api
+            }
+
+        except requests.exceptions.RequestException as e_req:
+            app.logger.error(f"D&D Class API request failed: {str(e_req)}")
+            db.session.rollback()
+            return {"status": "error", "message": f"D&D Class API request failed: {str(e_req)}"}
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"An error occurred during D&D class import: {str(e)}")
+            return {"status": "error", "message": f"An unexpected error occurred during D&D class import: {str(e)}"}
+
+
+# --- Combined Data Importer Route ---
+@app.route('/admin/import_data', methods=['POST'])
 @login_required
-def admin_import_races():
+def admin_import_data():
     if not current_user.is_admin:
         return jsonify({"error": "Unauthorized"}), 403
 
-    try:
-        import requests # Ensure requests is imported
+    race_import_results = _import_races_data(app.app_context())
+    class_import_results = _import_classes_data(app.app_context()) # Call the new class importer
 
-        api_url = "https://api.open5e.com/v2/races/"
-        races_imported_count = 0
-        traits_imported_count = 0
-        total_races_api = 0
-        page_num = 1
+    # Combine results
+    final_status = "success"
+    messages = []
 
-        # First, get the total count of races
-        response = requests.get(api_url)
-        response.raise_for_status() # Raise an exception for HTTP errors
-        data = response.json()
-        total_races_api = data.get('count', 0)
+    if race_import_results["status"] == "error":
+        final_status = "error" # Or "partial_error" / "partial_success"
+        messages.append(f"Race import error: {race_import_results.get('message', 'Unknown error')}")
+    else:
+        messages.append(f"Race import: {race_import_results.get('message', 'Completed')}")
 
-        if total_races_api == 0:
-            return jsonify({"status": "warning", "message": "No races found in API.", "races_imported": 0, "total_races_api": 0}), 200
+    if class_import_results["status"] == "error":
+        final_status = "error" if final_status != "success" else "partial_error"
+        messages.append(f"Class import error: {class_import_results.get('message', 'Unknown error')}")
+    else:
+        messages.append(f"Class import: {class_import_results.get('message', 'Completed')}")
 
-        # Loop through all pages
-        current_url = api_url
-        while current_url:
-            app.logger.info(f"Fetching races from: {current_url}")
-            response = requests.get(current_url)
-            response.raise_for_status()
-            page_data = response.json()
+    combined_message = ". ".join(messages)
+    http_status_code = 500 if final_status == "error" else 200
 
-            races_on_page = page_data.get('results', [])
-
-            for race_data in races_on_page:
-                race_key = race_data.get('key')
-                if not race_key:
-                    app.logger.warning(f"Skipping race with no key: {race_data.get('name')}")
-                    continue
-
-                # Check if race already exists
-                existing_race = Race.query.filter_by(key=race_key).first()
-                if existing_race:
-                    # Optionally, update existing race data here if needed
-                    # For now, we'll skip if it exists to avoid duplicates or complex update logic
-                    app.logger.info(f"Race '{race_key}' already exists. Skipping.")
-                    # If we were to update, we'd need to handle traits carefully (e.g., delete old ones)
-                    continue # Or implement update logic
-
-                new_race = Race(
-                    url=race_data.get('url'),
-                    key=race_key,
-                    name=race_data.get('name'),
-                    desc=race_data.get('desc'),
-                    is_subrace=race_data.get('is_subrace', False),
-                    document=race_data.get('document'),
-                    # subrace_of_key will be handled in a second pass or requires careful ordering
-                    # For now, we'll store the key and might need a separate step to link foreign keys if 'subrace_of' points to a non-yet-imported race.
-                    # Let's assume for now `subrace_of` contains the key of the parent.
-                    subrace_of_key=race_data.get('subrace_of_key') # Assuming API provides parent key directly
-                )
-
-                # If the API provides subrace_of as a URL, we need to extract the key
-                subrace_of_url = race_data.get('subrace_of')
-                if subrace_of_url and isinstance(subrace_of_url, str):
-                    # Example: "https://api.open5e.com/v2/races/srd_elf/" -> "srd_elf"
-                    parsed_subrace_url = urlparse(subrace_of_url)
-                    path_parts = parsed_subrace_url.path.strip('/').split('/')
-                    if path_parts:
-                        new_race.subrace_of_key = path_parts[-1]
-
-
-                db.session.add(new_race)
-                # We need to commit here so the race gets an ID for trait association
-                # However, committing per race can be slow. A bulk approach or committing per page might be better.
-                # For simplicity in this step, commit per race to get ID.
-                try:
-                    db.session.commit() # Commit to get race.id for traits
-                except Exception as e_commit_race:
-                    db.session.rollback()
-                    app.logger.error(f"Error committing race {race_key}: {str(e_commit_race)}")
-                    # Potentially skip this race or add to a list of failures
-                    continue
-
-                races_imported_count += 1
-
-                for trait_data in race_data.get('traits', []):
-                    new_trait = Trait(
-                        race_id=new_race.id, # Associate with the newly created race
-                        name=trait_data.get('name'),
-                        desc=trait_data.get('desc')
-                    )
-                    db.session.add(new_trait)
-                    traits_imported_count += 1
-
-            # Commit traits for the current page/batch of races
-            try:
-                db.session.commit()
-            except Exception as e_commit_traits:
-                db.session.rollback()
-                app.logger.error(f"Error committing traits for page {page_num}: {str(e_commit_traits)}")
-                # Decide how to handle this: stop, or log and continue?
-                # For now, log and continue to try importing subsequent pages.
-
-            current_url = page_data.get('next') # Get URL for the next page
-            page_num += 1
-            # Optional: Send progress update to client after each page
-            # This would require a more complex setup with streaming or websockets for real-time updates.
-            # For a simple POST, we return status at the end.
-
-        # Second pass to link subraces if subrace_of_key was stored and parent exists
-        all_races = Race.query.all()
-        for race in all_races:
-            if race.subrace_of_key:
-                parent = Race.query.filter_by(key=race.subrace_of_key).first()
-                if parent:
-                    # SQLAlchemy relationship `parent_race` should handle this if Race.subrace_of_key is a ForeignKey
-                    # However, the FK is on `subrace_of_key` to `race.key`.
-                    # The relationship `subraces` and `parent_race` via `race.key` should work.
-                    # If direct object linking is needed: race.parent_race = parent
-                    pass # The relationship should handle it.
-                else:
-                    app.logger.warning(f"Parent race with key '{race.subrace_of_key}' not found for subrace '{race.key}'.")
-        db.session.commit() # Commit any updates from linking subraces (if any were made directly)
-
-
-        return jsonify({
-            "status": "success",
-            "message": f"Imported {races_imported_count} races and {traits_imported_count} traits.",
-            "races_imported": races_imported_count,
-            "traits_imported": traits_imported_count,
-            "total_races_api": total_races_api
-        }), 200
-
-    except requests.exceptions.RequestException as e_req:
-        app.logger.error(f"API request failed: {str(e_req)}")
-        return jsonify({"status": "error", "message": f"API request failed: {str(e_req)}"}), 500
-    except Exception as e:
-        db.session.rollback()
-        app.logger.error(f"An error occurred during race import: {str(e)}")
-        return jsonify({"status": "error", "message": f"An unexpected error occurred: {str(e)}"}), 500
+    return jsonify({
+        "status": final_status,
+        "message": combined_message,
+        "races_imported": race_import_results.get("races_imported", 0),
+        "traits_imported": race_import_results.get("traits_imported", 0),
+        "total_races_api": race_import_results.get("total_races_api", 0),
+        "classes_imported": class_import_results.get("classes_imported", 0),
+        "archetypes_imported": class_import_results.get("archetypes_imported", 0),
+        "total_classes_api": class_import_results.get("total_classes_api", 0)
+    }), http_status_code
 
 
 if __name__ == '__main__':

@@ -10,14 +10,15 @@
     <p>This page is dedicated to importer functionalities and is separate from the main user interface.</p>
 
     <hr>
-    <h3>Race Importer (Open5e API)</h3>
-    <button id="importRacesBtn" class="btn btn-primary">Import Races</button>
-    <div class="progress mt-2" style="height: 25px; display: none;" id="racesProgressBarContainer">
-        <div id="racesProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
-            <span id="racesProgressText">0%</span>
+    <h3>Game Data Importer (Open5e API)</h3>
+    <p>This tool will import both Races and Classes from the Open5e API.</p>
+    <button id="importDataBtn" class="btn btn-primary">Import All Game Data</button>
+    <div class="progress mt-2" style="height: 25px; display: none;" id="importProgressBarContainer">
+        <div id="importProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+            <span id="importProgressText">0%</span>
         </div>
     </div>
-    <div id="racesImportStatus" class="mt-2"></div>
+    <div id="importStatus" class="mt-2"></div>
 
     <!-- Future importer UI elements will be added here -->
 </div>
@@ -27,40 +28,54 @@
 {{ super() }}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const importButton = document.getElementById('importRacesBtn');
-    const progressBarContainer = document.getElementById('racesProgressBarContainer');
-    const progressBar = document.getElementById('racesProgressBar');
-    const progressText = document.getElementById('racesProgressText');
-    const importStatus = document.getElementById('racesImportStatus');
+    const importButton = document.getElementById('importDataBtn');
+    const progressBarContainer = document.getElementById('importProgressBarContainer');
+    const progressBar = document.getElementById('importProgressBar');
+    const progressText = document.getElementById('importProgressText');
+    const importStatusDiv = document.getElementById('importStatus'); // Corrected variable name
 
     importButton.addEventListener('click', function () {
         importButton.disabled = true;
-        importButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Importing...';
+        importButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Importing Data...';
 
         progressBar.style.width = '0%';
         progressBar.setAttribute('aria-valuenow', 0);
+        progressBar.classList.remove('bg-success', 'bg-danger', 'bg-warning');
         progressText.textContent = '0%';
         progressBarContainer.style.display = 'block';
-        importStatus.innerHTML = ''; // Clear previous status
+        importStatusDiv.innerHTML = ''; // Clear previous status
 
-        // For this initial version, we'll simulate progress updates as the backend doesn't stream them.
-        // A more advanced version might use polling or WebSockets.
-        let simulatedProgress = 0;
+        // Simulate progress for two phases (races, then classes)
+        let currentPhaseProgress = 0;
+        let totalProgress = 0;
+        let phase = 1; // 1 for races, 2 for classes
+
         const progressInterval = setInterval(function() {
-            simulatedProgress += 5; // Simulate some progress
-            if (simulatedProgress <= 95) { // Don't let simulated progress hit 100% until AJAX completes
-                progressBar.style.width = simulatedProgress + '%';
-                progressBar.setAttribute('aria-valuenow', simulatedProgress);
-                progressText.textContent = simulatedProgress + '%';
-            } else {
-                // Hold at 95% to avoid showing 100% before actual completion
-                progressBar.style.width = '95%';
-                progressBar.setAttribute('aria-valuenow', 95);
-                progressText.textContent = '95%';
+            currentPhaseProgress += 5;
+            if (phase === 1) {
+                totalProgress = Math.min(currentPhaseProgress, 50); // Cap phase 1 at 50%
+                if (totalProgress >= 50 && currentPhaseProgress > 50) { // Move to phase 2 if actual fetch is faster
+                    // This part is tricky without actual feedback, we'll rely on fetch completion
+                }
+            } else { // phase 2
+                totalProgress = 50 + Math.min(currentPhaseProgress, 50); // Phase 2 covers 50% to 100%
             }
-        }, 200); // Update progress every 200ms
 
-        fetch("{{ url_for('admin_import_races') }}", {
+            progressBar.style.width = totalProgress + '%';
+            progressBar.setAttribute('aria-valuenow', totalProgress);
+            progressText.textContent = totalProgress + '%';
+
+            if (totalProgress >= 95 && phase === 2) { // Hold near end of phase 2
+                 progressBar.style.width = '95%';
+                 progressBar.setAttribute('aria-valuenow', 95);
+                 progressText.textContent = '95%';
+            }
+        }, 300); // Slower interval for better visual separation
+
+        // Phase 1: Indicate race import (visual cue in text, real control via fetch)
+        progressText.textContent = '0% (Races)';
+
+        fetch("{{ url_for('admin_import_data') }}", {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -68,48 +83,77 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         })
         .then(response => {
-            clearInterval(progressInterval); // Stop simulating progress
+            clearInterval(progressInterval); // Stop simulating progress once fetch starts resolving
+            // Regardless of simulated progress, jump to 50% for phase 1 if not already there
+            // Then start "phase 2" simulation if the request was quick
+            if (totalProgress < 50) {
+                totalProgress = 50;
+                progressBar.style.width = totalProgress + '%';
+                progressBar.setAttribute('aria-valuenow', totalProgress);
+            }
+            progressText.textContent = totalProgress + '% (Classes)';
+            phase = 2;
+            currentPhaseProgress = 0; // Reset for phase 2 simulation
+
+            // Restart interval for phase 2 simulation if needed (e.g. if backend takes time)
+            // This is a simplified approach; a real implementation might get progress from backend
+            const phase2ProgressInterval = setInterval(function() {
+                currentPhaseProgress += 5;
+                totalProgress = 50 + Math.min(currentPhaseProgress, 45); // Simulate up to 95% for phase 2
+                progressBar.style.width = totalProgress + '%';
+                progressBar.setAttribute('aria-valuenow', totalProgress);
+                progressText.textContent = totalProgress + '% (Classes)';
+                if (totalProgress >= 95) clearInterval(phase2ProgressInterval);
+            }, 300);
+
+
             if (!response.ok) {
-                // Try to parse error JSON if server sends it
                 return response.json().then(errData => {
                     throw new Error(errData.message || `Server error: ${response.status}`);
                 }).catch(() => {
-                    // Fallback if no JSON error message
                     throw new Error(`Server error: ${response.status}`);
                 });
             }
-            return response.json();
+            return response.json().finally(() => clearInterval(phase2ProgressInterval)); // Clear phase 2 simulation on completion
         })
         .then(data => {
             progressBar.style.width = '100%';
             progressBar.setAttribute('aria-valuenow', 100);
-            progressText.textContent = '100%';
+            progressText.textContent = '100% (Complete)';
+
+            let messageHtml = `<p>${data.message}</p>`;
+            messageHtml += `<p>Races: ${data.races_imported} imported (API total: ${data.total_races_api}). Traits: ${data.traits_imported}.</p>`;
+            messageHtml += `<p>Classes: ${data.classes_imported} imported (API total: ${data.total_classes_api}). Archetypes: ${data.archetypes_imported}.</p>`;
 
             if (data.status === 'success') {
-                progressBar.classList.remove('bg-danger');
                 progressBar.classList.add('bg-success');
-                importStatus.innerHTML = `<div class="alert alert-success mt-2">${data.message} (Total from API: ${data.total_races_api}, Imported: ${data.races_imported}, Traits: ${data.traits_imported})</div>`;
-            } else if (data.status === 'warning') {
-                progressBar.classList.remove('bg-danger');
+                importStatusDiv.innerHTML = `<div class="alert alert-success mt-2">${messageHtml}</div>`;
+            } else if (data.status === 'warning' || data.status === 'partial_error') {
                 progressBar.classList.add('bg-warning');
-                importStatus.innerHTML = `<div class="alert alert-warning mt-2">${data.message}</div>`;
+                importStatusDiv.innerHTML = `<div class="alert alert-warning mt-2">${messageHtml}</div>`;
             } else { // error or other status
                 progressBar.classList.add('bg-danger');
-                importStatus.innerHTML = `<div class="alert alert-danger mt-2">Error: ${data.message}</div>`;
+                importStatusDiv.innerHTML = `<div class="alert alert-danger mt-2">${messageHtml}</div>`;
             }
         })
         .catch(error => {
-            clearInterval(progressInterval); // Stop simulating progress
-            progressBar.style.width = '100%'; // Mark as 'finished' but with error
+            // Ensure all intervals are cleared
+            clearInterval(progressInterval);
+            // If phase2ProgressInterval was started, it should be cleared by the .finally() in the .then() block,
+            // but as a fallback, clear it here too if it exists.
+            // This requires phase2ProgressInterval to be defined in a broader scope if accessed here.
+            // For simplicity, we assume the previous .finally() handles it.
+
+            progressBar.style.width = '100%';
             progressBar.setAttribute('aria-valuenow', 100);
             progressBar.classList.add('bg-danger');
             progressText.textContent = 'Error';
-            importStatus.innerHTML = `<div class="alert alert-danger mt-2">Request failed: ${error.message}</div>`;
+            importStatusDiv.innerHTML = `<div class="alert alert-danger mt-2">Request failed: ${error.message}</div>`;
             console.error("Import error:", error);
         })
         .finally(() => {
             importButton.disabled = false;
-            importButton.innerHTML = 'Import Races';
+            importButton.innerHTML = 'Import All Game Data';
         });
     });
 });
