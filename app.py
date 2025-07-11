@@ -96,6 +96,24 @@ class DndClass(db.Model):
 
     archetypes = db.relationship('Archetype', backref='dnd_class', lazy=True, cascade="all, delete-orphan")
 
+# --- Background and Benefit Models ---
+class Background(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(100), unique=True, nullable=False)
+    name = db.Column(db.String(255), nullable=False)
+    desc = db.Column(db.Text, nullable=True)
+    document = db.Column(db.String(255), nullable=True) # URL to the document
+
+    benefits = db.relationship('Benefit', backref='background', lazy=True, cascade="all, delete-orphan")
+
+class Benefit(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    background_id = db.Column(db.Integer, db.ForeignKey('background.id'), nullable=False)
+    name = db.Column(db.String(255), nullable=False)
+    desc = db.Column(db.Text, nullable=False)
+    type = db.Column(db.String(100), nullable=True) # e.g., "ability_score", "skill_proficiency"
+
+
 class Archetype(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     dnd_class_slug = db.Column(db.String(100), db.ForeignKey('dnd_class.slug'), nullable=False)
@@ -968,6 +986,101 @@ def _import_classes_data(app_context):
             app.logger.error(f"An error occurred during D&D class import: {str(e)}")
             return {"status": "error", "message": f"An unexpected error occurred during D&D class import: {str(e)}"}
 
+# --- Helper function for Background Importer ---
+def _import_backgrounds_data(app_context):
+    with app_context:
+        app.logger.info("Starting background import process...")
+        try:
+            import requests
+
+            api_url = "https://api.open5e.com/v2/backgrounds/"
+            backgrounds_imported_count = 0
+            benefits_imported_count = 0
+            total_backgrounds_api = 0
+            page_num = 1
+
+            # First, get the total count
+            response = requests.get(api_url)
+            response.raise_for_status()
+            data = response.json()
+            total_backgrounds_api = data.get('count', 0)
+
+            if total_backgrounds_api == 0:
+                app.logger.warning("No backgrounds found in API during import.")
+                return {"status": "warning", "message": "No backgrounds found in API.", "backgrounds_imported": 0, "benefits_imported": 0, "total_backgrounds_api": 0}
+
+            current_url = api_url
+            while current_url:
+                app.logger.info(f"Fetching backgrounds from: {current_url}")
+                response = requests.get(current_url)
+                response.raise_for_status()
+                page_data = response.json()
+                backgrounds_on_page = page_data.get('results', [])
+
+                for bg_data in backgrounds_on_page:
+                    bg_key = bg_data.get('key')
+                    if not bg_key:
+                        app.logger.warning(f"Skipping background with no key: {bg_data.get('name')}")
+                        continue
+
+                    existing_bg = Background.query.filter_by(key=bg_key).first()
+                    if existing_bg:
+                        app.logger.info(f"Background '{bg_key}' already exists. Skipping.")
+                        continue
+
+                    new_bg = Background(
+                        key=bg_key,
+                        name=bg_data.get('name'),
+                        desc=bg_data.get('desc'),
+                        document=bg_data.get('document') # Assuming document is a URL string
+                    )
+                    db.session.add(new_bg)
+                    try:
+                        db.session.commit() # Commit background to get ID for benefits
+                    except Exception as e_commit_bg:
+                        db.session.rollback()
+                        app.logger.error(f"Error committing background {bg_key}: {str(e_commit_bg)}")
+                        continue
+
+                    backgrounds_imported_count += 1
+
+                    for benefit_data in bg_data.get('benefits', []):
+                        new_benefit = Benefit(
+                            background_id=new_bg.id,
+                            name=benefit_data.get('name'),
+                            desc=benefit_data.get('desc'),
+                            type=benefit_data.get('type')
+                        )
+                        db.session.add(new_benefit)
+                        benefits_imported_count += 1
+
+                try:
+                    db.session.commit() # Commit benefits for the page
+                except Exception as e_commit_benefits:
+                    db.session.rollback()
+                    app.logger.error(f"Error committing benefits for backgrounds on page {page_num}: {str(e_commit_benefits)}")
+
+                current_url = page_data.get('next')
+                page_num += 1
+
+            app.logger.info(f"Background import finished. Imported {backgrounds_imported_count} backgrounds and {benefits_imported_count} benefits.")
+            return {
+                "status": "success",
+                "message": f"Imported {backgrounds_imported_count} backgrounds and {benefits_imported_count} benefits.",
+                "backgrounds_imported": backgrounds_imported_count,
+                "benefits_imported": benefits_imported_count,
+                "total_backgrounds_api": total_backgrounds_api
+            }
+
+        except requests.exceptions.RequestException as e_req:
+            app.logger.error(f"Background API request failed: {str(e_req)}")
+            db.session.rollback()
+            return {"status": "error", "message": f"Background API request failed: {str(e_req)}"}
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"An error occurred during background import: {str(e)}")
+            return {"status": "error", "message": f"An unexpected error occurred during background import: {str(e)}"}
+
 
 # --- Combined Data Importer Route ---
 @app.route('/admin/import_data', methods=['POST'])
@@ -977,7 +1090,8 @@ def admin_import_data():
         return jsonify({"error": "Unauthorized"}), 403
 
     race_import_results = _import_races_data(app.app_context())
-    class_import_results = _import_classes_data(app.app_context()) # Call the new class importer
+    class_import_results = _import_classes_data(app.app_context())
+    background_import_results = _import_backgrounds_data(app.app_context())
 
     # Combine results
     final_status = "success"
@@ -995,8 +1109,14 @@ def admin_import_data():
     else:
         messages.append(f"Class import: {class_import_results.get('message', 'Completed')}")
 
+    if background_import_results["status"] == "error":
+        final_status = "error" if final_status != "success" else "partial_error"
+        messages.append(f"Background import error: {background_import_results.get('message', 'Unknown error')}")
+    else:
+        messages.append(f"Background import: {background_import_results.get('message', 'Completed')}")
+
     combined_message = ". ".join(messages)
-    http_status_code = 500 if final_status == "error" else 200
+    http_status_code = 500 if final_status == "error" else 200 # Adjusted based on overall success
 
     return jsonify({
         "status": final_status,
@@ -1006,7 +1126,10 @@ def admin_import_data():
         "total_races_api": race_import_results.get("total_races_api", 0),
         "classes_imported": class_import_results.get("classes_imported", 0),
         "archetypes_imported": class_import_results.get("archetypes_imported", 0),
-        "total_classes_api": class_import_results.get("total_classes_api", 0)
+        "total_classes_api": class_import_results.get("total_classes_api", 0),
+        "backgrounds_imported": background_import_results.get("backgrounds_imported", 0),
+        "benefits_imported": background_import_results.get("benefits_imported", 0),
+        "total_backgrounds_api": background_import_results.get("total_backgrounds_api", 0)
     }), http_status_code
 
 
