@@ -1,5 +1,6 @@
 import os
 from flask import Flask, redirect, url_for, session, render_template, flash, jsonify
+from flask_socketio import SocketIO, emit
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 from authlib.integrations.flask_client import OAuth
@@ -37,6 +38,7 @@ login_manager = LoginManager()
 login_manager.login_view = 'login' # Route name for the login page
 oauth = OAuth()
 google = None # Will be initialized by initialize_oauth
+socketio = SocketIO()
 
 # --- User Model ---
 class User(UserMixin, db.Model):
@@ -317,6 +319,7 @@ def create_app_instance(flask_app_obj):
 
     login_manager.init_app(flask_app_obj)
     oauth.init_app(flask_app_obj)
+    socketio.init_app(flask_app_obj, async_mode='eventlet')
     initialize_oauth_client(flask_app_obj) # Initialize Google OAuth client
 
     # Dynamically add the route for the Google callback
@@ -789,10 +792,15 @@ def _import_races_data(app_context):
             current_url = api_url
             while current_url:
                 app.logger.info(f"Fetching races from: {current_url}")
+                socketio.emit('log_message', {'data': f"Fetching page {page_num} of races..."})
                 response = requests.get(current_url, timeout=30) # Added timeout
                 response.raise_for_status()
                 page_data = response.json()
                 races_on_page = page_data.get('results', [])
+
+                if not races_on_page:
+                    socketio.emit('log_message', {'data': f"No races found on page {page_num}."})
+                    break
 
                 for race_data in races_on_page:
                     race_key = race_data.get('key')
@@ -859,23 +867,28 @@ def _import_races_data(app_context):
             db.session.commit()
 
             app.logger.info(f"Race import finished. Imported {races_imported_count} races and {traits_imported_count} traits.")
+            final_message = f"Imported {races_imported_count} races and {traits_imported_count} traits."
+            socketio.emit('log_message', {'data': f"SUCCESS: {final_message}"})
             return {
                 "status": "success",
-                "message": f"Imported {races_imported_count} races and {traits_imported_count} traits.",
+                "message": final_message,
                 "races_imported": races_imported_count,
                 "traits_imported": traits_imported_count,
                 "total_races_api": total_races_api
             }
 
         except requests.exceptions.RequestException as e_req:
-            app.logger.error(f"Race API request failed: {str(e_req)}")
-            # Ensure db.session.rollback() is called if an error occurs mid-transaction
+            error_message = f"Race API request failed: {str(e_req)}"
+            app.logger.error(error_message)
+            socketio.emit('log_message', {'data': f"ERROR: {error_message}"})
             db.session.rollback()
-            return {"status": "error", "message": f"Race API request failed: {str(e_req)}"}
+            return {"status": "error", "message": error_message}
         except Exception as e:
+            error_message = f"An unexpected error occurred during race import: {str(e)}"
+            app.logger.error(error_message)
+            socketio.emit('log_message', {'data': f"ERROR: {error_message}"})
             db.session.rollback()
-            app.logger.error(f"An error occurred during race import: {str(e)}")
-            return {"status": "error", "message": f"An unexpected error occurred during race import: {str(e)}"}
+            return {"status": "error", "message": error_message}
 
 # --- Helper function for Class Importer ---
 def _import_classes_data(app_context):
@@ -902,10 +915,15 @@ def _import_classes_data(app_context):
             current_url = api_url
             while current_url:
                 app.logger.info(f"Fetching D&D classes from: {current_url}")
+                socketio.emit('log_message', {'data': f"Fetching page {page_num} of classes..."})
                 response = requests.get(current_url, timeout=30) # Added timeout
                 response.raise_for_status()
                 page_data = response.json()
                 classes_on_page = page_data.get('results', [])
+
+                if not classes_on_page:
+                    socketio.emit('log_message', {'data': f"No classes found on page {page_num}."})
+                    break
 
                 for class_data in classes_on_page:
                     class_slug = class_data.get('slug')
@@ -983,22 +1001,28 @@ def _import_classes_data(app_context):
                 page_num += 1
 
             app.logger.info(f"D&D Class import finished. Imported {classes_imported_count} classes and {archetypes_imported_count} archetypes.")
+            final_message = f"Imported {classes_imported_count} D&D classes and {archetypes_imported_count} archetypes."
+            socketio.emit('log_message', {'data': f"SUCCESS: {final_message}"})
             return {
                 "status": "success",
-                "message": f"Imported {classes_imported_count} D&D classes and {archetypes_imported_count} archetypes.",
+                "message": final_message,
                 "classes_imported": classes_imported_count,
                 "archetypes_imported": archetypes_imported_count,
                 "total_classes_api": total_classes_api
             }
 
         except requests.exceptions.RequestException as e_req:
-            app.logger.error(f"D&D Class API request failed: {str(e_req)}")
+            error_message = f"D&D Class API request failed: {str(e_req)}"
+            app.logger.error(error_message)
+            socketio.emit('log_message', {'data': f"ERROR: {error_message}"})
             db.session.rollback()
-            return {"status": "error", "message": f"D&D Class API request failed: {str(e_req)}"}
+            return {"status": "error", "message": error_message}
         except Exception as e:
+            error_message = f"An unexpected error occurred during D&D class import: {str(e)}"
+            app.logger.error(error_message)
+            socketio.emit('log_message', {'data': f"ERROR: {error_message}"})
             db.session.rollback()
-            app.logger.error(f"An error occurred during D&D class import: {str(e)}")
-            return {"status": "error", "message": f"An unexpected error occurred during D&D class import: {str(e)}"}
+            return {"status": "error", "message": error_message}
 
 # --- Helper function for Background Importer ---
 def _import_backgrounds_data(app_context):
@@ -1026,10 +1050,15 @@ def _import_backgrounds_data(app_context):
             current_url = api_url
             while current_url:
                 app.logger.info(f"Fetching backgrounds from: {current_url}")
+                socketio.emit('log_message', {'data': f"Fetching page {page_num} of backgrounds..."})
                 response = requests.get(current_url, timeout=30) # Added timeout
                 response.raise_for_status()
                 page_data = response.json()
                 backgrounds_on_page = page_data.get('results', [])
+
+                if not backgrounds_on_page:
+                    socketio.emit('log_message', {'data': f"No backgrounds found on page {page_num}."})
+                    break
 
                 for bg_data in backgrounds_on_page:
                     bg_key = bg_data.get('key')
@@ -1078,22 +1107,28 @@ def _import_backgrounds_data(app_context):
                 page_num += 1
 
             app.logger.info(f"Background import finished. Imported {backgrounds_imported_count} backgrounds and {benefits_imported_count} benefits.")
+            final_message = f"Imported {backgrounds_imported_count} backgrounds and {benefits_imported_count} benefits."
+            socketio.emit('log_message', {'data': f"SUCCESS: {final_message}"})
             return {
                 "status": "success",
-                "message": f"Imported {backgrounds_imported_count} backgrounds and {benefits_imported_count} benefits.",
+                "message": final_message,
                 "backgrounds_imported": backgrounds_imported_count,
                 "benefits_imported": benefits_imported_count,
                 "total_backgrounds_api": total_backgrounds_api
             }
 
         except requests.exceptions.RequestException as e_req:
-            app.logger.error(f"Background API request failed: {str(e_req)}")
+            error_message = f"Background API request failed: {str(e_req)}"
+            app.logger.error(error_message)
+            socketio.emit('log_message', {'data': f"ERROR: {error_message}"})
             db.session.rollback()
-            return {"status": "error", "message": f"Background API request failed: {str(e_req)}"}
+            return {"status": "error", "message": error_message}
         except Exception as e:
+            error_message = f"An unexpected error occurred during background import: {str(e)}"
+            app.logger.error(error_message)
+            socketio.emit('log_message', {'data': f"ERROR: {error_message}"})
             db.session.rollback()
-            app.logger.error(f"An error occurred during background import: {str(e)}")
-            return {"status": "error", "message": f"An unexpected error occurred during background import: {str(e)}"}
+            return {"status": "error", "message": error_message}
 
 # --- Helper function for Magic Item Importer ---
 def _import_magic_items_data(app_context):
@@ -1120,10 +1155,15 @@ def _import_magic_items_data(app_context):
             current_url = api_url
             while current_url:
                 app.logger.info(f"Fetching magic items from: {current_url}")
+                socketio.emit('log_message', {'data': f"Fetching page {page_num} of magic items..."})
                 response = requests.get(current_url, timeout=30) # Added timeout
                 response.raise_for_status()
                 page_data = response.json()
                 items_on_page = page_data.get('results', [])
+
+                if not items_on_page:
+                    socketio.emit('log_message', {'data': f"No magic items found on page {page_num}."})
+                    break
 
                 for item_data in items_on_page:
                     item_slug = item_data.get('slug')
@@ -1163,81 +1203,81 @@ def _import_magic_items_data(app_context):
 
 
             app.logger.info(f"Magic item import finished. Imported {items_imported_count} items.")
+            final_message = f"Imported {items_imported_count} magic items."
+            socketio.emit('log_message', {'data': f"SUCCESS: {final_message}"})
             return {
                 "status": "success",
-                "message": f"Imported {items_imported_count} magic items.",
+                "message": final_message,
                 "magic_items_imported": items_imported_count,
                 "total_magic_items_api": total_items_api
             }
 
         except requests.exceptions.RequestException as e_req:
-            app.logger.error(f"Magic Item API request failed: {str(e_req)}")
+            error_message = f"Magic Item API request failed: {str(e_req)}"
+            app.logger.error(error_message)
+            socketio.emit('log_message', {'data': f"ERROR: {error_message}"})
             db.session.rollback() # Ensure rollback on request failure
-            return {"status": "error", "message": f"Magic Item API request failed: {str(e_req)}"}
+            return {"status": "error", "message": error_message}
         except Exception as e:
+            error_message = f"An unexpected error occurred during magic item import: {str(e)}"
+            app.logger.error(error_message)
+            socketio.emit('log_message', {'data': f"ERROR: {error_message}"})
             db.session.rollback() # Ensure rollback on general exception
-            app.logger.error(f"An error occurred during magic item import: {str(e)}")
-            return {"status": "error", "message": f"An unexpected error occurred during magic item import: {str(e)}"}
+            return {"status": "error", "message": error_message}
 
 
-# --- Combined Data Importer Route ---
-@app.route('/admin/import_data', methods=['POST'])
-@login_required
-def admin_import_data():
-    if not current_user.is_admin:
-        return jsonify({"error": "Unauthorized"}), 403
+# --- Combined Data Importer Logic (to be run in background) ---
+def run_full_import():
+    """
+    The main import logic, designed to be run in a background thread.
+    It emits socket events to log progress to the client.
+    """
+    socketio.emit('log_message', {'data': 'Starting full data import...'})
 
+    # Each of these functions will now need to be adapted to emit their own logs
+    # For now, we'll just log the start and end of each major phase.
+
+    socketio.emit('log_message', {'data': '--- Importing Races ---'})
     race_import_results = _import_races_data(app.app_context())
+    socketio.emit('log_message', {'data': f'Race import finished. Status: {race_import_results.get("status")}. Message: {race_import_results.get("message")}'})
+
+    socketio.emit('log_message', {'data': '--- Importing Classes ---'})
     class_import_results = _import_classes_data(app.app_context())
+    socketio.emit('log_message', {'data': f'Class import finished. Status: {class_import_results.get("status")}. Message: {class_import_results.get("message")}'})
+
+    socketio.emit('log_message', {'data': '--- Importing Backgrounds ---'})
     background_import_results = _import_backgrounds_data(app.app_context())
+    socketio.emit('log_message', {'data': f'Background import finished. Status: {background_import_results.get("status")}. Message: {background_import_results.get("message")}'})
+
+    socketio.emit('log_message', {'data': '--- Importing Magic Items ---'})
     magic_item_import_results = _import_magic_items_data(app.app_context())
+    socketio.emit('log_message', {'data': f'Magic item import finished. Status: {magic_item_import_results.get("status")}. Message: {magic_item_import_results.get("message")}'})
 
-    # Combine results
-    final_status = "success"
-    messages = []
+    # You can combine results here for a final summary message if desired
+    # For now, we'll just signal completion.
+    socketio.emit('import_finished', {'data': 'All import processes have concluded.'})
 
-    if race_import_results["status"] == "error":
-        final_status = "error" # Or "partial_error" / "partial_success"
-        messages.append(f"Race import error: {race_import_results.get('message', 'Unknown error')}")
-    else:
-        messages.append(f"Race import: {race_import_results.get('message', 'Completed')}")
 
-    if class_import_results["status"] == "error":
-        final_status = "error" if final_status != "success" else "partial_error"
-        messages.append(f"Class import error: {class_import_results.get('message', 'Unknown error')}")
-    else:
-        messages.append(f"Class import: {class_import_results.get('message', 'Completed')}")
+# --- Socket.IO Event Handlers ---
+@socketio.on('connect')
+@login_required
+def handle_connect():
+    if not current_user.is_admin:
+        return False # Reject connection if not admin
+    emit('log_message', {'data': 'Socket.IO connection established.'})
 
-    if background_import_results["status"] == "error":
-        final_status = "error" if final_status != "success" else "partial_error"
-        messages.append(f"Background import error: {background_import_results.get('message', 'Unknown error')}")
-    else:
-        messages.append(f"Background import: {background_import_results.get('message', 'Completed')}")
+@socketio.on('start_import')
+@login_required
+def handle_start_import():
+    """
+    This handler is triggered by the client. It starts the import process in a background thread.
+    """
+    if not current_user.is_admin:
+        emit('log_message', {'data': 'Error: Unauthorized. Only admins can start the import.'})
+        return
 
-    if magic_item_import_results["status"] == "error":
-        final_status = "error" if final_status != "success" else "partial_error"
-        messages.append(f"Magic Item import error: {magic_item_import_results.get('message', 'Unknown error')}")
-    else:
-        messages.append(f"Magic Item import: {magic_item_import_results.get('message', 'Completed')}")
-
-    combined_message = ". ".join(messages)
-    http_status_code = 500 if final_status == "error" else 200 # Adjusted based on overall success
-
-    return jsonify({
-        "status": final_status,
-        "message": combined_message,
-        "races_imported": race_import_results.get("races_imported", 0),
-        "traits_imported": race_import_results.get("traits_imported", 0),
-        "total_races_api": race_import_results.get("total_races_api", 0),
-        "classes_imported": class_import_results.get("classes_imported", 0),
-        "archetypes_imported": class_import_results.get("archetypes_imported", 0),
-        "total_classes_api": class_import_results.get("total_classes_api", 0),
-        "backgrounds_imported": background_import_results.get("backgrounds_imported", 0),
-        "benefits_imported": background_import_results.get("benefits_imported", 0),
-        "total_backgrounds_api": background_import_results.get("total_backgrounds_api", 0),
-        "magic_items_imported": magic_item_import_results.get("magic_items_imported", 0),
-        "total_magic_items_api": magic_item_import_results.get("total_magic_items_api", 0)
-    }), http_status_code
+    emit('log_message', {'data': 'Import process initiated by user. Running in background...'})
+    socketio.start_background_task(run_full_import)
 
 
 if __name__ == '__main__':
@@ -1256,4 +1296,5 @@ if __name__ == '__main__':
         print("The application might not work correctly. Please configure it and restart.")
         print("--- END IMPORTANT STARTUP WARNINGS ---\n")
 
-    app.run(debug=True, port=app.config.get("PORT", 5000))
+    # Use socketio.run() to wrap the Flask app and enable WebSockets
+    socketio.run(app, debug=True, port=app.config.get("PORT", 5000))

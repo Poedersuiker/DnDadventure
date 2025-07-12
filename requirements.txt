@@ -9,3 +9,7 @@ cryptography>=3.0 # Added for Authlib's JWT validation and other crypto needs
 pymysql>=1.0 # Using a version specifier for better dependency management
 # For PostgreSQL, uncomment the line below and run: pip install psycopg2-binary
 # psycopg2-binary
+
+# For real-time communication with Socket.IO
+Flask-SocketIO>=5.0
+eventlet>=0.30
