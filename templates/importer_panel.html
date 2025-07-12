@@ -36,10 +36,11 @@ document.addEventListener('DOMContentLoaded', function () {
     // Helper function to add messages to the log
     function logMessage(message) {
         if (importLog.textContent === 'Awaiting import to start...') {
-            importLog.textContent = ''; // Clear initial message
+            importLog.innerHTML = ''; // Clear initial message
         }
-        // Sanitize message to prevent HTML injection and append with a newline
-        importLog.textContent += message + '\\n';
+        const logLine = document.createElement('div');
+        logLine.textContent = message;
+        importLog.appendChild(logLine);
         // Auto-scroll to the bottom
         importLog.scrollTop = importLog.scrollHeight;
     }
