@@ -10,7 +10,12 @@
 
     <hr>
     <h3>Game Data Importer (Open5e API)</h3>
-    <button id="importDataBtn" class="btn btn-primary">Start Full Data Import</button>
+    <div class="d-flex align-items-center mb-3">
+        <button id="importDataBtn" class="btn btn-primary">Start Full Data Import</button>
+        <div id="connStatus" class="ms-3">
+            <span class="badge bg-secondary">Connecting...</span>
+        </div>
+    </div>
 
     <h4 class="mt-4">Import Log</h4>
     <pre id="importLog" class="p-3 bg-dark text-white" style="height: 400px; overflow-y: scroll; border-radius: 5px;">Awaiting import to start...</pre>
@@ -29,6 +34,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const importButton = document.getElementById('importDataBtn');
     const importLog = document.getElementById('importLog');
     const importStatusDiv = document.getElementById('importStatus');
+    const connStatusDiv = document.getElementById('connStatus');
 
     // Establish a connection to the Socket.IO server
     const socket = io();
@@ -49,11 +55,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     socket.on('connect', function() {
         console.log('Socket.IO connected!');
+        connStatusDiv.innerHTML = '<span class="badge bg-success">Connected</span>';
         logMessage('Socket.IO connection established with server.');
     });
 
     socket.on('disconnect', function() {
         console.log('Socket.IO disconnected.');
+        connStatusDiv.innerHTML = '<span class="badge bg-danger">Disconnected</span>';
         logMessage('WARNING: Socket.IO connection lost.');
         importButton.disabled = false;
         importButton.innerHTML = 'Start Full Data Import';
@@ -61,6 +69,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     socket.on('connect_error', (error) => {
         console.error('Socket.IO connection error:', error);
+        connStatusDiv.innerHTML = '<span class="badge bg-danger">Connection Error</span>';
         logMessage(`ERROR: Could not connect to the server's real-time service. ${error.message}`);
     });
 

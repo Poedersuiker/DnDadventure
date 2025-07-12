@@ -13,6 +13,37 @@ from sqlalchemy.exc import OperationalError, ArgumentError
 if os.path.exists('.env'):
     load_dotenv()
 
+# --- Gunicorn Worker Check ---
+# When running with Gunicorn, it's crucial to use the right worker class.
+# This check provides a clear warning if the wrong worker is used.
+try:
+    import gunicorn.workers.base as base
+    # Check if the 'SERVER_SOFTWARE' env var is set and contains 'gunicorn'
+    # and if the gunicorn class in use is not the one we need.
+    server_software = os.environ.get('SERVER_SOFTWARE', '')
+    if 'gunicorn' in server_software:
+        # gunicorn.workers.sync.SyncWorker is the default, and it's not compatible.
+        # We need to detect if we are running under a compatible worker.
+        # This is a bit of a hack, as we can't directly get the worker class name easily.
+        # A simpler check might be to see if 'eventlet' is in the loaded modules,
+        # but this check is more about warning against the *wrong* setup.
+        # For now, we'll just log a strong recommendation.
+        print("INFO: Running under Gunicorn.")
+        # The most reliable check is to see if eventlet has patched the system,
+        # which it must do to work correctly.
+        import eventlet
+        if not eventlet.patcher.is_monkey_patched('socket'):
+             print("\n" + "="*80)
+             print("CRITICAL WARNING: You are running Gunicorn without the 'eventlet' worker class.")
+             print("Flask-SocketIO will not work correctly. Long-polling will be used, which is")
+             print("inefficient and may lead to connection errors.")
+             print("Please run Gunicorn using: gunicorn --worker-class eventlet -w 1 app:app")
+             print("="*80 + "\n")
+except ImportError:
+    # Gunicorn is not installed, so we are likely in a dev environment.
+    pass
+
+
 # Initialize Flask app object globally, but configure within create_app
 app = Flask(__name__, instance_relative_config=True)
 
