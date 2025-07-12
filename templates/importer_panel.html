@@ -35,9 +35,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Helper function to add messages to the log
     function logMessage(message) {
-        // Sanitize message to prevent HTML injection
-        const sanitizedMessage = document.createTextNode(message + '\\n');
-        importLog.appendChild(sanitizedMessage);
+        if (importLog.textContent === 'Awaiting import to start...') {
+            importLog.textContent = ''; // Clear initial message
+        }
+        // Sanitize message to prevent HTML injection and append with a newline
+        importLog.textContent += message + '\\n';
         // Auto-scroll to the bottom
         importLog.scrollTop = importLog.scrollHeight;
     }

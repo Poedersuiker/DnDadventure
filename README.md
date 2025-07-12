@@ -69,6 +69,21 @@ This project implements a Flask-based web application with Google OAuth for user
     ```
     The application should now be running at `http://localhost:5000`.
 
+7.  **Running with Gunicorn (for Production):**
+
+    This application uses Flask-SocketIO for real-time communication during data imports. To run the application in a production environment with Gunicorn, you **must** use an asynchronous worker, such as `eventlet` or `gevent`. `eventlet` is included in `requirements.txt`.
+
+    Use the following command to launch the app with Gunicorn:
+
+    ```bash
+    gunicorn --worker-class eventlet -w 1 --log-level debug app:app
+    ```
+
+    *   `--worker-class eventlet`: This is the crucial part that enables Gunicorn to handle WebSocket connections correctly.
+    *   `-w 1`: Start with a single worker. Using more than one worker with Socket.IO requires a message queue (like Redis or RabbitMQ) to be set up, which is beyond the scope of this basic configuration.
+    *   `--log-level debug`: Useful for debugging any connection issues.
+    *   `app:app`: Tells Gunicorn to look for the `app` object inside the `app.py` file.
+
 ### How it Works
 
 *   **`app.py`**: The main Flask application. It handles routing, database interaction (SQLAlchemy), user sessions (Flask-Login), and Google OAuth flow (Authlib).
