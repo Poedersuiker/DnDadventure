@@ -1,5 +1,6 @@
 import os
-from flask import Flask, redirect, url_for, session, render_template, flash, jsonify
+from flask import Flask, redirect, url_for, session, render_template, flash, jsonify, send_from_directory
+from flask_socketio import SocketIO, emit
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 from authlib.integrations.flask_client import OAuth
@@ -14,6 +15,7 @@ if os.path.exists('.env'):
 
 # Initialize Flask app object globally, but configure within create_app
 app = Flask(__name__, instance_relative_config=True)
+socketio = SocketIO(app)
 
 # --- Default Configuration Loading (before create_app) ---
 if not os.path.exists('config_default.py'):
@@ -1133,6 +1135,17 @@ def admin_import_data():
     }), http_status_code
 
 
+@socketio.on('message')
+def handle_message(message):
+    print('received message: ' + message)
+    emit('message', message, broadcast=True)
+
+
+@app.route('/socket.io.min.js')
+def socket_io_min_js():
+    return send_from_directory('node_modules/socket.io/client-dist', 'socket.io.min.js')
+
+
 if __name__ == '__main__':
     # Check if critical OAuth configs are present before trying to run
     if not app.config.get('GOOGLE_CLIENT_ID') or \
@@ -1149,4 +1162,4 @@ if __name__ == '__main__':
         print("The application might not work correctly. Please configure it and restart.")
         print("--- END IMPORTANT STARTUP WARNINGS ---\n")
 
-    app.run(debug=True, port=app.config.get("PORT", 5000))
+    socketio.run(app, debug=True, port=app.config.get("PORT", 5000))

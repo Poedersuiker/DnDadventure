@@ -89,16 +89,25 @@
             background-color: #fff;
             overflow-y: auto;
         }
-        .home-content-container {
-            background-color: #fff;
-            padding: 30px;
-            border-radius: 8px;
-            text-align: center;
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
         }
-        .home-content-container h1 { color: #333; margin-bottom: 10px; }
-        .home-content-container p { color: #555; margin-bottom: 20px; font-size: 1.1em; }
-        .user-info { margin-bottom: 25px; }
-        .user-info strong { color: #333; }
+        .chat-messages {
+            flex-grow: 1;
+            border: 1px solid #ccc;
+            padding: 10px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+        .chat-input {
+            display: flex;
+        }
+        .chat-input textarea {
+            flex-grow: 1;
+            margin-right: 10px;
+        }
 
         /* General button styles previously in index.html, kept for login/logout if not using .top-nav styles for them */
         .logout-button { /* This class is now also used in top-nav, ensure consistency or specificity */
@@ -140,34 +149,42 @@
         </div>
     </div>
 
-    <div class="content-area"> {# Renamed from tab-content-area #}
-        {# Removed the .tab-pane wrapper as it's the only content now #}
-        <div class="home-content-container">
-            <h1>Welcome to the Application!</h1>
-                {% if current_user.is_authenticated %}
-                    <div class="user-info">
-                        <p>You are logged in as:</p>
-                        <p><strong>Name:</strong> {{ current_user.name }}</p>
-                        <p><strong>Email:</strong> {{ current_user.email }}</p>
-                        <p><strong>Google ID:</strong> {{ current_user.google_id }}</p>
-                        <p><strong>Admin Status:</strong> {{ "Yes" if current_user.is_admin else "No" }}</p>
-                    </div>
-                    <a href="{{ url_for('logout') }}" class="logout-button">Logout</a>
-                {% else %}
-                    <p>You are not logged in.</p>
-                    <a href="{{ url_for('login') }}" class="login-button">Login</a>
-                {% endif %}
+    <div class="content-area">
+        <div class="chat-container">
+            <div class="chat-messages" id="messages"></div>
+            <div class="chat-input">
+                <textarea id="message_input" placeholder="Type a message..."></textarea>
+                <button id="send_button">Send</button>
             </div>
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js" integrity="sha512-HTDRad26iR/VEQo2Y9eA9eAAX6T+pQ3a3iZ4B5B5/F2xMh2I/2rCBPbY40M5A53s/iL2xL7s1fJjw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script>
-        // The openTab function is no longer needed here as admin tabs are separate pages
-        // and the Home tab is always displayed.
-        // If there were other client-side tabs on index.html, it would be kept.
-        // For now, it's removed for simplicity.
+        document.addEventListener('DOMContentLoaded', (event) => {
+            var socket = io();
 
-        // All admin-specific JavaScript has been moved to templates/admin_panel.html
+            socket.on('connect', function() {
+                console.log('Websocket connected!');
+            });
+
+            socket.on('message', function(msg) {
+                var messages = document.getElementById('messages');
+                var newMessage = document.createElement('div');
+                newMessage.innerHTML = msg;
+                messages.appendChild(newMessage);
+                messages.scrollTop = messages.scrollHeight;
+            });
+
+            document.getElementById('send_button').onclick = function() {
+                var messageInput = document.getElementById('message_input');
+                var message = messageInput.value;
+                if(message.trim() !== ''){
+                    socket.send(message);
+                    messageInput.value = '';
+                }
+            };
+        });
     </script>
 </body>
 </html>
