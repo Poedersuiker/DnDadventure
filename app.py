@@ -1,5 +1,5 @@
 import os
-from flask import Flask, redirect, url_for, session, render_template, flash, jsonify
+from flask import Flask, redirect, url_for, session, render_template, flash, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
@@ -1139,6 +1139,11 @@ def admin_import_data():
 def handle_message(message):
     print('received message: ' + message)
     emit('message', message, broadcast=True)
+
+
+@app.route('/socket.io.min.js')
+def socket_io_min_js():
+    return send_from_directory('node_modules/socket.io/client-dist', 'socket.io.min.js')
 
 
 if __name__ == '__main__':

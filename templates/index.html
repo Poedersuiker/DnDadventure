@@ -159,10 +159,10 @@
         </div>
     </div>
 
-    <script src="https://cdn.socket.io/socket.io-3.0.1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js" integrity="sha512-HTDRad26iR/VEQo2Y9eA9eAAX6T+pQ3a3iZ4B5B5/F2xMh2I/2rCBPbY40M5A53s/iL2xL7s1fJjw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script>
         document.addEventListener('DOMContentLoaded', (event) => {
-            var socket = io.connect('http://' + document.domain + ':' + location.port);
+            var socket = io();
 
             socket.on('connect', function() {
                 console.log('Websocket connected!');
