@@ -1,12 +1,3 @@
-Flask>=2.0
-Flask-SQLAlchemy>=2.5
-Flask-Login>=0.5
-Authlib>=1.0
-python-dotenv>=0.19
-requests>=2.20
-cryptography>=3.0 # Added for Authlib's JWT validation and other crypto needs
-# For MySQL/MariaDB, ensure this line is active:
-pymysql>=1.0 # Using a version specifier for better dependency management
-# For PostgreSQL, uncomment the line below and run: pip install psycopg2-binary
-# psycopg2-binary
-Flask-SocketIO>=5.0
+Flask
+Flask-SocketIO
+
