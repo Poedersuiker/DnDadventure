@@ -30,3 +30,5 @@ secrets.py
 .idea/
 *.sublime-project
 *.sublime-workspace
+.idx/
+

@@ -1,190 +1,39 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Home</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            background-color: #f4f4f4;
-            display: flex;
-            flex-direction: column;
-            height: 100vh; /* Ensure body takes full viewport height */
-        }
-
-        .flashes {
-            list-style: none;
-            padding: 0;
-            margin: 0; /* Reset margin */
-            width: 100%; /* Full width */
-            position: fixed; /* Or absolute, depending on desired behavior with scrolling */
-            top: 0;
-            left: 0;
-            z-index: 1000; /* Ensure flashes are on top */
-        }
-        .flashes li {
-            padding: 10px;
-            margin-bottom: 0; /* Remove bottom margin if they stack */
-            border-bottom: 1px solid #ddd; /* Separator for multiple flashes */
-            text-align: center;
-        }
-        .flashes .error { background-color: #f8d7da; color: #721c24; }
-        .flashes .info { background-color: #d1ecf1; color: #0c5460; }
-        .flashes .success { background-color: #d4edda; color: #155724; }
-
-        /* Top Navigation Styles (copied from admin_base.html) */
-        .top-nav {
-            display: flex;
-            background-color: #333;
-            padding: 10px 20px;
-            padding-top: 50px; /* Account for flashes */
-            align-items: center;
-        }
-        .top-nav a { /* General link styling within top-nav */
-            color: white;
-            padding: 10px 15px;
-            text-decoration: none;
-            font-size: 17px;
-            transition: background-color 0.3s;
-        }
-        .top-nav a:hover {
-            background-color: #777;
-        }
-        .top-nav a.active { /* Specific style for active link */
-            background-color: #007bff;
-        }
-        .top-nav .nav-title { /* For "Application Home" or similar title */
-            color: white;
-            font-size: 20px;
-            margin-right: 20px;
-        }
-        .top-nav .nav-links-right {
-            margin-left: auto;
-            display: flex;
-            align-items: center;
-        }
-        .top-nav .nav-links-right a { /* Links within the right group */
-            margin-left: 10px;
-        }
-        /* Styles for logout button if it's a link, or general button styling if preferred */
-        .top-nav .logout-button {
-            background-color: #dc3545;
-            color: white;
-            padding: 8px 15px; /* Adjusted padding */
-            text-decoration: none;
-            border-radius: 5px;
-            font-size: 16px; /* Adjusted font size */
-            transition: background-color 0.3s;
-        }
-        .top-nav .logout-button:hover {
-            background-color: #c82333;
-        }
-
-        /* Content Area and Home Content Container Styles */
-        .content-area { /* Renamed from tab-content-area for clarity */
-            flex-grow: 1;
-            padding: 20px;
-            background-color: #fff;
-            overflow-y: auto;
-        }
-        .chat-container {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-        .chat-messages {
-            flex-grow: 1;
-            border: 1px solid #ccc;
-            padding: 10px;
-            overflow-y: auto;
-            margin-bottom: 10px;
-        }
-        .chat-input {
-            display: flex;
-        }
-        .chat-input textarea {
-            flex-grow: 1;
-            margin-right: 10px;
-        }
-
-        /* General button styles previously in index.html, kept for login/logout if not using .top-nav styles for them */
-        .logout-button { /* This class is now also used in top-nav, ensure consistency or specificity */
-             display: inline-block; background-color: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-size: 16px; transition: background-color 0.3s;
-        }
-        .logout-button:hover { background-color: #c82333; }
-        .login-button { display: inline-block; background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-size: 16px; transition: background-color 0.3s; }
-        .login-button:hover { background-color: #0056b3; }
-
-        /* Removed .tab-container, .tab-button, .tab-pane, and all admin-specific styles like .admin-content-container, .admin-button etc. */
-
-    </style>
+    <title>Flask-SocketIO Chat</title>
 </head>
 <body>
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            <ul class="flashes">
-            {% for category, message in messages %}
-                <li class="{{ category }}">{{ message }}</li>
-            {% endfor %}
-            </ul>
-        {% endif %}
-    {% endwith %}
+    <h1>Simple Chat</h1>
+    <input id="message_input" placeholder="Type a message...">
+    <button onclick="sendMessage()">Send</button>
+    <ul id="messages"></ul>
 
-    <div class="top-nav">
-        <span class="nav-title">Application Home</span>
-        <a href="{{ url_for('index') }}" class="active">Home</a> {# Home is always active on this page #}
-        <div class="nav-links-right">
-            {% if current_user.is_authenticated and current_user.is_admin %}
-            <a href="{{ url_for('admin_panel_route') }}">Admin Panel</a>
-            <a href="{{ url_for('importer_panel_route') }}">Importer</a>
-            {% endif %}
-            {% if current_user.is_authenticated %}
-                <a href="{{ url_for('logout') }}" class="logout-button">Logout</a>
-            {% else %}
-                {# Optionally, add a login link here if desired in the top bar when logged out #}
-                {# <a href="{{ url_for('login') }}" class="login-button">Login</a> #}
-            {% endif %}
-        </div>
-    </div>
-
-    <div class="content-area">
-        <div class="chat-container">
-            <div class="chat-messages" id="messages"></div>
-            <div class="chat-input">
-                <textarea id="message_input" placeholder="Type a message..."></textarea>
-                <button id="send_button">Send</button>
-            </div>
-        </div>
-    </div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js" integrity="sha512-HTDRad26iR/VEQo2Y9eA9eAAX6T+pQ3a3iZ4B5B5/F2xMh2I/2rCBPbY40M5A53s/iL2xL7s1fJjw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', (event) => {
-            var socket = io();
+        // Connect to the WebSocket server
+        const socket = io();
 
-            socket.on('connect', function() {
-                console.log('Websocket connected!');
-            });
-
-            socket.on('message', function(msg) {
-                var messages = document.getElementById('messages');
-                var newMessage = document.createElement('div');
-                newMessage.innerHTML = msg;
-                messages.appendChild(newMessage);
-                messages.scrollTop = messages.scrollHeight;
-            });
-
-            document.getElementById('send_button').onclick = function() {
-                var messageInput = document.getElementById('message_input');
-                var message = messageInput.value;
-                if(message.trim() !== ''){
-                    socket.send(message);
-                    messageInput.value = '';
-                }
-            };
+        socket.on('connect', () => {
+            console.log('Connected to server!');
         });
+
+        // Listen for broadcasted messages from the server
+        socket.on('broadcast_message', (msg) => {
+            const item = document.createElement('li');
+            item.textContent = msg;
+            document.getElementById('messages').appendChild(item);
+        });
+
+        function sendMessage() {
+            const input = document.getElementById('message_input');
+            const message = input.value;
+            if (message) {
+                // Emit a 'new_message' event to the server
+                socket.emit('new_message', message);
+                input.value = '';
+            }
+        }
     </script>
 </body>
 </html>
