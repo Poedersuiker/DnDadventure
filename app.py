@@ -1,8 +1,13 @@
 from gevent import monkey
 monkey.patch_all()
 
+import logging
 from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 # It's recommended to set a secret key for production apps
@@ -18,18 +23,18 @@ def index():
 @socketio.on('connect')
 def handle_connect():
     """Handles a new client connection."""
-    print('Client connected')
+    logger.info('Client connected')
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    """Handles a client disconnection.""" 
-    print('Client disconnected')
+    """Handles a client disconnection."""
+    logger.info('Client disconnected')
 
 @socketio.on('new_message')
 def handle_new_message(message):
     """Listens for a 'new_message' event from a client,
        then broadcasts it to all other clients."""
-    print(f'Received message: {message}')
+    logger.info(f'Received message: {message}')
     # Broadcast the message to all connected clients
     emit('broadcast_message', message, broadcast=True)
 

@@ -20,6 +20,7 @@
 
         // Listen for broadcasted messages from the server
         socket.on('broadcast_message', (msg) => {
+            console.log('Received broadcast_message:', msg); // Added logging
             const item = document.createElement('li');
             item.textContent = msg;
             document.getElementById('messages').appendChild(item);
@@ -29,6 +30,7 @@
             const input = document.getElementById('message_input');
             const message = input.value;
             if (message) {
+                console.log('Sending new_message:', message); // Added logging
                 // Emit a 'new_message' event to the server
                 socket.emit('new_message', message);
                 input.value = '';
