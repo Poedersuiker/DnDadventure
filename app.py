@@ -5,7 +5,7 @@ app = Flask(__name__)
 # It's recommended to set a secret key for production apps
 app.config['SECRET_KEY'] = 'your-very-secret-key!'
 # The async_mode is important for performance
-socketio = SocketIO(app)
+socketio = SocketIO(app, async_mode='eventlet')
 
 @app.route('/')
 def index():
