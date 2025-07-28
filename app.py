@@ -1,9 +1,12 @@
+import eventlet
+eventlet.monkey_patch()
+
 from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
 # It's recommended to set a secret key for production apps
-app.config['SECRET_KEY'] = 'your-very-secret-key!'
+app.config['SECRET_KEY'] = 'your-very-secret-key! barbarandomkeybarchar'
 # The async_mode is important for performance
 socketio = SocketIO(app, async_mode='eventlet')
 
@@ -19,7 +22,7 @@ def handle_connect():
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    """Handles a client disconnection."""
+    """Handles a client disconnection.""" 
     print('Client disconnected')
 
 @socketio.on('new_message')
