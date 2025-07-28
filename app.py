@@ -1,5 +1,5 @@
-import eventlet
-eventlet.monkey_patch()
+import gevent
+gevent.monkey.patch_all()
 
 from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
@@ -8,7 +8,7 @@ app = Flask(__name__)
 # It's recommended to set a secret key for production apps
 app.config['SECRET_KEY'] = 'your-very-secret-key! barbarandomkeybarchar'
 # The async_mode is important for performance
-socketio = SocketIO(app, async_mode='eventlet')
+socketio = SocketIO(app, async_mode='gevent')
 
 @app.route('/')
 def index():
