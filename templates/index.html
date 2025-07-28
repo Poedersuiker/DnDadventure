@@ -29,6 +29,7 @@
         function sendMessage() {
             const input = document.getElementById('message_input');
             const message = input.value;
+            console.log('Message value before check:', message); // Added logging
             if (message) {
                 console.log('Sending new_message:', message); // Added logging
                 // Emit a 'new_message' event to the server
