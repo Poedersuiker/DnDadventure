@@ -6,6 +6,9 @@
 </head>
 <body>
     <h1>Current Number: <span id="number">0</span></h1>
+    <a href="{{ url_for('logout') }}">
+        <button>Logout</button>
+    </a>
 
     <script>
         var socket = io.connect('https://' + document.domain + ':' + location.port);
