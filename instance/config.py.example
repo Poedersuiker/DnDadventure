@@ -9,6 +9,9 @@ GOOGLE_CLIENT_SECRET = "YOUR_GOOGLE_CLIENT_SECRET"
 # For production, it might be "https://yourdomain.com/auth/google/callback" or similar.
 GOOGLE_REDIRECT_URI = "http://localhost:5000/authorize"
 
+# Gemini Key
+GEMINI_API_KEY = "YOUR_ACTUAL_GEMINI_API_KEY"
+
 # Database Configuration
 # Set DB_TYPE to 'sqlite', 'mysql', 'postgresql', etc.
 DB_TYPE = "sqlite"
