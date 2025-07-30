@@ -65,7 +65,8 @@ def load_user(user_id):
 @app.route('/')
 @login_required
 def index():
-    return render_template('index.html')
+    admin_email = app.config.get('ADMIN_EMAIL')
+    return render_template('index.html', admin_email=admin_email)
 
 @app.route('/login')
 def login():
@@ -125,9 +126,6 @@ def handle_disconnect():
 def handle_message(message):
     """Handles a message from a client."""
     logger.info('Received message: ' + message)
-
-    # Emit the original message back to the client
-    emit('message', {'text': message, 'sender': 'user'})
 
     if not gemini_api_key:
         logger.error("Gemini API key is not configured.")
