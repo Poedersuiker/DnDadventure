@@ -3,7 +3,7 @@ monkey.patch_all()
 
 import logging
 import time
-from flask import Flask, render_template, redirect, url_for, session
+from flask import Flask, render_template, redirect, url_for, session, request
 from flask_socketio import SocketIO, emit
 from threading import Thread
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
@@ -24,6 +24,9 @@ app.config.from_mapping(
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
 )
 app.config.from_pyfile('config.py', silent=True)
+
+# Global variable to store the selected model
+selected_model = 'gemini-pro'
 
 # Gemini API Key
 gemini_api_key = app.config.get('GEMINI_API_KEY')
@@ -91,6 +94,21 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+@app.route('/admin', methods=['GET', 'POST'])
+@login_required
+def admin():
+    """Admin page to select the Gemini model."""
+    if current_user.email != app.config.get('ADMIN_EMAIL'):
+        return "Unauthorized", 401
+
+    global selected_model
+    if request.method == 'POST':
+        selected_model = request.form.get('model')
+        return redirect(url_for('admin'))
+
+    models = [m for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+    return render_template('admin.html', models=models, selected_model=selected_model)
+
 @socketio.on('connect')
 def handle_connect():
     """Handles a new client connection."""
@@ -117,9 +135,8 @@ def handle_message(message):
         return
 
     try:
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel(selected_model)
         response = model.generate_content(message)
-
         # Check if the response has the expected structure
         if response and response.parts:
             bot_response = "".join(part.text for part in response.parts)

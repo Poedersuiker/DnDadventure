@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 from app import app, db, User
 import os
 
@@ -35,6 +36,44 @@ class AuthTestCase(unittest.TestCase):
         with app.app_context():
             response = self.app.get('/')
             self.assertEqual(response.status_code, 302)
+
+    @patch('flask_login.utils._get_user')
+    def test_admin_page_unauthorized(self, _get_user):
+        with app.app_context():
+            # Create a non-admin user
+            user = User(google_id='12345', email='test@example.com', name='Test User')
+            db.session.add(user)
+            db.session.commit()
+            _get_user.return_value = user
+
+            response = self.app.get('/admin')
+            self.assertEqual(response.status_code, 401)
+
+    @patch('google.generativeai.list_models')
+    @patch('flask_login.utils._get_user')
+    def test_admin_page_authorized(self, _get_user, list_models):
+        with app.app_context():
+            # Create an admin user
+            admin_user = User(google_id='admin123', email='admin@example.com', name='Admin User')
+            db.session.add(admin_user)
+            db.session.commit()
+            _get_user.return_value = admin_user
+
+            # Set ADMIN_EMAIL in config
+            app.config['ADMIN_EMAIL'] = 'admin@example.com'
+
+            # Mock the list_models call
+            class MockModel:
+                def __init__(self, name, display_name):
+                    self.name = name
+                    self.display_name = display_name
+                    self.supported_generation_methods = ['generateContent']
+            list_models.return_value = [MockModel('models/gemini-pro', 'Gemini Pro')]
+
+
+            response = self.app.get('/admin')
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(b'Admin', response.data)
 
 if __name__ == '__main__':
     unittest.main()
