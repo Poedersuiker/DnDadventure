@@ -24,7 +24,7 @@ DB_PASSWORD = "your_db_password"
 DB_NAME = "your_db_name"
 
 # Flask App Secret Key (generate a random one for your actual config.py)
-SECRET_KEY = "your_very_secret_key_here"
+SECRET_KEY = "ThereIsADNDAdventureRoamingAroundHereSomewhere"
 
 # Admin Configuration
 # Set this to the email address of the user who should be granted admin privileges.
