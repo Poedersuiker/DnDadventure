@@ -10,12 +10,14 @@ from flask_login import LoginManager, UserMixin, login_user, logout_user, curren
 import auth
 from flask_sqlalchemy import SQLAlchemy
 import os
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__, instance_relative_config=True)
+app = Flask(__name__, instance_relative_config=_True)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 app.config.from_mapping(
     SECRET_KEY='your-very-secret-key! barbarandomkeybarchar',
     SQLALCHEMY_DATABASE_URI='sqlite:///' + os.path.join(app.instance_path, 'users.db'),
