@@ -86,8 +86,8 @@
         });
 
         socket.on('message', function(data) {
-            console.log('Received message: ' + data);
-            addMessage(data, 'received');
+            console.log('Received message: ' + data.text);
+            addMessage(data.text, 'received');
         });
 
         socket.on('disconnect', function() {

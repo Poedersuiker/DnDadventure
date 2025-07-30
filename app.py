@@ -101,7 +101,7 @@ def handle_disconnect():
 def handle_message(message):
     """Handles a message from a client."""
     logger.info('Received message: ' + message)
-    emit('message', message)
+    emit('message', {'text': message, 'sender': 'other'})
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
