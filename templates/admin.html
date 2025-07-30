@@ -44,7 +44,9 @@
         {% endfor %}
     </ul>
     <div id="popup" style="display:none;">
-        <div id="popup-content"></div>
+        <div id="popup-content">
+            <button id="close-popup">Close</button>
+        </div>
     </div>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script>
@@ -61,8 +63,12 @@
             socket.on('ttrpg_data', function(data) {
                 var popup = document.getElementById('popup');
                 var popupContent = document.getElementById('popup-content');
-                popupContent.innerHTML = data.html;
+                popupContent.innerHTML = '<button id="close-popup">Close</button>' + data.html;
                 popup.style.display = 'block';
+
+                document.getElementById('close-popup').addEventListener('click', function() {
+                    popup.style.display = 'none';
+                });
             });
 
             document.getElementById('hamburger').onclick = function() {
