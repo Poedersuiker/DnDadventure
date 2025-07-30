@@ -147,3 +147,28 @@ body {
 #menu a:hover {
     background-color: #ddd;
 }
+
+#character-list {
+    width: 200px;
+    border-right: 1px solid #ccc;
+    padding: 10px;
+    background-color: #f0f0f0;
+}
+
+#character-list h2 {
+    margin-top: 0;
+}
+
+#character-list ul {
+    list-style: none;
+    padding: 0;
+}
+
+#character-list li {
+    padding: 10px;
+    cursor: pointer;
+}
+
+#character-list li:hover {
+    background-color: #ddd;
+}

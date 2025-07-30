@@ -11,6 +11,12 @@
     </div>
     <div id="menu">
         <a href="/logout">Logout</a>
+        <a href="{{ url_for('new_character') }}">New Character</a>
+        <hr>
+        {% for character in characters %}
+            <a href="#" onclick="selectCharacter({{ character.id }})">{{ character.character_name }}</a>
+        {% endfor %}
+        <hr>
         {% if current_user.email == admin_email %}
             <a href="/admin">Admin</a>
         {% endif %}
@@ -20,7 +26,8 @@
             <div id="messages"></div>
             <div id="thinking-indicator" style="display: none;">Thinking...</div>
             <div id="input-area">
-                <input id="message-input" autocomplete="off" /><button id="send-button">Send</button>
+                <input id="message-input" autocomplete="off" disabled /><button id="send-button" disabled>Send</button>
+                <input type="hidden" id="active-character-id" value="">
             </div>
         </div>
     </div>
@@ -44,9 +51,10 @@
         document.getElementById('send-button').onclick = function() {
             var input = document.getElementById('message-input');
             var message = input.value;
-            if (message.trim() !== '') {
+            var characterId = document.getElementById('active-character-id').value;
+            if (message.trim() !== '' && characterId) {
                 addMessage(message, 'sent');
-                socket.send(message);
+                socket.emit('message', { 'message': message, 'character_id': characterId });
                 input.value = '';
                 document.getElementById('thinking-indicator').style.display = 'block';
             }
@@ -65,6 +73,19 @@
             messageElement.textContent = text;
             messages.appendChild(messageElement);
             messages.scrollTop = messages.scrollHeight;
+        }
+
+        function enableChat() {
+            document.getElementById('message-input').disabled = false;
+            document.getElementById('send-button').disabled = false;
+        }
+
+        function selectCharacter(characterId) {
+            document.getElementById('active-character-id').value = characterId;
+            enableChat();
+            // You can also add logic here to load character-specific chat history
+            // For now, we'll just clear the messages
+            document.getElementById('messages').innerHTML = '';
         }
 
         document.getElementById('hamburger').onclick = function() {
