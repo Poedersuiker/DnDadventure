@@ -18,6 +18,7 @@
     <div id="app">
         <div id="chat-window">
             <div id="messages"></div>
+            <div id="thinking-indicator" style="display: none;">Thinking...</div>
             <div id="input-area">
                 <input id="message-input" autocomplete="off" /><button id="send-button">Send</button>
             </div>
@@ -32,6 +33,7 @@
 
         socket.on('message', function(data) {
             console.log('Received message: ' + data.text);
+            document.getElementById('thinking-indicator').style.display = 'none';
             addMessage(data.text, 'received');
         });
 
@@ -46,6 +48,7 @@
                 addMessage(message, 'sent');
                 socket.send(message);
                 input.value = '';
+                document.getElementById('thinking-indicator').style.display = 'block';
             }
         };
 
