@@ -2,8 +2,16 @@
 <html>
 <head>
     <title>Admin</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
+    <div id="hamburger">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-menu"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+    </div>
+    <div id="menu">
+        <a href="/">Chat</a>
+        <a href="/logout">Logout</a>
+    </div>
     <h1>Admin</h1>
     <form method="POST">
         <label for="model">Select Gemini Model:</label>
@@ -14,5 +22,15 @@
         </select>
         <button type="submit">Save</button>
     </form>
+    <script>
+        document.getElementById('hamburger').onclick = function() {
+            var menu = document.getElementById('menu');
+            if (menu.style.left === '-200px') {
+                menu.style.left = '0';
+            } else {
+                menu.style.left = '-200px';
+            }
+        };
+    </script>
 </body>
 </html>
