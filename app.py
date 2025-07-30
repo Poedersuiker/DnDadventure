@@ -53,18 +53,6 @@ auth.init_app(app)
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# Background thread for sending numbers
-number_thread = None
-thread_stop_event = False
-
-def send_numbers():
-    count = 0
-    while not thread_stop_event:
-        count += 1
-        logger.info(f'Emitting number: {count}')
-        socketio.emit('number', count)
-        time.sleep(1)
-
 @app.route('/')
 @login_required
 def index():
@@ -103,18 +91,17 @@ def handle_connect():
     if not current_user.is_authenticated:
         return False
     logger.info('Client connected')
-    global number_thread
-    global thread_stop_event
-    if number_thread is None:
-        thread_stop_event = False
-        number_thread = Thread(target=send_numbers)
-        number_thread.daemon = True
-        number_thread.start()
 
 @socketio.on('disconnect')
 def handle_disconnect():
     """Handles a client disconnection."""
     logger.info('Client disconnected')
+
+@socketio.on('message')
+def handle_message(message):
+    """Handles a message from a client."""
+    logger.info('Received message: ' + message)
+    emit('message', message)
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
