@@ -8,9 +8,9 @@ from flask_socketio import SocketIO, emit
 from threading import Thread
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 import auth
-from flask_sqlalchemy import SQLAlchemy
 import os
 from werkzeug.middleware.proxy_fix import ProxyFix
+from database import db, init_db, User
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -20,24 +20,34 @@ app = Flask(__name__, instance_relative_config=True)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 app.config.from_mapping(
     SECRET_KEY='your-very-secret-key! barbarandomkeybarchar',
-    SQLALCHEMY_DATABASE_URI='sqlite:///' + os.path.join(app.instance_path, 'users.db'),
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
 )
 app.config.from_pyfile('config.py', silent=True)
 
+# Database setup
+db_type = app.config.get("DB_TYPE", "sqlite")
+if db_type == "sqlite":
+    db_path = app.config.get("DB_PATH", "users.db")
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(app.instance_path, db_path)
+elif db_type in ["mysql", "postgresql"]:
+    db_user = app.config.get("DB_USER")
+    db_password = app.config.get("DB_PASSWORD")
+    db_host = app.config.get("DB_HOST")
+    db_port = app.config.get("DB_PORT")
+    db_name = app.config.get("DB_NAME")
+    if db_type == "mysql":
+        app.config['SQLALCHEMY_DATABASE_URI'] = f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+    else: # postgresql
+        app.config['SQLALCHEMY_DATABASE_URI'] = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
-db = SQLAlchemy(app)
+init_db(app)
+
 socketio = SocketIO(app, async_mode='gevent')
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
 auth.init_app(app)
 
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    google_id = db.Column(db.String(128), unique=True, nullable=False)
-    email = db.Column(db.String(128), unique=True, nullable=False)
-    name = db.Column(db.String(128), nullable=True)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -105,9 +115,6 @@ def handle_connect():
 def handle_disconnect():
     """Handles a client disconnection."""
     logger.info('Client disconnected')
-
-with app.app_context():
-    db.create_all()
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
