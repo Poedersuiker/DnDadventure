@@ -3,7 +3,7 @@ monkey.patch_all()
 
 import logging
 import time
-from flask import Flask, render_template, redirect, url_for, session
+from flask import Flask, render_template, redirect, url_for, session, request
 from flask_socketio import SocketIO, emit
 from threading import Thread
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
@@ -11,6 +11,7 @@ import auth
 import os
 from werkzeug.middleware.proxy_fix import ProxyFix
 from database import db, init_db, User
+import google.generativeai as genai
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,6 +24,14 @@ app.config.from_mapping(
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
 )
 app.config.from_pyfile('config.py', silent=True)
+
+# Global variable to store the selected model
+selected_model = 'gemini-pro'
+
+# Gemini API Key
+gemini_api_key = app.config.get('GEMINI_API_KEY')
+if gemini_api_key:
+    genai.configure(api_key=gemini_api_key)
 
 # Database setup
 db_type = app.config.get("DB_TYPE", "sqlite")
@@ -56,7 +65,8 @@ def load_user(user_id):
 @app.route('/')
 @login_required
 def index():
-    return render_template('index.html')
+    admin_email = app.config.get('ADMIN_EMAIL')
+    return render_template('index.html', admin_email=admin_email)
 
 @app.route('/login')
 def login():
@@ -85,6 +95,21 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+@app.route('/admin', methods=['GET', 'POST'])
+@login_required
+def admin():
+    """Admin page to select the Gemini model."""
+    if current_user.email != app.config.get('ADMIN_EMAIL'):
+        return "Unauthorized", 401
+
+    global selected_model
+    if request.method == 'POST':
+        selected_model = request.form.get('model')
+        return redirect(url_for('admin'))
+
+    models = [m for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+    return render_template('admin.html', models=models, selected_model=selected_model)
+
 @socketio.on('connect')
 def handle_connect():
     """Handles a new client connection."""
@@ -101,7 +126,28 @@ def handle_disconnect():
 def handle_message(message):
     """Handles a message from a client."""
     logger.info('Received message: ' + message)
-    emit('message', {'text': message, 'sender': 'other'})
+
+    if not gemini_api_key:
+        logger.error("Gemini API key is not configured.")
+        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other'})
+        return
+
+    try:
+        model = genai.GenerativeModel(selected_model)
+        response = model.generate_content(message)
+        # Check if the response has the expected structure
+        if response and response.parts:
+            bot_response = "".join(part.text for part in response.parts)
+            logger.info('Gemini response: ' + bot_response)
+            emit('message', {'text': bot_response, 'sender': 'other'})
+        else:
+            # Fallback for unexpected response format
+            logger.warning("Unexpected response format from Gemini: " + str(response))
+            emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other'})
+
+    except Exception as e:
+        logger.error(f"Error calling Gemini API: {e}")
+        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other'})
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)

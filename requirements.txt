@@ -6,3 +6,4 @@ Flask-Login
 Authlib
 Flask-SQLAlchemy
 requests
+google-generativeai
