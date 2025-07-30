@@ -40,18 +40,40 @@
     <h2>Existing TTRPG Types</h2>
     <ul>
         {% for ttrpg_type in ttrpg_types %}
-            <li>{{ ttrpg_type.name }}</li>
+            <li>{{ ttrpg_type.name }} <button class="edit-btn" data-id="{{ ttrpg_type.id }}">Edit</button></li>
         {% endfor %}
     </ul>
+    <div id="popup" style="display:none;">
+        <div id="popup-content"></div>
+    </div>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script>
-        document.getElementById('hamburger').onclick = function() {
-            var menu = document.getElementById('menu');
-            if (menu.style.left === '-200px') {
-                menu.style.left = '0';
-            } else {
-                menu.style.left = '-200px';
-            }
-        };
+        document.addEventListener('DOMContentLoaded', (event) => {
+            var socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port);
+
+            document.querySelectorAll('.edit-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    var ttrpgId = this.getAttribute('data-id');
+                    socket.emit('edit_ttrpg', {id: ttrpgId});
+                });
+            });
+
+            socket.on('ttrpg_data', function(data) {
+                var popup = document.getElementById('popup');
+                var popupContent = document.getElementById('popup-content');
+                popupContent.innerHTML = data.html;
+                popup.style.display = 'block';
+            });
+
+            document.getElementById('hamburger').onclick = function() {
+                var menu = document.getElementById('menu');
+                if (menu.style.left === '-200px') {
+                    menu.style.left = '0';
+                } else {
+                    menu.style.left = '-200px';
+                }
+            };
+        });
     </script>
 </body>
 </html>
