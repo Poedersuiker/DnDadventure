@@ -11,6 +11,7 @@ import auth
 import os
 from werkzeug.middleware.proxy_fix import ProxyFix
 from database import db, init_db, User
+import google.generativeai as genai
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,6 +24,11 @@ app.config.from_mapping(
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
 )
 app.config.from_pyfile('config.py', silent=True)
+
+# Gemini API Key
+gemini_api_key = app.config.get('GEMINI_API_KEY')
+if gemini_api_key:
+    genai.configure(api_key=gemini_api_key)
 
 # Database setup
 db_type = app.config.get("DB_TYPE", "sqlite")
@@ -101,7 +107,32 @@ def handle_disconnect():
 def handle_message(message):
     """Handles a message from a client."""
     logger.info('Received message: ' + message)
-    emit('message', {'text': message, 'sender': 'other'})
+
+    # Emit the original message back to the client
+    emit('message', {'text': message, 'sender': 'user'})
+
+    if not gemini_api_key:
+        logger.error("Gemini API key is not configured.")
+        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other'})
+        return
+
+    try:
+        model = genai.GenerativeModel('gemini-pro')
+        response = model.generate_content(message)
+
+        # Check if the response has the expected structure
+        if response and response.parts:
+            bot_response = "".join(part.text for part in response.parts)
+            logger.info('Gemini response: ' + bot_response)
+            emit('message', {'text': bot_response, 'sender': 'other'})
+        else:
+            # Fallback for unexpected response format
+            logger.warning("Unexpected response format from Gemini: " + str(response))
+            emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other'})
+
+    except Exception as e:
+        logger.error(f"Error calling Gemini API: {e}")
+        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other'})
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
