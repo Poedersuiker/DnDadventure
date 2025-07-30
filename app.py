@@ -124,11 +124,26 @@ def admin():
 
     global selected_model
     if request.method == 'POST':
-        selected_model = request.form.get('model')
+        if request.form.get('form_type') == 'add_ttrpg':
+            ttrpg_name = request.form.get('ttrpg_name')
+            json_template = request.form.get('json_template')
+            html_template = request.form.get('html_template')
+            wiki_link = request.form.get('wiki_link')
+            new_ttrpg_type = TTRPGType(
+                name=ttrpg_name,
+                json_template=json_template,
+                html_template=html_template,
+                wiki_link=wiki_link
+            )
+            db.session.add(new_ttrpg_type)
+            db.session.commit()
+        else:
+            selected_model = request.form.get('model')
         return redirect(url_for('admin'))
 
     models = [m for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-    return render_template('admin.html', models=models, selected_model=selected_model)
+    ttrpg_types = TTRPGType.query.all()
+    return render_template('admin.html', models=models, selected_model=selected_model, ttrpg_types=ttrpg_types)
 
 @socketio.on('connect')
 def handle_connect():
