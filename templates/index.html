@@ -3,78 +3,17 @@
 <head>
     <title>Chat</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <style>
-        body {
-            font-family: sans-serif;
-            margin: 0;
-        }
-        #app {
-            display: flex;
-            height: 100vh;
-        }
-        #menu {
-            width: 50px;
-            background-color: #f0f0f0;
-            border-right: 1px solid #ccc;
-        }
-        #chat-window {
-            flex-grow: 1;
-            display: flex;
-            flex-direction: column;
-        }
-        #messages {
-            flex-grow: 1;
-            overflow-y: auto;
-            padding: 10px;
-            border-bottom: 1px solid #ccc;
-            display: flex;
-            flex-direction: column;
-        }
-        .message {
-            padding: 10px;
-            border-radius: 10px;
-            margin-bottom: 10px;
-            max-width: 70%;
-        }
-        .sent {
-            background-color: #dcf8c6;
-            align-self: flex-end;
-        }
-        .received {
-            background-color: #fff;
-            align-self: flex-start;
-        }
-        #input-area {
-            display: flex;
-            padding: 10px;
-        }
-        #message-input {
-            flex-grow: 1;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            padding: 5px;
-        }
-        #send-button {
-            margin-left: 10px;
-        }
-        #hamburger {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            cursor: pointer;
-            z-index: 1;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <div id="hamburger">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-menu"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-        <div id="menu-items" style="display: none;">
-            <a href="/logout">Logout</a>
-            {% if current_user.email == admin_email %}
-                <a href="/admin">Admin</a>
-            {% endif %}
-        </div>
+    </div>
+    <div id="menu">
+        <a href="/logout">Logout</a>
+        {% if current_user.email == admin_email %}
+            <a href="/admin">Admin</a>
+        {% endif %}
     </div>
     <div id="app">
         <div id="chat-window">
@@ -126,11 +65,11 @@
         }
 
         document.getElementById('hamburger').onclick = function() {
-            var menu = document.getElementById('menu-items');
-            if (menu.style.display === 'none') {
-                menu.style.display = 'block';
+            var menu = document.getElementById('menu');
+            if (menu.style.left === '-200px') {
+                menu.style.left = '0';
             } else {
-                menu.style.display = 'none';
+                menu.style.left = '-200px';
             }
         };
     </script>
