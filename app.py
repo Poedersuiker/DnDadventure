@@ -10,7 +10,7 @@ from flask_login import LoginManager, UserMixin, login_user, logout_user, curren
 import auth
 import os
 from werkzeug.middleware.proxy_fix import ProxyFix
-from database import db, init_db, User
+from database import db, init_db, User, Character, TTRPGType
 import google.generativeai as genai
 
 # Configure logging
@@ -66,7 +66,8 @@ def load_user(user_id):
 @login_required
 def index():
     admin_email = app.config.get('ADMIN_EMAIL')
-    return render_template('index.html', admin_email=admin_email)
+    characters = Character.query.filter_by(user_id=current_user.id).all()
+    return render_template('index.html', admin_email=admin_email, characters=characters)
 
 @app.route('/login')
 def login():
@@ -95,6 +96,25 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+@app.route('/new_character', methods=['GET', 'POST'])
+@login_required
+def new_character():
+    if request.method == 'POST':
+        character_name = request.form.get('character_name')
+        ttrpg_type_id = request.form.get('ttrpg_type')
+        ttrpg_type = TTRPGType.query.get(ttrpg_type_id)
+        new_char = Character(
+            user_id=current_user.id,
+            ttrpg_type_id=ttrpg_type_id,
+            character_name=character_name,
+            charactersheet=ttrpg_type.json_template
+        )
+        db.session.add(new_char)
+        db.session.commit()
+        return redirect(url_for('index'))
+    ttrpg_types = TTRPGType.query.all()
+    return render_template('new_character.html', ttrpg_types=ttrpg_types)
+
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
@@ -104,11 +124,26 @@ def admin():
 
     global selected_model
     if request.method == 'POST':
-        selected_model = request.form.get('model')
+        if request.form.get('form_type') == 'add_ttrpg':
+            ttrpg_name = request.form.get('ttrpg_name')
+            json_template = request.form.get('json_template')
+            html_template = request.form.get('html_template')
+            wiki_link = request.form.get('wiki_link')
+            new_ttrpg_type = TTRPGType(
+                name=ttrpg_name,
+                json_template=json_template,
+                html_template=html_template,
+                wiki_link=wiki_link
+            )
+            db.session.add(new_ttrpg_type)
+            db.session.commit()
+        else:
+            selected_model = request.form.get('model')
         return redirect(url_for('admin'))
 
     models = [m for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-    return render_template('admin.html', models=models, selected_model=selected_model)
+    ttrpg_types = TTRPGType.query.all()
+    return render_template('admin.html', models=models, selected_model=selected_model, ttrpg_types=ttrpg_types)
 
 @socketio.on('connect')
 def handle_connect():
@@ -123,9 +158,11 @@ def handle_disconnect():
     logger.info('Client disconnected')
 
 @socketio.on('message')
-def handle_message(message):
+def handle_message(data):
     """Handles a message from a client."""
-    logger.info('Received message: ' + message)
+    message = data['message']
+    character_id = data['character_id']
+    logger.info(f"Received message: {message} for character: {character_id}")
 
     if not gemini_api_key:
         logger.error("Gemini API key is not configured.")

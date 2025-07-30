@@ -20,8 +20,29 @@
                 <option value="{{ model.name }}" {% if model.name == selected_model %}selected{% endif %}>{{ model.display_name }}</option>
             {% endfor %}
         </select>
-        <button type="submit">Save</button>
+        <button type="submit">Save Model</button>
     </form>
+    <hr>
+    <h2>Add TTRPG Type</h2>
+    <form method="POST">
+        <input type="hidden" name="form_type" value="add_ttrpg">
+        <label for="ttrpg_name">Name:</label>
+        <input type="text" name="ttrpg_name" id="ttrpg_name" required><br>
+        <label for="json_template">JSON Template:</label>
+        <textarea name="json_template" id="json_template" required></textarea><br>
+        <label for="html_template">HTML Template:</label>
+        <textarea name="html_template" id="html_template" required></textarea><br>
+        <label for="wiki_link">Wiki Link:</label>
+        <input type="text" name="wiki_link" id="wiki_link"><br>
+        <button type="submit">Add TTRPG Type</button>
+    </form>
+    <hr>
+    <h2>Existing TTRPG Types</h2>
+    <ul>
+        {% for ttrpg_type in ttrpg_types %}
+            <li>{{ ttrpg_type.name }}</li>
+        {% endfor %}
+    </ul>
     <script>
         document.getElementById('hamburger').onclick = function() {
             var menu = document.getElementById('menu');
