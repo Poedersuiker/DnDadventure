@@ -36,7 +36,7 @@ if gemini_api_key:
 # Database setup
 db_type = app.config.get("DB_TYPE", "sqlite")
 if db_type == "sqlite":
-    db_path = app.config.get("DB_PATH", "users.db")
+    db_path = app.config.get("DB_PATH", "database.db")
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(app.instance_path, db_path)
 elif db_type in ["mysql", "postgresql"]:
     db_user = app.config.get("DB_USER")
