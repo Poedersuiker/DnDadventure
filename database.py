@@ -25,6 +25,11 @@ class Character(db.Model):
     character_name = db.Column(db.String(128), nullable=False)
     charactersheet = db.Column(db.Text, nullable=False)
 
+class GeminiPrepMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    message = db.Column(db.Text, nullable=False)
+    priority = db.Column(db.Integer, nullable=False)
+
 def init_db(app):
     db.init_app(app)
     with app.app_context():

@@ -83,9 +83,9 @@
         function selectCharacter(characterId) {
             document.getElementById('active-character-id').value = characterId;
             enableChat();
-            // You can also add logic here to load character-specific chat history
-            // For now, we'll just clear the messages
             document.getElementById('messages').innerHTML = '';
+            socket.emit('initiate_chat', { 'character_id': characterId });
+            document.getElementById('thinking-indicator').style.display = 'block';
         }
 
         document.getElementById('hamburger').onclick = function() {

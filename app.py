@@ -10,7 +10,7 @@ from flask_login import LoginManager, UserMixin, login_user, logout_user, curren
 import auth
 import os
 from werkzeug.middleware.proxy_fix import ProxyFix
-from database import db, init_db, User, Character, TTRPGType
+from database import db, init_db, User, Character, TTRPGType, GeminiPrepMessage
 import google.generativeai as genai
 
 # Configure logging
@@ -57,6 +57,7 @@ login_manager.login_view = 'login'
 
 auth.init_app(app)
 
+conversations = {}
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -196,6 +197,51 @@ def ttrpg_data():
             return jsonify({'success': True})
         return jsonify({'success': False, 'error': 'TTRPG type not found'})
 
+@app.route('/admin/gemini_prep_data', methods=['GET', 'POST', 'DELETE', 'PUT'])
+@login_required
+def gemini_prep_data():
+    if current_user.email != app.config.get('ADMIN_EMAIL'):
+        return "Unauthorized", 401
+
+    if request.method == 'GET':
+        messages = GeminiPrepMessage.query.order_by(GeminiPrepMessage.priority).all()
+        return jsonify([
+            {
+                'id': m.id,
+                'message': m.message,
+                'priority': m.priority
+            } for m in messages
+        ])
+
+    if request.method == 'POST':
+        data = request.get_json()
+        message = GeminiPrepMessage.query.get(data['id'])
+        if message:
+            message.message = data['message']
+            message.priority = data['priority']
+            db.session.commit()
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'error': 'Message not found'})
+
+    if request.method == 'PUT':
+        data = request.get_json()
+        new_message = GeminiPrepMessage(
+            message=data['message'],
+            priority=data['priority']
+        )
+        db.session.add(new_message)
+        db.session.commit()
+        return jsonify({'success': True})
+
+    if request.method == 'DELETE':
+        data = request.get_json()
+        message = GeminiPrepMessage.query.get(data['id'])
+        if message:
+            db.session.delete(message)
+            db.session.commit()
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'error': 'Message not found'})
+
 @socketio.on('connect')
 def handle_connect():
     """Handles a new client connection."""
@@ -216,6 +262,48 @@ def handle_edit_ttrpg(data):
     if ttrpg_type:
         emit('ttrpg_data', {'html': ttrpg_type.html_template})
 
+@socketio.on('initiate_chat')
+def handle_initiate_chat(data):
+    character_id = data['character_id']
+    character = Character.query.get(character_id)
+    if not character or character.user_id != current_user.id:
+        return
+
+    global conversations
+
+    prep_messages = GeminiPrepMessage.query.order_by(GeminiPrepMessage.priority).all()
+    ttrpg_name = character.ttrpg_type.name
+    char_name = character.character_name
+
+    initial_prompt_parts = []
+    for prep_msg in prep_messages:
+        msg = prep_msg.message
+        msg = msg.replace('<fill selected TTRPG name>', ttrpg_name)
+        msg = msg.replace('<fill selected character name>', char_name)
+        initial_prompt_parts.append(msg)
+
+    initial_prompt = "\n".join(initial_prompt_parts)
+
+    history = [{'role': 'user', 'parts': [initial_prompt]}]
+
+    try:
+        model = genai.GenerativeModel(selected_model)
+        response = model.generate_content(history)
+
+        if response and response.parts:
+            bot_response = "".join(part.text for part in response.parts)
+            logger.info('Gemini initial response: ' + bot_response)
+            history.append({'role': 'model', 'parts': [bot_response]})
+            conversations[character_id] = history
+            emit('message', {'text': bot_response, 'sender': 'other', 'character_id': character_id})
+        else:
+            logger.warning("Unexpected response format from Gemini: " + str(response))
+            emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other', 'character_id': character_id})
+
+    except Exception as e:
+        logger.error(f"Error calling Gemini API: {e}")
+        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other', 'character_id': character_id})
+
 @socketio.on('message')
 def handle_message(data):
     """Handles a message from a client."""
@@ -228,13 +316,23 @@ def handle_message(data):
         emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other'})
         return
 
+    global conversations
+    if character_id not in conversations:
+        emit('message', {'text': "Chat not initiated.", 'sender': 'other'})
+        return
+
+    history = conversations[character_id]
+    history.append({'role': 'user', 'parts': [message]})
+
     try:
         model = genai.GenerativeModel(selected_model)
-        response = model.generate_content(message)
-        # Check if the response has the expected structure
+        response = model.generate_content(history)
+
         if response and response.parts:
             bot_response = "".join(part.text for part in response.parts)
             logger.info('Gemini response: ' + bot_response)
+            history.append({'role': 'model', 'parts': [bot_response]})
+            conversations[character_id] = history
             emit('message', {'text': bot_response, 'sender': 'other'})
         else:
             # Fallback for unexpected response format
