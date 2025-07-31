@@ -70,9 +70,18 @@
             var messages = document.getElementById('messages');
             var messageElement = document.createElement('div');
             messageElement.classList.add('message', type);
-            messageElement.textContent = text;
+            messageElement.innerHTML = text;
             messages.appendChild(messageElement);
             messages.scrollTop = messages.scrollHeight;
+        }
+
+        function sendChoice(choice) {
+            var characterId = document.getElementById('active-character-id').value;
+            if (characterId) {
+                addMessage('You chose: ' + choice, 'sent');
+                socket.emit('user_choice', { 'choice': choice, 'character_id': characterId });
+                document.getElementById('thinking-indicator').style.display = 'block';
+            }
         }
 
         function enableChat() {

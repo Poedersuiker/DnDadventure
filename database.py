@@ -43,4 +43,12 @@ def init_db(app):
                 wiki_link='https://roll20.net/compendium/dnd5e/BookIndex'
             )
             db.session.add(dnd5e)
-            db.session.commit()
+
+        if not GeminiPrepMessage.query.filter_by(priority=0).first():
+            choice_instruction = GeminiPrepMessage(
+                priority=0,
+                message="""When you want to give the user a choice, use the following format: [APPDATA]{ "SingleChoice": { "Title": { "Option1": { "Name": "Option1", "Description": "Description of Option 1" }, "Option2": { "Name": "Option2", "Description": "Description of Option 2" } } } }[/APPDATA]"""
+            )
+            db.session.add(choice_instruction)
+
+        db.session.commit()
