@@ -40,8 +40,8 @@ def process_bot_response(bot_response):
             for key, details in options.items():
                 html_choices += f"""
                     <div class="choice-option">
-                        <strong>{details['Name']}</strong>: {details['Description']}
-                        <button onclick="sendChoice('{details['Name']}')">Select</button>
+                        <button onclick="sendChoice('{details['Name']}')">{details['Name']}</button>
+                        <p>{details['Description']}</p>
                     </div>
                 """
             html_choices += '</div>'
