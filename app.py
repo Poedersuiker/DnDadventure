@@ -3,7 +3,7 @@ monkey.patch_all()
 
 import logging
 import time
-from flask import Flask, render_template, redirect, url_for, session, request
+from flask import Flask, render_template, redirect, url_for, session, request, jsonify
 from flask_socketio import SocketIO, emit
 from threading import Thread
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
@@ -144,6 +144,45 @@ def admin():
     models = [m for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
     ttrpg_types = TTRPGType.query.all()
     return render_template('admin.html', models=models, selected_model=selected_model, ttrpg_types=ttrpg_types)
+
+@app.route('/admin/ttrpg_data', methods=['GET', 'POST', 'DELETE'])
+@login_required
+def ttrpg_data():
+    if current_user.email != app.config.get('ADMIN_EMAIL'):
+        return "Unauthorized", 401
+
+    if request.method == 'GET':
+        ttrpg_types = TTRPGType.query.all()
+        return jsonify([
+            {
+                'id': t.id,
+                'name': t.name,
+                'json_template': t.json_template,
+                'html_template': t.html_template,
+                'wiki_link': t.wiki_link
+            } for t in ttrpg_types
+        ])
+
+    if request.method == 'POST':
+        data = request.get_json()
+        ttrpg_type = TTRPGType.query.get(data['id'])
+        if ttrpg_type:
+            ttrpg_type.name = data['name']
+            ttrpg_type.json_template = data['json_template']
+            ttrpg_type.html_template = data['html_template']
+            ttrpg_type.wiki_link = data['wiki_link']
+            db.session.commit()
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'error': 'TTRPG type not found'})
+
+    if request.method == 'DELETE':
+        data = request.get_json()
+        ttrpg_type = TTRPGType.query.get(data['id'])
+        if ttrpg_type:
+            db.session.delete(ttrpg_type)
+            db.session.commit()
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'error': 'TTRPG type not found'})
 
 @socketio.on('connect')
 def handle_connect():
