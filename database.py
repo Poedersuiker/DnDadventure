@@ -29,3 +29,13 @@ def init_db(app):
     db.init_app(app)
     with app.app_context():
         db.create_all()
+        # Add a default TTRPG type if it doesn't exist
+        if not TTRPGType.query.filter_by(name='Dungeons & Dragons 5th Edition').first():
+            dnd5e = TTRPGType(
+                name='Dungeons & Dragons 5th Edition',
+                json_template='{test}',
+                html_template='<a href="test">Test</a>',
+                wiki_link='https://roll20.net/compendium/dnd5e/BookIndex'
+            )
+            db.session.add(dnd5e)
+            db.session.commit()

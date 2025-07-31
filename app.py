@@ -26,7 +26,7 @@ app.config.from_mapping(
 app.config.from_pyfile('config.py', silent=True)
 
 # Global variable to store the selected model
-selected_model = 'gemini-pro'
+selected_model = 'gemini-1.5-pro-latest'
 
 # Gemini API Key
 gemini_api_key = app.config.get('GEMINI_API_KEY')
