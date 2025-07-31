@@ -3,6 +3,8 @@ monkey.patch_all()
 
 import logging
 import time
+import re
+import json
 from flask import Flask, render_template, redirect, url_for, session, request, jsonify
 from flask_socketio import SocketIO, emit
 from threading import Thread
@@ -16,6 +18,41 @@ import google.generativeai as genai
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def process_bot_response(bot_response):
+    appdata_pattern = re.compile(r'\[APPDATA\](.*?)\[/APPDATA\]', re.DOTALL)
+    match = appdata_pattern.search(bot_response)
+
+    if not match:
+        return bot_response
+
+    appdata_json_str = match.group(1)
+    processed_text = appdata_pattern.sub('', bot_response).strip()
+
+    try:
+        appdata = json.loads(appdata_json_str)
+        if 'SingleChoice' in appdata:
+            choice_data = appdata['SingleChoice']
+            title = next(iter(choice_data))
+            options = choice_data[title]
+
+            html_choices = f'<div class="choice-container"><h3>{title}</h3>'
+            for key, details in options.items():
+                html_choices += f"""
+                    <div class="choice-option">
+                        <strong>{details['Name']}</strong>: {details['Description']}
+                        <button onclick="sendChoice('{details['Name']}')">Select</button>
+                    </div>
+                """
+            html_choices += '</div>'
+
+            return processed_text + html_choices
+
+    except (json.JSONDecodeError, StopIteration) as e:
+        logger.error(f"Failed to parse APPDATA json: {e}")
+        return processed_text
+
+    return processed_text
 
 app = Flask(__name__, instance_relative_config=True)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
@@ -293,9 +330,10 @@ def handle_initiate_chat(data):
         if response and response.parts:
             bot_response = "".join(part.text for part in response.parts)
             logger.info('Gemini initial response: ' + bot_response)
+            processed_response = process_bot_response(bot_response)
             history.append({'role': 'model', 'parts': [bot_response]})
             conversations[character_id] = history
-            emit('message', {'text': bot_response, 'sender': 'other', 'character_id': character_id})
+            emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
         else:
             logger.warning("Unexpected response format from Gemini: " + str(response))
             emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other', 'character_id': character_id})
@@ -331,11 +369,52 @@ def handle_message(data):
         if response and response.parts:
             bot_response = "".join(part.text for part in response.parts)
             logger.info('Gemini response: ' + bot_response)
+            processed_response = process_bot_response(bot_response)
             history.append({'role': 'model', 'parts': [bot_response]})
             conversations[character_id] = history
-            emit('message', {'text': bot_response, 'sender': 'other'})
+            emit('message', {'text': processed_response, 'sender': 'other'})
         else:
             # Fallback for unexpected response format
+            logger.warning("Unexpected response format from Gemini: " + str(response))
+            emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other'})
+
+    except Exception as e:
+        logger.error(f"Error calling Gemini API: {e}")
+        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other'})
+
+@socketio.on('user_choice')
+def handle_user_choice(data):
+    """Handles a user's choice from a structured data interaction."""
+    choice = data['choice']
+    character_id = data['character_id']
+    logger.info(f"Received choice: {choice} for character: {character_id}")
+
+    if not gemini_api_key:
+        logger.error("Gemini API key is not configured.")
+        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other'})
+        return
+
+    global conversations
+    if character_id not in conversations:
+        emit('message', {'text': "Chat not initiated.", 'sender': 'other'})
+        return
+
+    history = conversations[character_id]
+    user_message = f"I choose: {choice}"
+    history.append({'role': 'user', 'parts': [user_message]})
+
+    try:
+        model = genai.GenerativeModel(selected_model)
+        response = model.generate_content(history)
+
+        if response and response.parts:
+            bot_response = "".join(part.text for part in response.parts)
+            logger.info('Gemini response after choice: ' + bot_response)
+            processed_response = process_bot_response(bot_response)
+            history.append({'role': 'model', 'parts': [bot_response]})
+            conversations[character_id] = history
+            emit('message', {'text': processed_response, 'sender': 'other'})
+        else:
             logger.warning("Unexpected response format from Gemini: " + str(response))
             emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other'})
 
