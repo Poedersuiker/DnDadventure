@@ -47,7 +47,21 @@ def init_db(app):
         if not GeminiPrepMessage.query.filter_by(priority=0).first():
             choice_instruction = GeminiPrepMessage(
                 priority=0,
+                message="""You are the DM in a <fill selected TTRPG name> campaign. The user will be the player. Adhere to the ruleset of the given RPG system."""
+            )
+            db.session.add(choice_instruction)
+        
+        if not GeminiPrepMessage.query.filter_by(priority=1).first():
+            choice_instruction = GeminiPrepMessage(
+                priority=1,
                 message="""When you want to give the user a choice, use the following format: [APPDATA]{ "SingleChoice": { "Title": { "Option1": { "Name": "Option1", "Description": "Description of Option 1" }, "Option2": { "Name": "Option2", "Description": "Description of Option 2" } } } }[/APPDATA]"""
+            )
+            db.session.add(choice_instruction)
+
+        if not GeminiPrepMessage.query.filter_by(priority=2).first():
+            choice_instruction = GeminiPrepMessage(
+                priority=2,
+                message="""The player has choosen <fill selected character name> as the character name for the next player character. Start by helping the player through the character creation steps."""
             )
             db.session.add(choice_instruction)
 
