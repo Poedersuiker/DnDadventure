@@ -145,7 +145,7 @@ def admin():
     ttrpg_types = TTRPGType.query.all()
     return render_template('admin.html', models=models, selected_model=selected_model, ttrpg_types=ttrpg_types)
 
-@app.route('/admin/ttrpg_data', methods=['GET', 'POST', 'DELETE'])
+@app.route('/admin/ttrpg_data', methods=['GET', 'POST', 'DELETE', 'PUT'])
 @login_required
 def ttrpg_data():
     if current_user.email != app.config.get('ADMIN_EMAIL'):
@@ -174,6 +174,18 @@ def ttrpg_data():
             db.session.commit()
             return jsonify({'success': True})
         return jsonify({'success': False, 'error': 'TTRPG type not found'})
+
+    if request.method == 'PUT':
+        data = request.get_json()
+        new_ttrpg_type = TTRPGType(
+            name=data['name'],
+            json_template=data['json_template'],
+            html_template=data['html_template'],
+            wiki_link=data['wiki_link']
+        )
+        db.session.add(new_ttrpg_type)
+        db.session.commit()
+        return jsonify({'success': True})
 
     if request.method == 'DELETE':
         data = request.get_json()

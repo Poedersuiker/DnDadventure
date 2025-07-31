@@ -59,20 +59,6 @@
     </div>
 
     <div id="ttrpg" class="tab-content">
-        <h2>Add TTRPG Type</h2>
-        <form method="POST">
-            <input type="hidden" name="form_type" value="add_ttrpg">
-            <label for="ttrpg_name">Name:</label>
-            <input type="text" name="ttrpg_name" id="ttrpg_name" required><br>
-            <label for="json_template">JSON Template:</label>
-            <textarea name="json_template" id="json_template" required></textarea><br>
-            <label for="html_template">HTML Template:</label>
-            <textarea name="html_template" id="html_template" required></textarea><br>
-            <label for="wiki_link">Wiki Link:</label>
-            <input type="text" name="wiki_link" id="wiki_link"><br>
-            <button type="submit">Add TTRPG Type</button>
-        </form>
-        <hr>
         <h2>Existing TTRPG Types</h2>
         <table id="ttrpg-table">
             <thead>
@@ -88,6 +74,7 @@
             <tbody>
             </tbody>
         </table>
+        <button id="add-row-btn">Add New Row</button>
     </div>
 
     <script>
@@ -161,26 +148,29 @@
                 }
 
                 if (target.classList.contains('save-btn')) {
+                    const isNewRow = !id;
                     const data = {
-                        id: id,
                         name: row.cells[1].innerText,
                         json_template: row.cells[2].innerText,
                         html_template: row.cells[3].innerText,
                         wiki_link: row.cells[4].innerText
                     };
 
-                    fetch('/admin/ttrpg_data', {
-                        method: 'POST',
+                    let url = '/admin/ttrpg_data';
+                    let method = 'PUT';
+                    if (!isNewRow) {
+                        data.id = id;
+                        method = 'POST';
+                    }
+
+                    fetch(url, {
+                        method: method,
                         headers: {
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify(data)
                     }).then(() => {
-                        row.querySelectorAll('[contenteditable]').forEach(cell => {
-                            cell.setAttribute('contenteditable', 'false');
-                        });
-                        target.style.display = 'none';
-                        row.querySelector('.edit-btn').style.display = 'inline-block';
+                        loadTable();
                     });
                 }
 
@@ -200,6 +190,22 @@
             });
 
             loadTable();
+
+            document.getElementById('add-row-btn').addEventListener('click', function() {
+                let row = tableBody.insertRow();
+                row.setAttribute('data-id', '');
+                row.innerHTML = `
+                    <td></td>
+                    <td contenteditable="true"></td>
+                    <td contenteditable="true"></td>
+                    <td contenteditable="true"></td>
+                    <td contenteditable="true"></td>
+                    <td>
+                        <button class="save-btn">Save</button>
+                        <button class="delete-btn">Delete</button>
+                    </td>
+                `;
+            });
         });
     </script>
 </body>
