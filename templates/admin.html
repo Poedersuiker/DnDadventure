@@ -43,6 +43,7 @@
     <div class="tabs">
         <div class="tab active" onclick="openTab(event, 'settings')">Settings</div>
         <div class="tab" onclick="openTab(event, 'ttrpg')">TTRPG Table</div>
+        <div class="tab" onclick="openTab(event, 'gemini-prep')">Gemini Prep</div>
     </div>
 
     <div id="settings" class="tab-content active">
@@ -75,6 +76,23 @@
             </tbody>
         </table>
         <button id="add-row-btn">Add New Row</button>
+    </div>
+
+    <div id="gemini-prep" class="tab-content">
+        <h2>Gemini Preparation Messages</h2>
+        <table id="gemini-prep-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Message</th>
+                    <th>Priority</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+        <button id="add-gemini-prep-row-btn">Add New Row</button>
     </div>
 
     <script>
@@ -198,6 +216,101 @@
                     <td></td>
                     <td contenteditable="true"></td>
                     <td contenteditable="true"></td>
+                    <td contenteditable="true"></td>
+                    <td contenteditable="true"></td>
+                    <td>
+                        <button class="save-btn">Save</button>
+                        <button class="delete-btn">Delete</button>
+                    </td>
+                `;
+            });
+
+            const geminiPrepTable = document.getElementById('gemini-prep-table');
+            const geminiPrepTableBody = geminiPrepTable.getElementsByTagName('tbody')[0];
+
+            function loadGeminiPrepTable() {
+                fetch('/admin/gemini_prep_data')
+                    .then(response => response.json())
+                    .then(data => {
+                        geminiPrepTableBody.innerHTML = '';
+                        data.forEach(geminiPrep => {
+                            let row = geminiPrepTableBody.insertRow();
+                            row.setAttribute('data-id', geminiPrep.id);
+                            row.innerHTML = `
+                                <td>${geminiPrep.id}</td>
+                                <td contenteditable="false">${geminiPrep.message}</td>
+                                <td contenteditable="false">${geminiPrep.priority}</td>
+                                <td>
+                                    <button class="edit-btn">Edit</button>
+                                    <button class="save-btn" style="display:none;">Save</button>
+                                    <button class="delete-btn">Delete</button>
+                                </td>
+                            `;
+                        });
+                    });
+            }
+
+            geminiPrepTable.addEventListener('click', function(event) {
+                const target = event.target;
+                const row = target.closest('tr');
+                if (!row) return;
+                const id = row.getAttribute('data-id');
+
+                if (target.classList.contains('edit-btn')) {
+                    row.querySelectorAll('[contenteditable]').forEach(cell => {
+                        cell.setAttribute('contenteditable', 'true');
+                    });
+                    target.style.display = 'none';
+                    row.querySelector('.save-btn').style.display = 'inline-block';
+                }
+
+                if (target.classList.contains('save-btn')) {
+                    const isNewRow = !id;
+                    const data = {
+                        message: row.cells[1].innerText,
+                        priority: row.cells[2].innerText
+                    };
+
+                    let url = '/admin/gemini_prep_data';
+                    let method = 'PUT';
+                    if (!isNewRow) {
+                        data.id = id;
+                        method = 'POST';
+                    }
+
+                    fetch(url, {
+                        method: method,
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(data)
+                    }).then(() => {
+                        loadGeminiPrepTable();
+                    });
+                }
+
+                if (target.classList.contains('delete-btn')) {
+                    if (confirm('Are you sure you want to delete this message?')) {
+                        fetch('/admin/gemini_prep_data', {
+                            method: 'DELETE',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ id: id })
+                        }).then(() => {
+                            loadGeminiPrepTable();
+                        });
+                    }
+                }
+            });
+
+            loadGeminiPrepTable();
+
+            document.getElementById('add-gemini-prep-row-btn').addEventListener('click', function() {
+                let row = geminiPrepTableBody.insertRow();
+                row.setAttribute('data-id', '');
+                row.innerHTML = `
+                    <td></td>
                     <td contenteditable="true"></td>
                     <td contenteditable="true"></td>
                     <td>
