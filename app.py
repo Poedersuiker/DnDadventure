@@ -157,6 +157,14 @@ def handle_disconnect():
     """Handles a client disconnection."""
     logger.info('Client disconnected')
 
+@socketio.on('edit_ttrpg')
+def handle_edit_ttrpg(data):
+    """Handles a request to edit a TTRPG type."""
+    ttrpg_id = data['id']
+    ttrpg_type = TTRPGType.query.get(ttrpg_id)
+    if ttrpg_type:
+        emit('ttrpg_data', {'html': ttrpg_type.html_template})
+
 @socketio.on('message')
 def handle_message(data):
     """Handles a message from a client."""
