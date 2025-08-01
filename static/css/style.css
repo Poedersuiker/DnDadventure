@@ -1,18 +1,62 @@
+/* General Body Styles */
 body {
     font-family: sans-serif;
     margin: 0;
-}
-
-#app {
     display: flex;
     height: 100vh;
 }
 
-#chat-window {
+/* Hamburger Menu */
+#hamburger {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    cursor: pointer;
+    z-index: 1001;
+}
+
+#menu {
+    width: 200px;
+    height: 100%;
+    background-color: #f4f4f4;
+    position: fixed;
+    left: -200px;
+    transition: 0.3s;
+    padding-top: 60px;
+    z-index: 1000;
+}
+
+#menu a {
+    padding: 10px 15px;
+    text-decoration: none;
+    font-size: 18px;
+    color: #333;
+    display: block;
+}
+
+#menu a:hover {
+    background-color: #ddd;
+}
+
+/* Main App Container */
+#app {
     flex-grow: 1;
     display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    margin-left: 0; /* Changed from 200px to 0 for default state */
+    transition: margin-left .3s;
+}
+
+/* Chat Window */
+#chat-window {
+    width: 80%;
+    max-width: 800px;
+    height: 90vh;
+    border: 1px solid #ccc;
+    display: flex;
     flex-direction: column;
-    background-color: #f8f8f8;
 }
 
 #messages {
@@ -20,48 +64,24 @@ body {
     overflow-y: auto;
     padding: 10px;
     border-bottom: 1px solid #ccc;
-    display: flex;
-    flex-direction: column;
 }
 
 .message {
-    padding: 10px;
-    border-radius: 10px;
     margin-bottom: 10px;
-    max-width: 70%;
-    position: relative;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    padding: 8px 12px;
+    border-radius: 10px;
+    max-width: 80%;
 }
 
 .sent {
     background-color: #dcf8c6;
     align-self: flex-end;
+    margin-left: auto;
 }
 
 .received {
-    background-color: #fff;
+    background-color: #f1f0f0;
     align-self: flex-start;
-}
-
-.message::before {
-    content: '';
-    position: absolute;
-    top: 10px;
-    width: 0;
-    height: 0;
-    border-style: solid;
-}
-
-.sent::before {
-    right: -10px;
-    border-width: 5px 0 5px 10px;
-    border-color: transparent transparent transparent #dcf8c6;
-}
-
-.received::before {
-    left: -10px;
-    border-width: 5px 10px 5px 0;
-    border-color: transparent #fff transparent transparent;
 }
 
 #input-area {
@@ -69,187 +89,75 @@ body {
     padding: 10px;
 }
 
-#thinking-indicator {
-    padding: 10px;
-    text-align: center;
-    color: #999;
-}
-
-#thinking-indicator::after {
-    content: '...';
-    animation: dots 1s steps(5, end) infinite;
-}
-
-@keyframes dots {
-    0%, 20% {
-        color: rgba(0,0,0,0);
-        text-shadow:
-            .25em 0 0 rgba(0,0,0,0),
-            .5em 0 0 rgba(0,0,0,0);
-    }
-    40% {
-        color: #999;
-        text-shadow:
-            .25em 0 0 rgba(0,0,0,0),
-            .5em 0 0 rgba(0,0,0,0);
-    }
-    60% {
-        text-shadow:
-            .25em 0 0 #999,
-            .5em 0 0 rgba(0,0,0,0);
-    }
-    80%, 100% {
-        text-shadow:
-            .25em 0 0 #999,
-            .5em 0 0 #999;
-    }
-}
-
 #message-input {
     flex-grow: 1;
+    padding: 8px;
     border: 1px solid #ccc;
     border-radius: 5px;
-    padding: 5px;
 }
 
 #send-button {
+    padding: 8px 15px;
     margin-left: 10px;
-}
-
-#hamburger {
-    position: absolute;
-    top: 10px;
-    left: 10px;
+    border: none;
+    background-color: #007bff;
+    color: white;
+    border-radius: 5px;
     cursor: pointer;
-    z-index: 2;
 }
 
-#menu {
-    position: fixed;
-    top: 0;
-    left: -200px;
-    width: 200px;
-    height: 100%;
-    background-color: #f0f0f0;
-    border-right: 1px solid #ccc;
-    transition: left 0.3s ease;
-    z-index: 1;
-    padding-top: 60px;
+#send-button:disabled {
+    background-color: #ccc;
 }
 
-#menu a {
-    display: block;
-    padding: 10px 20px;
-    text-decoration: none;
-    color: #333;
-}
-
-#menu a:hover {
-    background-color: #ddd;
-}
-
-#character-list {
-    width: 200px;
-    border-right: 1px solid #ccc;
+#thinking-indicator {
     padding: 10px;
-    background-color: #f0f0f0;
+    font-style: italic;
+    color: #888;
 }
 
-#character-list h2 {
-    margin-top: 0;
+/* Choice Container */
+.choice-container {
+    border: 1px solid #ccc;
+    padding: 10px;
+    margin-top: 10px;
+    border-radius: 5px;
 }
 
-#character-list ul {
-    list-style: none;
+.choice-option {
+    margin-bottom: 10px;
+}
+
+.choice-option button {
+    margin-right: 10px;
+}
+
+/* Ordered List Container */
+.ordered-list-container {
+    border: 1px solid #ccc;
+    padding: 10px;
+    margin-top: 10px;
+    border-radius: 5px;
+}
+
+#sortable-list {
+    list-style-type: none;
     padding: 0;
 }
 
-#character-list li {
-    padding: 10px;
-    cursor: pointer;
-}
-
-#character-list li:hover {
-    background-color: #ddd;
-}
-
-#popup {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0,0,0,0.5);
-    z-index: 3;
-}
-
-#popup-content {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background-color: #fff;
-    padding: 20px;
-    border-radius: 5px;
-    max-height: 80vh;
-    overflow-y: auto;
-}
-
-#close-popup {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-}
-
-/* Tabs */
-.tabs {
-    display: flex;
-    cursor: pointer;
-    border-bottom: 1px solid #ccc;
-}
-.tab {
-    padding: 10px 20px;
-    border: 1px solid #ccc;
-    border-bottom: none;
-    border-radius: 5px 5px 0 0;
-    background-color: #f1f1f1;
-    margin-right: 5px;
-}
-.tab.active {
-    background-color: #fff;
-    border-bottom: 1px solid #fff;
-}
-.tab-content {
-    display: none;
-    padding: 20px;
-    border: 1px solid #ccc;
-    border-top: none;
-    border-radius: 0 5px 5px 5px;
-}
-.tab-content.active {
-    display: block;
-}
-
-/* Table */
-#ttrpg-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-#ttrpg-table th, #ttrpg-table td {
-    border: 1px solid #ddd;
+.sortable-item {
     padding: 8px;
-}
-#ttrpg-table th {
-    background-color: #f2f2f2;
-    text-align: left;
-}
-#ttrpg-table td[contenteditable="true"] {
-    background-color: #fffacd;
+    margin: 5px 0;
+    border: 1px solid #ddd;
+    background-color: #f9f9f9;
+    display: flex;
+    justify-content: space-between;
 }
 
-/* Buttons */
-.edit-btn, .save-btn, .delete-btn {
-    padding: 5px 10px;
-    margin-right: 5px;
-    cursor: pointer;
+.value {
+    cursor: move;
+}
+
+.dragging {
+    opacity: 0.5;
 }

@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch
-from app import app, db, User
+from app import app, db, User, process_bot_response
 import os
 
 class AuthTestCase(unittest.TestCase):
@@ -74,6 +74,15 @@ class AuthTestCase(unittest.TestCase):
             response = self.app.get('/admin')
             self.assertEqual(response.status_code, 200)
             self.assertIn(b'Admin', response.data)
+
+    def test_process_bot_response_ordered_list(self):
+        bot_response = "Here are your ability scores. Please assign them to your abilities. [APPDATA]{ \"OrderedList\": { \"Title\": \"Assign Ability Scores\", \"Items\": [ { \"Name\": \"Strength\" }, { \"Name\": \"Dexterity\" } ], \"Values\": [ 15, 14 ] } }[/APPDATA]"
+        processed_response = process_bot_response(bot_response)
+        self.assertIn('<div class="ordered-list-container">', processed_response)
+        self.assertIn('<h3>Assign Ability Scores</h3>', processed_response)
+        self.assertIn('<li class="sortable-item" data-name="Strength">Strength<span class="value" draggable="true" ondragstart="drag(event)" id="val-0">15</span></li>', processed_response)
+        self.assertIn('<li class="sortable-item" data-name="Dexterity">Dexterity<span class="value" draggable="true" ondragstart="drag(event)" id="val-1">14</span></li>', processed_response)
+        self.assertIn('<button onclick="confirmOrderedList()">Confirm</button>', processed_response)
 
 if __name__ == '__main__':
     unittest.main()

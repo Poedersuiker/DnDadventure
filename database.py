@@ -65,4 +65,11 @@ def init_db(app):
             )
             db.session.add(choice_instruction)
 
+        if not GeminiPrepMessage.query.filter_by(priority=3).first():
+            ordered_list_instruction = GeminiPrepMessage(
+                priority=3,
+                message="""When you want the user to assign a list of values to a list of items, use the following format: [APPDATA]{ "OrderedList": { "Title": "Assign Ability Scores", "Items": [ { "Name": "Strength" }, { "Name": "Dexterity" }, { "Name": "Constitution" }, { "Name": "Intelligence" }, { "Name": "Wisdom" }, { "Name": "Charisma" } ], "Values": [ 15, 14, 13, 12, 10, 8 ] } }[/APPDATA]"""
+            )
+            db.session.add(ordered_list_instruction)
+
         db.session.commit()
