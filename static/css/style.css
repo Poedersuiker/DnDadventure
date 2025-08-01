@@ -283,3 +283,16 @@ body {
 .dragging {
     opacity: 0.5;
 }
+
+.drag-handle {
+    cursor: move;
+    margin-right: 10px;
+}
+
+.arrows {
+    cursor: pointer;
+}
+
+.up-arrow, .down-arrow {
+    margin-left: 5px;
+}

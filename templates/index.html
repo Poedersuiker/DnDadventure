@@ -140,6 +140,28 @@
             }
         }
 
+        function moveValueUp(element) {
+            const listItem = element.closest('.sortable-item');
+            const previousListItem = listItem.previousElementSibling;
+            if (previousListItem) {
+                const currentValue = listItem.querySelector('.value').innerText;
+                const previousValue = previousListItem.querySelector('.value').innerText;
+                listItem.querySelector('.value').innerText = previousValue;
+                previousListItem.querySelector('.value').innerText = currentValue;
+            }
+        }
+
+        function moveValueDown(element) {
+            const listItem = element.closest('.sortable-item');
+            const nextListItem = listItem.nextElementSibling;
+            if (nextListItem) {
+                const currentValue = listItem.querySelector('.value').innerText;
+                const nextValue = nextListItem.querySelector('.value').innerText;
+                listItem.querySelector('.value').innerText = nextValue;
+                nextListItem.querySelector('.value').innerText = currentValue;
+            }
+        }
+
         function sendChoice(choice) {
             var characterId = document.getElementById('active-character-id').value;
             if (characterId) {

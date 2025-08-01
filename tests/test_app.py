@@ -80,8 +80,8 @@ class AuthTestCase(unittest.TestCase):
         processed_response = process_bot_response(bot_response)
         self.assertIn('<div class="ordered-list-container">', processed_response)
         self.assertIn('<h3>Assign Ability Scores</h3>', processed_response)
-        self.assertIn('<li class="sortable-item" data-name="Strength">Strength<span class="value" draggable="true" ondragstart="drag(event)" id="val-0">15</span></li>', processed_response)
-        self.assertIn('<li class="sortable-item" data-name="Dexterity">Dexterity<span class="value" draggable="true" ondragstart="drag(event)" id="val-1">14</span></li>', processed_response)
+        self.assertIn('<li class="sortable-item" data-name="Strength">Strength<span class="drag-handle">&#9776;</span><span class="value" draggable="true" ondragstart="drag(event)" id="val-0">15</span><span class="arrows"><span class="up-arrow" onclick="moveValueUp(this)">&#8593;</span><span class="down-arrow" onclick="moveValueDown(this)">&#8595;</span></span></li>', processed_response)
+        self.assertIn('<li class="sortable-item" data-name="Dexterity">Dexterity<span class="drag-handle">&#9776;</span><span class="value" draggable="true" ondragstart="drag(event)" id="val-1">14</span><span class="arrows"><span class="up-arrow" onclick="moveValueUp(this)">&#8593;</span><span class="down-arrow" onclick="moveValueDown(this)">&#8595;</span></span></li>', processed_response)
         self.assertIn('<button onclick="confirmOrderedList()">Confirm</button>', processed_response)
 
 if __name__ == '__main__':

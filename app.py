@@ -57,7 +57,7 @@ def process_bot_response(bot_response):
             html_list = f'<div class="ordered-list-container"><h3>{title}</h3><ul id="sortable-list">'
             for i, item in enumerate(items):
                 value = values[i] if i < len(values) else ''
-                html_list += f'<li class="sortable-item" data-name="{item["Name"]}">{item["Name"]}<span class="value" draggable="true" ondragstart="drag(event)" id="val-{i}">{value}</span></li>'
+                html_list += f'<li class="sortable-item" data-name="{item["Name"]}">{item["Name"]}<span class="drag-handle">&#9776;</span><span class="value" draggable="true" ondragstart="drag(event)" id="val-{i}">{value}</span><span class="arrows"><span class="up-arrow" onclick="moveValueUp(this)">&#8593;</span><span class="down-arrow" onclick="moveValueDown(this)">&#8595;</span></span></li>'
             html_list += '</ul><button onclick="confirmOrderedList()">Confirm</button></div>'
 
             return processed_text + html_list
