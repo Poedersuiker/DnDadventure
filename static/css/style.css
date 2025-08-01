@@ -332,16 +332,10 @@ body {
 
 .multiselect-option input[type="checkbox"] {
     margin-right: 10px;
-    pointer-events: none;
-}
-
-.multiselect-option label {
-    pointer-events: none;
 }
 
 .multiselect-option .description {
     display: none;
-    pointer-events: none;
 }
 
 #description-pane {

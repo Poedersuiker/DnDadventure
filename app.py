@@ -79,8 +79,10 @@ def process_bot_response(bot_response):
             for key, details in options.items():
                 html_choices += f"""
                     <div class="multiselect-option">
-                        <input type="checkbox" id="{key}" name="{details['Name']}" value="{details['Name']}">
-                        <label for="{key}">{details['Name']}</label>
+                        <div class="multiselect-option-inner">
+                            <input type="checkbox" id="{key}" name="{details['Name']}" value="{details['Name']}">
+                            <label for="{key}">{details['Name']}</label>
+                        </div>
                         <span class="description">{details['Description']}</span>
                     </div>
                 """

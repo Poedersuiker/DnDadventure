@@ -239,8 +239,8 @@
         });
 
         document.addEventListener('mouseover', function(event) {
-            if (event.target.matches('.multiselect-option')) {
-                const description = event.target.querySelector('.description').textContent;
+            if (event.target.matches('.multiselect-option-inner')) {
+                const description = event.target.closest('.multiselect-option').querySelector('.description').textContent;
                 const descriptionPane = document.getElementById('description-pane');
                 descriptionPane.textContent = description;
                 descriptionPane.style.display = 'block';
@@ -248,7 +248,7 @@
         });
 
         document.addEventListener('mouseout', function(event) {
-            if (event.target.matches('.multiselect-option')) {
+            if (event.target.matches('.multiselect-option-inner')) {
                 const descriptionPane = document.getElementById('description-pane');
                 descriptionPane.style.display = 'none';
             }
