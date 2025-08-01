@@ -86,7 +86,7 @@ def process_bot_response(bot_response):
                         <span class="description">{details['Description']}</span>
                     </div>
                 """
-            html_choices += '<button onclick="confirmMultiSelect()">Confirm</button></div>'
+            html_choices += '<button onclick="confirmMultiSelect(this)">Confirm</button></div>'
 
             return processed_text + html_choices
 

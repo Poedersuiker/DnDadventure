@@ -195,10 +195,10 @@
             }
         }
 
-        function confirmMultiSelect() {
+        function confirmMultiSelect(button) {
             var characterId = document.getElementById('active-character-id').value;
             if (characterId) {
-                const container = document.querySelector('.multiselect-container');
+                const container = button.closest('.multiselect-container');
                 const checkboxes = container.querySelectorAll('input[type="checkbox"]:checked');
                 const choices = [];
                 checkboxes.forEach(checkbox => {
@@ -213,7 +213,7 @@
 
                 // Disable the multiselect
                 container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => checkbox.disabled = true);
-                container.querySelector('button').disabled = true;
+                button.disabled = true;
             }
         }
 
