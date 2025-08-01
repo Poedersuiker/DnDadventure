@@ -9,7 +9,7 @@
     <div id="hamburger">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-menu"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
     </div>
-    <div id="menu">
+    <div id="menu" style="left: -200px;">
         <a href="/logout">Logout</a>
         <a href="{{ url_for('new_character') }}">New Character</a>
         <hr>
@@ -239,8 +239,9 @@
         });
 
         document.addEventListener('mouseover', function(event) {
-            if (event.target.matches('.multiselect-option-inner')) {
-                const description = event.target.closest('.multiselect-option').querySelector('.description').textContent;
+            if (event.target.matches('.multiselect-option-inner') || event.target.closest('.singlechoice-option-inner')) {
+                const optionElement = event.target.closest('.multiselect-option') || event.target.closest('.singlechoice-option');
+                const description = optionElement.querySelector('.description').textContent;
                 const descriptionPane = document.getElementById('description-pane');
                 descriptionPane.textContent = description;
                 descriptionPane.style.display = 'block';
@@ -248,7 +249,7 @@
         });
 
         document.addEventListener('mouseout', function(event) {
-            if (event.target.matches('.multiselect-option-inner')) {
+            if (event.target.matches('.multiselect-option-inner') || event.target.closest('.singlechoice-option-inner')) {
                 const descriptionPane = document.getElementById('description-pane');
                 descriptionPane.style.display = 'none';
             }
@@ -273,6 +274,14 @@
                 menu.style.left = '0';
             } else {
                 menu.style.left = '-200px';
+            }
+        };
+
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const newCharId = urlParams.get('new_char_id');
+            if (newCharId) {
+                selectCharacter(newCharId);
             }
         };
     </script>

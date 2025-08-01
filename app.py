@@ -36,12 +36,14 @@ def process_bot_response(bot_response):
             title = choice_data.get('Title', 'Choose an option')
             options = choice_data.get('Options', {})
 
-            html_choices = f'<div class="choice-container"><h3>{title}</h3>'
+            html_choices = f'<div class="singlechoice-container"><h3>{title}</h3>'
             for key, details in options.items():
                 html_choices += f"""
-                    <div class="choice-option">
-                        <button onclick="sendChoice('{details['Name']}')">{details['Name']}</button>
-                        <p>{details['Description']}</p>
+                    <div class="singlechoice-option">
+                        <div class="singlechoice-option-inner">
+                            <button onclick="sendChoice('{details['Name']}')">{details['Name']}</button>
+                        </div>
+                        <span class="description">{details['Description']}</span>
                     </div>
                 """
             html_choices += '</div>'
@@ -191,7 +193,7 @@ def new_character():
         )
         db.session.add(new_char)
         db.session.commit()
-        return redirect(url_for('index'))
+        return redirect(url_for('index', new_char_id=new_char.id))
     ttrpg_types = TTRPGType.query.all()
     return render_template('new_character.html', ttrpg_types=ttrpg_types)
 
