@@ -335,8 +335,16 @@ def handle_initiate_chat(data):
             conversations[character_id] = history
             emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
         else:
-            logger.warning("Unexpected response format from Gemini: " + str(response))
-            emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other', 'character_id': character_id})
+            try:
+                bot_response = response.text
+                logger.info('Gemini initial response (from text): ' + bot_response)
+                processed_response = process_bot_response(bot_response)
+                history.append({'role': 'model', 'parts': [bot_response]})
+                conversations[character_id] = history
+                emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
+            except (ValueError, AttributeError) as e:
+                logger.warning(f"Unexpected response format from Gemini, and no .text fallback: {e}\nResponse: {response}")
+                emit('message', {'text': "Sorry, I received an empty or invalid response from the AI.", 'sender': 'other', 'character_id': character_id})
 
     except Exception as e:
         logger.error(f"Error calling Gemini API: {e}")
@@ -374,9 +382,17 @@ def handle_message(data):
             conversations[character_id] = history
             emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
         else:
-            # Fallback for unexpected response format
-            logger.warning("Unexpected response format from Gemini: " + str(response))
-            emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other', 'character_id': character_id})
+            # Fallback for unexpected response format, check for response.text
+            try:
+                bot_response = response.text
+                logger.info('Gemini response (from text): ' + bot_response)
+                processed_response = process_bot_response(bot_response)
+                history.append({'role': 'model', 'parts': [bot_response]})
+                conversations[character_id] = history
+                emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
+            except (ValueError, AttributeError) as e:
+                logger.warning(f"Unexpected response format from Gemini, and no .text fallback: {e}\nResponse: {response}")
+                emit('message', {'text': "Sorry, I received an empty or invalid response from the AI.", 'sender': 'other', 'character_id': character_id})
 
     except Exception as e:
         logger.error(f"Error calling Gemini API: {e}")
@@ -415,8 +431,16 @@ def handle_user_choice(data):
             conversations[character_id] = history
             emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
         else:
-            logger.warning("Unexpected response format from Gemini: " + str(response))
-            emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other', 'character_id': character_id})
+            try:
+                bot_response = response.text
+                logger.info('Gemini response after choice (from text): ' + bot_response)
+                processed_response = process_bot_response(bot_response)
+                history.append({'role': 'model', 'parts': [bot_response]})
+                conversations[character_id] = history
+                emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
+            except (ValueError, AttributeError) as e:
+                logger.warning(f"Unexpected response format from Gemini, and no .text fallback: {e}\nResponse: {response}")
+                emit('message', {'text': "Sorry, I received an empty or invalid response from the AI.", 'sender': 'other', 'character_id': character_id})
 
     except Exception as e:
         logger.error(f"Error calling Gemini API: {e}")
