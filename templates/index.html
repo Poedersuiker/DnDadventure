@@ -239,8 +239,11 @@
         });
 
         document.addEventListener('mouseover', function(event) {
-            if (event.target.matches('.multiselect-option-inner') || event.target.closest('.singlechoice-option-inner')) {
-                const optionElement = event.target.closest('.multiselect-option') || event.target.closest('.singlechoice-option');
+            const multiSelectTarget = event.target.closest('.multiselect-option');
+            const singleChoiceTarget = event.target.closest('.singlechoice-option');
+
+            if (multiSelectTarget || singleChoiceTarget) {
+                const optionElement = multiSelectTarget || singleChoiceTarget;
                 const description = optionElement.querySelector('.description').textContent;
                 const descriptionPane = document.getElementById('description-pane');
                 descriptionPane.textContent = description;
@@ -249,7 +252,10 @@
         });
 
         document.addEventListener('mouseout', function(event) {
-            if (event.target.matches('.multiselect-option-inner') || event.target.closest('.singlechoice-option-inner')) {
+            const multiSelectTarget = event.target.closest('.multiselect-option');
+            const singleChoiceTarget = event.target.closest('.singlechoice-option');
+
+            if (multiSelectTarget || singleChoiceTarget) {
                 const descriptionPane = document.getElementById('description-pane');
                 descriptionPane.style.display = 'none';
             }
