@@ -39,6 +39,10 @@
         });
 
         socket.on('message', function(data) {
+            var characterId = document.getElementById('active-character-id').value;
+            if (data.character_id && data.character_id.toString() !== characterId) {
+                return;
+            }
             console.log('Received message: ' + data.text);
             document.getElementById('thinking-indicator').style.display = 'none';
             addMessage(data.text, 'received');

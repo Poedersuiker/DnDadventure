@@ -356,7 +356,7 @@ def handle_message(data):
 
     global conversations
     if character_id not in conversations:
-        emit('message', {'text': "Chat not initiated.", 'sender': 'other'})
+        emit('message', {'text': "Chat not initiated.", 'sender': 'other', 'character_id': character_id})
         return
 
     history = conversations[character_id]
@@ -372,15 +372,15 @@ def handle_message(data):
             processed_response = process_bot_response(bot_response)
             history.append({'role': 'model', 'parts': [bot_response]})
             conversations[character_id] = history
-            emit('message', {'text': processed_response, 'sender': 'other'})
+            emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
         else:
             # Fallback for unexpected response format
             logger.warning("Unexpected response format from Gemini: " + str(response))
-            emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other'})
+            emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other', 'character_id': character_id})
 
     except Exception as e:
         logger.error(f"Error calling Gemini API: {e}")
-        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other'})
+        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other', 'character_id': character_id})
 
 @socketio.on('user_choice')
 def handle_user_choice(data):
@@ -391,12 +391,12 @@ def handle_user_choice(data):
 
     if not gemini_api_key:
         logger.error("Gemini API key is not configured.")
-        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other'})
+        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other', 'character_id': character_id})
         return
 
     global conversations
     if character_id not in conversations:
-        emit('message', {'text': "Chat not initiated.", 'sender': 'other'})
+        emit('message', {'text': "Chat not initiated.", 'sender': 'other', 'character_id': character_id})
         return
 
     history = conversations[character_id]
@@ -413,14 +413,14 @@ def handle_user_choice(data):
             processed_response = process_bot_response(bot_response)
             history.append({'role': 'model', 'parts': [bot_response]})
             conversations[character_id] = history
-            emit('message', {'text': processed_response, 'sender': 'other'})
+            emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
         else:
             logger.warning("Unexpected response format from Gemini: " + str(response))
-            emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other'})
+            emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other', 'character_id': character_id})
 
     except Exception as e:
         logger.error(f"Error calling Gemini API: {e}")
-        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other'})
+        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other', 'character_id': character_id})
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
