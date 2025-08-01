@@ -24,10 +24,10 @@ def process_bot_response(bot_response):
     match = appdata_pattern.search(bot_response)
 
     if not match:
-        return bot_response
+        return bot_response.replace('\n', '<br>')
 
     appdata_json_str = match.group(1)
-    processed_text = appdata_pattern.sub('', bot_response).strip()
+    processed_text = appdata_pattern.sub('', bot_response).strip().replace('\n', '<br>')
 
     try:
         appdata = json.loads(appdata_json_str)
