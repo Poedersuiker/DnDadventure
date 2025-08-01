@@ -301,7 +301,7 @@ def handle_edit_ttrpg(data):
 
 @socketio.on('initiate_chat')
 def handle_initiate_chat(data):
-    character_id = data['character_id']
+    character_id = str(data['character_id'])
     character = Character.query.get(character_id)
     if not character or character.user_id != current_user.id:
         return
@@ -346,7 +346,7 @@ def handle_initiate_chat(data):
 def handle_message(data):
     """Handles a message from a client."""
     message = data['message']
-    character_id = data['character_id']
+    character_id = str(data['character_id'])
     logger.info(f"Received message: {message} for character: {character_id}")
 
     if not gemini_api_key:
@@ -356,7 +356,7 @@ def handle_message(data):
 
     global conversations
     if character_id not in conversations:
-        emit('message', {'text': "Chat not initiated.", 'sender': 'other'})
+        emit('message', {'text': "Chat not initiated.", 'sender': 'other', 'character_id': character_id})
         return
 
     history = conversations[character_id]
@@ -372,31 +372,31 @@ def handle_message(data):
             processed_response = process_bot_response(bot_response)
             history.append({'role': 'model', 'parts': [bot_response]})
             conversations[character_id] = history
-            emit('message', {'text': processed_response, 'sender': 'other'})
+            emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
         else:
             # Fallback for unexpected response format
             logger.warning("Unexpected response format from Gemini: " + str(response))
-            emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other'})
+            emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other', 'character_id': character_id})
 
     except Exception as e:
         logger.error(f"Error calling Gemini API: {e}")
-        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other'})
+        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other', 'character_id': character_id})
 
 @socketio.on('user_choice')
 def handle_user_choice(data):
     """Handles a user's choice from a structured data interaction."""
     choice = data['choice']
-    character_id = data['character_id']
+    character_id = str(data['character_id'])
     logger.info(f"Received choice: {choice} for character: {character_id}")
 
     if not gemini_api_key:
         logger.error("Gemini API key is not configured.")
-        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other'})
+        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other', 'character_id': character_id})
         return
 
     global conversations
     if character_id not in conversations:
-        emit('message', {'text': "Chat not initiated.", 'sender': 'other'})
+        emit('message', {'text': "Chat not initiated.", 'sender': 'other', 'character_id': character_id})
         return
 
     history = conversations[character_id]
@@ -413,14 +413,14 @@ def handle_user_choice(data):
             processed_response = process_bot_response(bot_response)
             history.append({'role': 'model', 'parts': [bot_response]})
             conversations[character_id] = history
-            emit('message', {'text': processed_response, 'sender': 'other'})
+            emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
         else:
             logger.warning("Unexpected response format from Gemini: " + str(response))
-            emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other'})
+            emit('message', {'text': "Sorry, I couldn't process that.", 'sender': 'other', 'character_id': character_id})
 
     except Exception as e:
         logger.error(f"Error calling Gemini API: {e}")
-        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other'})
+        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other', 'character_id': character_id})
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
