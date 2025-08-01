@@ -33,8 +33,8 @@ def process_bot_response(bot_response):
         appdata = json.loads(appdata_json_str)
         if 'SingleChoice' in appdata:
             choice_data = appdata['SingleChoice']
-            title = next(iter(choice_data))
-            options = choice_data[title]
+            title = choice_data.get('Title', 'Choose an option')
+            options = choice_data.get('Options', {})
 
             html_choices = f'<div class="choice-container"><h3>{title}</h3>'
             for key, details in options.items():
@@ -47,6 +47,27 @@ def process_bot_response(bot_response):
             html_choices += '</div>'
 
             return processed_text + html_choices
+
+        if 'OrderedList' in appdata:
+            list_data = appdata['OrderedList']
+            title = list_data.get('Title', 'Ordered List')
+            items = list_data.get('Items', [])
+            values = list_data.get('Values', [])
+
+            html_list = f'<div class="ordered-list-container"><h3>{title}</h3><ul id="sortable-list">'
+            for i, item in enumerate(items):
+                value = values[i] if i < len(values) else ''
+                # Add classes to first and last items to control arrow visibility
+                li_class = "sortable-item"
+                if i == 0:
+                    li_class += " first-item"
+                if i == len(items) - 1:
+                    li_class += " last-item"
+
+                html_list += f'<li class="{li_class}" data-name="{item["Name"]}">{item["Name"]}<div class="value-card" draggable="true" ondragstart="drag(event)" id="val-{i}"><span class="value">{value}</span><span class="arrows"><span class="up-arrow" onclick="moveValueUp(this)">&#8593;</span><span class="down-arrow" onclick="moveValueDown(this)">&#8595;</span></span><span class="drag-handle">&#9776;</span></div></li>'
+            html_list += '</ul><button onclick="confirmOrderedList()">Confirm</button></div>'
+
+            return processed_text + html_list
 
     except (json.JSONDecodeError, StopIteration) as e:
         logger.error(f"Failed to parse APPDATA json: {e}")
@@ -338,6 +359,56 @@ def handle_initiate_chat(data):
             try:
                 bot_response = response.text
                 logger.info('Gemini initial response (from text): ' + bot_response)
+                processed_response = process_bot_response(bot_response)
+                history.append({'role': 'model', 'parts': [bot_response]})
+                conversations[character_id] = history
+                emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
+            except (ValueError, AttributeError) as e:
+                logger.warning(f"Unexpected response format from Gemini, and no .text fallback: {e}\nResponse: {response}")
+                emit('message', {'text': "Sorry, I received an empty or invalid response from the AI.", 'sender': 'other', 'character_id': character_id})
+
+    except Exception as e:
+        logger.error(f"Error calling Gemini API: {e}")
+        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other', 'character_id': character_id})
+
+@socketio.on('user_ordered_list')
+def handle_user_ordered_list(data):
+    """Handles a user's ordered list submission from a structured data interaction."""
+    ordered_list = data['ordered_list']
+    character_id = str(data['character_id'])
+    logger.info(f"Received ordered list: {ordered_list} for character: {character_id}")
+
+    if not gemini_api_key:
+        logger.error("Gemini API key is not configured.")
+        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other', 'character_id': character_id})
+        return
+
+    global conversations
+    if character_id not in conversations:
+        emit('message', {'text': "Chat not initiated.", 'sender': 'other', 'character_id': character_id})
+        return
+
+    history = conversations[character_id]
+    user_message = "I have assigned the scores as follows:\n"
+    for item in ordered_list:
+        user_message += f"{item['name']}: {item['value']}\n"
+    history.append({'role': 'user', 'parts': [user_message]})
+
+    try:
+        model = genai.GenerativeModel(selected_model)
+        response = model.generate_content(history)
+
+        if response and response.parts:
+            bot_response = "".join(part.text for part in response.parts)
+            logger.info('Gemini response after ordered list: ' + bot_response)
+            processed_response = process_bot_response(bot_response)
+            history.append({'role': 'model', 'parts': [bot_response]})
+            conversations[character_id] = history
+            emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
+        else:
+            try:
+                bot_response = response.text
+                logger.info('Gemini response after ordered list (from text): ' + bot_response)
                 processed_response = process_bot_response(bot_response)
                 history.append({'role': 'model', 'parts': [bot_response]})
                 conversations[character_id] = history

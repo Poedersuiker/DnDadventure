@@ -253,3 +253,65 @@ body {
     margin-right: 5px;
     cursor: pointer;
 }
+
+/* Ordered List Container */
+.ordered-list-container {
+    border: 1px solid #ccc;
+    padding: 10px;
+    margin-top: 10px;
+    border-radius: 5px;
+}
+
+#sortable-list {
+    list-style-type: none;
+    padding: 0;
+}
+
+.sortable-item {
+    padding: 8px;
+    margin: 5px 0;
+    border: 1px solid #ddd;
+    background-color: #f9f9f9;
+    display: flex;
+    justify-content: space-between;
+}
+
+.value {
+    cursor: move;
+}
+
+.dragging {
+    opacity: 0.5;
+}
+
+.drag-handle {
+    cursor: move;
+    margin-right: 10px;
+}
+
+.arrows {
+    cursor: pointer;
+}
+
+.up-arrow, .down-arrow {
+    margin-left: 5px;
+}
+
+.value-card {
+    border: 1px solid #ccc;
+    padding: 5px;
+    display: flex;
+    align-items: center;
+}
+
+.first-item .up-arrow {
+    display: none;
+}
+
+.last-item .down-arrow {
+    display: none;
+}
+
+.drop-target {
+    border: 2px dashed #007bff;
+}

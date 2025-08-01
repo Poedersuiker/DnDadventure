@@ -89,6 +89,94 @@
             }
         }
 
+        let draggedItem = null;
+
+        function drag(ev) {
+            draggedItem = ev.target;
+            setTimeout(() => {
+                ev.target.style.display = 'none';
+            }, 0);
+        }
+
+        document.addEventListener('dragover', function(event) {
+            event.preventDefault();
+        });
+
+        document.addEventListener('dragenter', function(event) {
+            if (event.target.classList.contains('value-card')) {
+                event.target.classList.add('drop-target');
+            }
+        });
+
+        document.addEventListener('dragleave', function(event) {
+            if (event.target.classList.contains('value-card')) {
+                event.target.classList.remove('drop-target');
+            }
+        });
+
+        document.addEventListener('drop', function(event) {
+            event.preventDefault();
+            if (event.target.classList.contains('value-card')) {
+                const temp = event.target.innerHTML;
+                event.target.innerHTML = draggedItem.innerHTML;
+                draggedItem.innerHTML = temp;
+                event.target.classList.remove('drop-target');
+            }
+            draggedItem.style.display = 'flex';
+            draggedItem = null;
+        });
+
+        function confirmOrderedList() {
+            var characterId = document.getElementById('active-character-id').value;
+            if (characterId) {
+                const listItems = document.querySelectorAll('#sortable-list .sortable-item');
+                const orderedList = [];
+                listItems.forEach(item => {
+                    const name = item.dataset.name;
+                    const value = item.querySelector('.value-card .value').innerText;
+                    orderedList.push({ name, value });
+                });
+
+                let messageText = "I have assigned the scores as follows:\n";
+                orderedList.forEach(item => {
+                    messageText += `${item.name}: ${item.value}\n`;
+                });
+                addMessage(messageText, 'sent');
+
+                socket.emit('user_ordered_list', { 'ordered_list': orderedList, 'character_id': characterId });
+                document.getElementById('thinking-indicator').style.display = 'block';
+
+                // Disable the list
+                const container = document.querySelector('.ordered-list-container');
+                container.querySelectorAll('button').forEach(button => button.disabled = true);
+                container.querySelectorAll('.value-card').forEach(value => value.setAttribute('draggable', 'false'));
+            }
+        }
+
+        function moveValueUp(element) {
+            const listItem = element.closest('.sortable-item');
+            const previousListItem = listItem.previousElementSibling;
+            if (previousListItem) {
+                const currentValueCard = listItem.querySelector('.value-card');
+                const previousValueCard = previousListItem.querySelector('.value-card');
+                const temp = currentValueCard.innerHTML;
+                currentValueCard.innerHTML = previousValueCard.innerHTML;
+                previousValueCard.innerHTML = temp;
+            }
+        }
+
+        function moveValueDown(element) {
+            const listItem = element.closest('.sortable-item');
+            const nextListItem = listItem.nextElementSibling;
+            if (nextListItem) {
+                const currentValueCard = listItem.querySelector('.value-card');
+                const nextValueCard = nextListItem.querySelector('.value-card');
+                const temp = currentValueCard.innerHTML;
+                currentValueCard.innerHTML = nextValueCard.innerHTML;
+                nextValueCard.innerHTML = temp;
+            }
+        }
+
         function sendChoice(choice) {
             var characterId = document.getElementById('active-character-id').value;
             if (characterId) {
