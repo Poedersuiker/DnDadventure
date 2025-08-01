@@ -54,7 +54,7 @@ def init_db(app):
         if not GeminiPrepMessage.query.filter_by(priority=1).first():
             choice_instruction = GeminiPrepMessage(
                 priority=1,
-                message="""When you want to give the user a choice, use the following format: [APPDATA]{ "SingleChoice": { "Title": { "Option1": { "Name": "Option1", "Description": "Description of Option 1" }, "Option2": { "Name": "Option2", "Description": "Description of Option 2" } } } }[/APPDATA]"""
+                message="""When you want to give the user a choice, use the following format: [APPDATA]{ "SingleChoice": { "Title": { "Option1": { "Name": "Option1", "Description": "Description of Option 1" }, "Option2": { "Name": "Option2", "Description": "Description of Option 2" }, "Option3": { "Name": "Option3", "Description": "Description of Option 3" } } } }[/APPDATA]"""
             )
             db.session.add(choice_instruction)
 
