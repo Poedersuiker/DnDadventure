@@ -102,12 +102,25 @@
             event.preventDefault();
         });
 
+        document.addEventListener('dragenter', function(event) {
+            if (event.target.classList.contains('value-card')) {
+                event.target.classList.add('drop-target');
+            }
+        });
+
+        document.addEventListener('dragleave', function(event) {
+            if (event.target.classList.contains('value-card')) {
+                event.target.classList.remove('drop-target');
+            }
+        });
+
         document.addEventListener('drop', function(event) {
             event.preventDefault();
             if (event.target.classList.contains('value-card')) {
                 const temp = event.target.innerHTML;
                 event.target.innerHTML = draggedItem.innerHTML;
                 draggedItem.innerHTML = temp;
+                event.target.classList.remove('drop-target');
             }
             draggedItem.style.display = 'flex';
             draggedItem = null;

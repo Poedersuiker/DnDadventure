@@ -311,3 +311,7 @@ body {
 .last-item .down-arrow {
     display: none;
 }
+
+.drop-target {
+    border: 2px dashed #007bff;
+}
