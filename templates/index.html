@@ -77,6 +77,16 @@
             messageElement.innerHTML = text;
             messages.appendChild(messageElement);
             messages.scrollTop = messages.scrollHeight;
+
+            if (type === 'sent') {
+                var choiceContainers = document.querySelectorAll('.choice-container');
+                choiceContainers.forEach(function(container) {
+                    var buttons = container.querySelectorAll('button');
+                    buttons.forEach(function(button) {
+                        button.disabled = true;
+                    });
+                });
+            }
         }
 
         function sendChoice(choice) {
@@ -85,6 +95,14 @@
                 addMessage('You chose: ' + choice, 'sent');
                 socket.emit('user_choice', { 'choice': choice, 'character_id': characterId });
                 document.getElementById('thinking-indicator').style.display = 'block';
+
+                var choiceContainers = document.querySelectorAll('.choice-container');
+                choiceContainers.forEach(function(container) {
+                    var buttons = container.querySelectorAll('button');
+                    buttons.forEach(function(button) {
+                        button.disabled = true;
+                    });
+                });
             }
         }
 
