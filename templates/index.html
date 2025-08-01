@@ -104,12 +104,12 @@
 
         document.addEventListener('drop', function(event) {
             event.preventDefault();
-            if (event.target.classList.contains('value')) {
-                const temp = event.target.innerText;
-                event.target.innerText = draggedItem.innerText;
-                draggedItem.innerText = temp;
+            if (event.target.classList.contains('value-card')) {
+                const temp = event.target.innerHTML;
+                event.target.innerHTML = draggedItem.innerHTML;
+                draggedItem.innerHTML = temp;
             }
-            draggedItem.style.display = 'inline';
+            draggedItem.style.display = 'flex';
             draggedItem = null;
         });
 
@@ -120,7 +120,7 @@
                 const orderedList = [];
                 listItems.forEach(item => {
                     const name = item.dataset.name;
-                    const value = item.querySelector('.value').innerText;
+                    const value = item.querySelector('.value-card .value').innerText;
                     orderedList.push({ name, value });
                 });
 
@@ -136,7 +136,7 @@
                 // Disable the list
                 const container = document.querySelector('.ordered-list-container');
                 container.querySelectorAll('button').forEach(button => button.disabled = true);
-                container.querySelectorAll('.value').forEach(value => value.setAttribute('draggable', 'false'));
+                container.querySelectorAll('.value-card').forEach(value => value.setAttribute('draggable', 'false'));
             }
         }
 
@@ -144,10 +144,11 @@
             const listItem = element.closest('.sortable-item');
             const previousListItem = listItem.previousElementSibling;
             if (previousListItem) {
-                const currentValue = listItem.querySelector('.value').innerText;
-                const previousValue = previousListItem.querySelector('.value').innerText;
-                listItem.querySelector('.value').innerText = previousValue;
-                previousListItem.querySelector('.value').innerText = currentValue;
+                const currentValueCard = listItem.querySelector('.value-card');
+                const previousValueCard = previousListItem.querySelector('.value-card');
+                const temp = currentValueCard.innerHTML;
+                currentValueCard.innerHTML = previousValueCard.innerHTML;
+                previousValueCard.innerHTML = temp;
             }
         }
 
@@ -155,10 +156,11 @@
             const listItem = element.closest('.sortable-item');
             const nextListItem = listItem.nextElementSibling;
             if (nextListItem) {
-                const currentValue = listItem.querySelector('.value').innerText;
-                const nextValue = nextListItem.querySelector('.value').innerText;
-                listItem.querySelector('.value').innerText = nextValue;
-                nextListItem.querySelector('.value').innerText = currentValue;
+                const currentValueCard = listItem.querySelector('.value-card');
+                const nextValueCard = nextListItem.querySelector('.value-card');
+                const temp = currentValueCard.innerHTML;
+                currentValueCard.innerHTML = nextValueCard.innerHTML;
+                nextValueCard.innerHTML = temp;
             }
         }
 

@@ -296,3 +296,18 @@ body {
 .up-arrow, .down-arrow {
     margin-left: 5px;
 }
+
+.value-card {
+    border: 1px solid #ccc;
+    padding: 5px;
+    display: flex;
+    align-items: center;
+}
+
+.first-item .up-arrow {
+    display: none;
+}
+
+.last-item .down-arrow {
+    display: none;
+}
