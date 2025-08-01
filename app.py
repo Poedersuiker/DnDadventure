@@ -69,6 +69,27 @@ def process_bot_response(bot_response):
 
             return processed_text + html_list
 
+        if 'MultiSelect' in appdata:
+            multiselect_data = appdata['MultiSelect']
+            title = multiselect_data.get('Title', 'Choose an option')
+            max_choices = multiselect_data.get('MaxChoices', 1)
+            options = multiselect_data.get('Options', {})
+
+            html_choices = f'<div class="multiselect-container" data-max-choices="{max_choices}"><h3>{title}</h3>'
+            for key, details in options.items():
+                html_choices += f"""
+                    <div class="multiselect-option">
+                        <div class="multiselect-option-inner">
+                            <input type="checkbox" id="{key}" name="{details['Name']}" value="{details['Name']}">
+                            <label for="{key}">{details['Name']}</label>
+                        </div>
+                        <span class="description">{details['Description']}</span>
+                    </div>
+                """
+            html_choices += '<button onclick="confirmMultiSelect(this)">Confirm</button></div>'
+
+            return processed_text + html_choices
+
     except (json.JSONDecodeError, StopIteration) as e:
         logger.error(f"Failed to parse APPDATA json: {e}")
         return processed_text
@@ -519,3 +540,51 @@ def handle_user_choice(data):
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
+
+@socketio.on('user_multi_choice')
+def handle_user_multi_choice(data):
+    """Handles a user's multi-choice submission from a structured data interaction."""
+    choices = data['choices']
+    character_id = str(data['character_id'])
+    logger.info(f"Received choices: {choices} for character: {character_id}")
+
+    if not gemini_api_key:
+        logger.error("Gemini API key is not configured.")
+        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other', 'character_id': character_id})
+        return
+
+    global conversations
+    if character_id not in conversations:
+        emit('message', {'text': "Chat not initiated.", 'sender': 'other', 'character_id': character_id})
+        return
+
+    history = conversations[character_id]
+    user_message = f"I choose the following: {', '.join(choices)}"
+    history.append({'role': 'user', 'parts': [user_message]})
+
+    try:
+        model = genai.GenerativeModel(selected_model)
+        response = model.generate_content(history)
+
+        if response and response.parts:
+            bot_response = "".join(part.text for part in response.parts)
+            logger.info('Gemini response after multi-choice: ' + bot_response)
+            processed_response = process_bot_response(bot_response)
+            history.append({'role': 'model', 'parts': [bot_response]})
+            conversations[character_id] = history
+            emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
+        else:
+            try:
+                bot_response = response.text
+                logger.info('Gemini response after multi-choice (from text): ' + bot_response)
+                processed_response = process_bot_response(bot_response)
+                history.append({'role': 'model', 'parts': [bot_response]})
+                conversations[character_id] = history
+                emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
+            except (ValueError, AttributeError) as e:
+                logger.warning(f"Unexpected response format from Gemini, and no .text fallback: {e}\nResponse: {response}")
+                emit('message', {'text': "Sorry, I received an empty or invalid response from the AI.", 'sender': 'other', 'character_id': character_id})
+
+    except Exception as e:
+        logger.error(f"Error calling Gemini API: {e}")
+        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other', 'character_id': character_id})

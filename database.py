@@ -111,4 +111,34 @@ def init_db(app):
             )
             db.session.add(ordered_list_instruction)
 
+        if not GeminiPrepMessage.query.filter_by(priority=4).first():
+            multi_select_instruction = GeminiPrepMessage(
+                priority=4,
+                message="""When you want to give the user a choice from a list of options where multiple can be selected, use the following format. Replace the values in the example with the actual values for the choice.
+
+[APPDATA]
+{
+    "MultiSelect": {
+        "Title": "Choose your Skills",
+        "MaxChoices": 2,
+        "Options": {
+            "Acrobatics": {
+                "Name": "Acrobatics",
+                "Description": "Your ability to stay on your feet in tricky situations."
+            },
+            "Athletics": {
+                "Name": "Athletics",
+                "Description": "Your ability to climb, jump, and swim."
+            },
+            "History": {
+                "Name": "History",
+                "Description": "Your knowledge of past events."
+            }
+        }
+    }
+}
+[/APPDATA]"""
+            )
+            db.session.add(multi_select_instruction)
+
         db.session.commit()

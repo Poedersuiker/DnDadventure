@@ -30,6 +30,7 @@
                 <input type="hidden" id="active-character-id" value="">
             </div>
         </div>
+        <div id="description-pane"></div>
     </div>
     <script>
         var socket = io.connect('https://' + document.domain + ':' + location.port);
@@ -193,6 +194,65 @@
                 });
             }
         }
+
+        function confirmMultiSelect(button) {
+            var characterId = document.getElementById('active-character-id').value;
+            if (characterId) {
+                const container = button.closest('.multiselect-container');
+                const checkboxes = container.querySelectorAll('input[type="checkbox"]:checked');
+                const choices = [];
+                checkboxes.forEach(checkbox => {
+                    choices.push(checkbox.value);
+                });
+
+                let messageText = "You chose the following: " + choices.join(', ');
+                addMessage(messageText, 'sent');
+
+                socket.emit('user_multi_choice', { 'choices': choices, 'character_id': characterId });
+                document.getElementById('thinking-indicator').style.display = 'block';
+
+                // Disable the multiselect
+                container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => checkbox.disabled = true);
+                button.disabled = true;
+            }
+        }
+
+        document.addEventListener('change', function(event) {
+            if (event.target.matches('.multiselect-option input[type="checkbox"]')) {
+                const container = event.target.closest('.multiselect-container');
+                const maxChoices = parseInt(container.dataset.maxChoices, 10);
+                const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+                const checkedCount = container.querySelectorAll('input[type="checkbox"]:checked').length;
+
+                if (checkedCount >= maxChoices) {
+                    checkboxes.forEach(checkbox => {
+                        if (!checkbox.checked) {
+                            checkbox.disabled = true;
+                        }
+                    });
+                } else {
+                    checkboxes.forEach(checkbox => {
+                        checkbox.disabled = false;
+                    });
+                }
+            }
+        });
+
+        document.addEventListener('mouseover', function(event) {
+            if (event.target.matches('.multiselect-option-inner')) {
+                const description = event.target.closest('.multiselect-option').querySelector('.description').textContent;
+                const descriptionPane = document.getElementById('description-pane');
+                descriptionPane.textContent = description;
+                descriptionPane.style.display = 'block';
+            }
+        });
+
+        document.addEventListener('mouseout', function(event) {
+            if (event.target.matches('.multiselect-option-inner')) {
+                const descriptionPane = document.getElementById('description-pane');
+                descriptionPane.style.display = 'none';
+            }
+        });
 
         function enableChat() {
             document.getElementById('message-input').disabled = false;
