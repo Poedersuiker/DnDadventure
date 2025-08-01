@@ -301,7 +301,7 @@ def handle_edit_ttrpg(data):
 
 @socketio.on('initiate_chat')
 def handle_initiate_chat(data):
-    character_id = data['character_id']
+    character_id = str(data['character_id'])
     character = Character.query.get(character_id)
     if not character or character.user_id != current_user.id:
         return
@@ -346,7 +346,7 @@ def handle_initiate_chat(data):
 def handle_message(data):
     """Handles a message from a client."""
     message = data['message']
-    character_id = data['character_id']
+    character_id = str(data['character_id'])
     logger.info(f"Received message: {message} for character: {character_id}")
 
     if not gemini_api_key:
@@ -386,7 +386,7 @@ def handle_message(data):
 def handle_user_choice(data):
     """Handles a user's choice from a structured data interaction."""
     choice = data['choice']
-    character_id = data['character_id']
+    character_id = str(data['character_id'])
     logger.info(f"Received choice: {choice} for character: {character_id}")
 
     if not gemini_api_key:
