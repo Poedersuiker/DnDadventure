@@ -33,8 +33,8 @@ def process_bot_response(bot_response):
         appdata = json.loads(appdata_json_str)
         if 'SingleChoice' in appdata:
             choice_data = appdata['SingleChoice']
-            title = next(iter(choice_data))
-            options = choice_data[title]
+            title = choice_data.get('Title', 'Choose an option')
+            options = choice_data.get('Options', {})
 
             html_choices = f'<div class="choice-container"><h3>{title}</h3>'
             for key, details in options.items():
