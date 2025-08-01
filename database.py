@@ -54,7 +54,29 @@ def init_db(app):
         if not GeminiPrepMessage.query.filter_by(priority=1).first():
             choice_instruction = GeminiPrepMessage(
                 priority=1,
-                message="""When you want to give the user a choice, use the following format: [APPDATA]{ "SingleChoice": { "Title": { "Option1": { "Name": "Option1", "Description": "Description of Option 1" }, "Option2": { "Name": "Option2", "Description": "Description of Option 2" }, "Option3": { "Name": "Option3", "Description": "Description of Option 3" } } } }[/APPDATA]"""
+                message="""When you want to give the user a choice, use the following format. Replace the values in the example with the actual values for the choice.
+
+[APPDATA]
+{
+    "SingleChoice": {
+        "Title": "Choose your Race",
+        "Options": {
+            "Human": {
+                "Name": "Human",
+                "Description": "Versatile and adaptable, humans are found everywhere and excel in many fields."
+            },
+            "Elf": {
+                "Name": "Elf",
+                "Description": "Graceful and long-lived, elves are attuned to magic and the natural world."
+            },
+            "Dwarf": {
+                "Name": "Dwarf",
+                "Description": "Stout and resilient, dwarves are master craftspeople and fierce warriors."
+            }
+        }
+    }
+}
+[/APPDATA]"""
             )
             db.session.add(choice_instruction)
 
@@ -68,7 +90,24 @@ def init_db(app):
         if not GeminiPrepMessage.query.filter_by(priority=3).first():
             ordered_list_instruction = GeminiPrepMessage(
                 priority=3,
-                message="""When you want the user to assign a list of values to a list of items, use the following format: [APPDATA]{ "OrderedList": { "Title": "Assign Ability Scores", "Items": [ { "Name": "Strength" }, { "Name": "Dexterity" }, { "Name": "Constitution" }, { "Name": "Intelligence" }, { "Name": "Wisdom" }, { "Name": "Charisma" } ], "Values": [ 15, 14, 13, 12, 10, 8 ] } }[/APPDATA]"""
+                message="""When you want the user to assign a list of values to a list of items, use the following format. Replace the values in the example with the actual values for the list.
+
+[APPDATA]
+{
+    "OrderedList": {
+        "Title": "Assign Ability Scores",
+        "Items": [
+            { "Name": "Strength" },
+            { "Name": "Dexterity" },
+            { "Name": "Constitution" },
+            { "Name": "Intelligence" },
+            { "Name": "Wisdom" },
+            { "Name": "Charisma" }
+        ],
+        "Values": [ 15, 14, 13, 12, 10, 8 ]
+    }
+}
+[/APPDATA]"""
             )
             db.session.add(ordered_list_instruction)
 
