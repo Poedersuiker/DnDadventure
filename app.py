@@ -403,49 +403,55 @@ def handle_initiate_chat(data):
     if not character or character.user_id != current_user.id:
         return
 
-    history = []
     messages = Message.query.filter_by(character_id=character.id).order_by(Message.timestamp).all()
 
     if messages:
+        # Existing character with history
         emit('clear_chat', {'character_id': character_id})
         for msg in messages:
-            history.append({'role': msg.role, 'parts': [msg.content]})
+            # The initial user prompt should not be displayed in the chat history
+            if msg.role == 'user' and "You are the DM" in msg.content:
+                continue
             processed_response = process_bot_response(msg.content)
             sender = 'sent' if msg.role == 'user' else 'received'
             emit('message', {'text': processed_response, 'sender': sender, 'character_id': character_id})
     else:
+        # New character
         prep_messages = GeminiPrepMessage.query.order_by(GeminiPrepMessage.priority).all()
         ttrpg_name = character.ttrpg_type.name
         char_name = character.character_name
 
-        initial_prompt_parts = []
+        system_instructions = []
+        initial_user_prompt = ""
+
         for prep_msg in prep_messages:
-            msg = prep_msg.message
-            msg = msg.replace('<fill selected TTRPG name>', ttrpg_name)
-            msg = msg.replace('<fill selected character name>', char_name)
-            initial_prompt_parts.append(msg)
+            msg = prep_msg.message.replace('<fill selected TTRPG name>', ttrpg_name).replace('<fill selected character name>', char_name)
+            # Priority 2 is the initial user-facing prompt
+            if prep_msg.priority == 2:
+                initial_user_prompt = msg
+            else:
+                system_instructions.append(msg)
 
-        initial_prompt = "\n".join(initial_prompt_parts)
+        # Save the combined system instructions and initial prompt as the first user message
+        # This preserves the full context for the model in a single, initial user turn
+        full_initial_prompt = "\n".join(system_instructions) + "\n" + initial_user_prompt
 
-        # Save the initial (user) prompt to the database
-        user_message = Message(character_id=character.id, role='user', content=initial_prompt)
+        user_message = Message(character_id=character.id, role='user', content=full_initial_prompt)
         db.session.add(user_message)
         db.session.commit()
 
-        history = [{'role': 'user', 'parts': [initial_prompt]}]
+        history = [{'role': 'user', 'parts': [full_initial_prompt]}]
         model = genai.GenerativeModel(selected_model)
 
         processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
 
         if bot_response_text:
-            # Save the model's response to the database
             model_message = Message(character_id=character.id, role='model', content=bot_response_text)
             db.session.add(model_message)
             db.session.commit()
 
-            history.append({'role': 'model', 'parts': [bot_response_text]})
-
-        emit('message', {'text': processed_response, 'sender': 'received', 'character_id': character_id})
+            # We only want to display the bot's response, not the entire initial prompt
+            emit('message', {'text': processed_response, 'sender': 'received', 'character_id': character_id})
 
 @socketio.on('user_ordered_list')
 def handle_user_ordered_list(data):

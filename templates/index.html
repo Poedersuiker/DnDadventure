@@ -277,7 +277,9 @@
         }
 
         function selectCharacter(event, characterId) {
-            event.stopPropagation();
+            if (event) {
+                event.stopPropagation();
+            }
             document.getElementById('active-character-id').value = characterId;
             enableChat();
             document.getElementById('messages').innerHTML = '';
@@ -313,7 +315,7 @@
             const urlParams = new URLSearchParams(window.location.search);
             const newCharId = urlParams.get('new_char_id');
             if (newCharId) {
-                selectCharacter(newCharId);
+                selectCharacter(null, newCharId);
             }
         };
     </script>
