@@ -11,6 +11,7 @@ GOOGLE_REDIRECT_URI = "http://localhost:5000/authorize"
 
 # Gemini Key
 GEMINI_API_KEY = "YOUR_ACTUAL_GEMINI_API_KEY"
+GEMINI_MODEL = "gemini-1.5-pro-latest"
 
 # Database Configuration
 # Set DB_TYPE to 'sqlite', 'mysql', 'postgresql', etc.
