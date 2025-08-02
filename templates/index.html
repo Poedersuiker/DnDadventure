@@ -14,7 +14,10 @@
         <a href="{{ url_for('new_character') }}">New Character</a>
         <hr>
         {% for character in characters %}
-            <a href="#" onclick="selectCharacter({{ character.id }})">{{ character.character_name }}</a>
+            <div class="character-item">
+                <a href="#" onclick="selectCharacter(event, {{ character.id }})">{{ character.character_name }}</a>
+                <button class="delete-btn" onclick="deleteCharacter(event, {{ character.id }})">X</button>
+            </div>
         {% endfor %}
         <hr>
         {% if current_user.email == admin_email %}
@@ -46,7 +49,14 @@
             }
             console.log('Received message: ' + data.text);
             document.getElementById('thinking-indicator').style.display = 'none';
-            addMessage(data.text, 'received');
+            addMessage(data.text, data.sender);
+        });
+
+        socket.on('clear_chat', function(data) {
+            var characterId = document.getElementById('active-character-id').value;
+            if (data.character_id && data.character_id.toString() === characterId) {
+                document.getElementById('messages').innerHTML = '';
+            }
         });
 
         socket.on('disconnect', function() {
@@ -266,12 +276,28 @@
             document.getElementById('send-button').disabled = false;
         }
 
-        function selectCharacter(characterId) {
+        function selectCharacter(event, characterId) {
+            event.stopPropagation();
             document.getElementById('active-character-id').value = characterId;
             enableChat();
             document.getElementById('messages').innerHTML = '';
             socket.emit('initiate_chat', { 'character_id': characterId });
             document.getElementById('thinking-indicator').style.display = 'block';
+        }
+
+        function deleteCharacter(event, characterId) {
+            event.stopPropagation();
+            if (confirm('Are you sure you want to delete this character?')) {
+                fetch('/delete_character/' + characterId, {
+                    method: 'DELETE',
+                }).then(response => {
+                    if (response.ok) {
+                        window.location.reload();
+                    } else {
+                        alert('Failed to delete character.');
+                    }
+                });
+            }
         }
 
         document.getElementById('hamburger').onclick = function() {

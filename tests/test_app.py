@@ -97,45 +97,54 @@ class AuthTestCase(unittest.TestCase):
         with self.assertRaises(MalformedAppDataError):
             process_bot_response(bot_response)
 
-    @patch('app.genai.GenerativeModel')
-    def test_handle_message_with_retry(self, MockGenerativeModel):
-        from app import MalformedAppDataError, conversations
+    @patch('app.send_to_gemini_with_retry')
+    def test_handle_message_with_retry(self, mock_send_to_gemini):
+        from app import handle_message, Message, Character, User
 
-        # Mock the response from the generative model
-        class MockResponse:
-            def __init__(self, text):
-                self.text = text
-                self.parts = [self]
+        # Simulate the behavior of send_to_gemini_with_retry
+        # It should save the malformed response and the retry message to history
+        def side_effect(model, history, max_retries=3):
+            # The history passed in already has the user's message
+            # Add the malformed model response
+            history.append({'role': 'model', 'parts': ["[APPDATA]{'bad': json}[/APPDATA]"]})
+            # Add the retry prompt from the user
+            history.append({'role': 'user', 'parts': ["The response you just sent contained a malformed [APPDATA] block. Please correct the formatting of the JSON data and resend your message."]})
+            # Return the final, good response
+            return "This is the corrected response.", "This is the corrected response."
 
-        # Simulate a sequence of responses: 1st is malformed, 2nd is valid
-        mock_model_instance = MockGenerativeModel.return_value
-        mock_model_instance.generate_content.side_effect = [
-            MockResponse("[APPDATA]{'bad': json}[/APPDATA]"),
-            MockResponse("This is the corrected response.")
-        ]
+        mock_send_to_gemini.side_effect = side_effect
 
-        # Set up a fake conversation
-        character_id = '1'
-        conversations[character_id] = [{'role': 'user', 'parts': ['Hello']}]
+        with app.app_context():
+            # Set up a fake user and character
+            user = User(google_id='retry_user', email='retry@test.com', name='Retry User')
+            db.session.add(user)
+            db.session.commit()
 
-        with app.test_request_context('/socket.io'):
-            # We need to manually call the handler since we are in a test context
-            from app import handle_message
+            character = Character(user_id=user.id, ttrpg_type_id=1, character_name='Retry Character', charactersheet='{}')
+            db.session.add(character)
+            db.session.commit()
 
-            # Since handle_message uses emit, we need to patch it
-            with patch('app.emit') as mock_emit:
-                handle_message({'message': 'test message', 'character_id': character_id})
+            # Set up the initial message in the database
+            initial_message = Message(character_id=character.id, role='user', content='Hello')
+            db.session.add(initial_message)
+            db.session.commit()
 
-                # Check that generate_content was called twice (initial + 1 retry)
-                self.assertEqual(mock_model_instance.generate_content.call_count, 2)
+            with app.test_request_context('/socket.io'):
+                with patch('app.emit') as mock_emit:
+                    handle_message({'message': 'test message', 'character_id': str(character.id)})
 
-                # Check that the final message emitted to the user is the corrected one
-                mock_emit.assert_called_once_with('message', {'text': 'This is the corrected response.', 'sender': 'other', 'character_id': '1'})
+                    # Check that send_to_gemini_with_retry was called
+                    self.assertEqual(mock_send_to_gemini.call_count, 1)
 
-                # Check that the history was updated correctly with the retry context
-                history = conversations[character_id]
-                self.assertEqual(len(history), 5) # user, user, model(bad), user(fix), model(good)
-                self.assertEqual(history[-2]['parts'][0], "The response you just sent contained a malformed [APPDATA] block. Please correct the formatting of the JSON data and resend your message.")
+                    # Check that the final message emitted is the corrected one
+                    mock_emit.assert_called_with('message', {'text': 'This is the corrected response.', 'sender': 'received', 'character_id': str(character.id)})
+
+                    # Check the database state
+                    messages = Message.query.filter_by(character_id=character.id).order_by(Message.timestamp).all()
+                    self.assertEqual(len(messages), 3) # initial 'Hello', user's 'test message', final 'model' response
+                    self.assertEqual(messages[0].content, 'Hello')
+                    self.assertEqual(messages[1].content, 'test message')
+                    self.assertEqual(messages[2].content, 'This is the corrected response.')
 
 
 if __name__ == '__main__':

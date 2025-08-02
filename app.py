@@ -12,7 +12,7 @@ from flask_login import LoginManager, UserMixin, login_user, logout_user, curren
 import auth
 import os
 from werkzeug.middleware.proxy_fix import ProxyFix
-from database import db, init_db, User, Character, TTRPGType, GeminiPrepMessage
+from database import db, init_db, User, Character, TTRPGType, GeminiPrepMessage, Message
 import google.generativeai as genai
 
 # Configure logging
@@ -144,8 +144,6 @@ login_manager.login_view = 'login'
 
 auth.init_app(app)
 
-conversations = {}
-
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -202,6 +200,16 @@ def new_character():
         return redirect(url_for('index', new_char_id=new_char.id))
     ttrpg_types = TTRPGType.query.all()
     return render_template('new_character.html', ttrpg_types=ttrpg_types)
+
+@app.route('/delete_character/<int:character_id>', methods=['DELETE'])
+@login_required
+def delete_character(character_id):
+    character = Character.query.get(character_id)
+    if character and character.user_id == current_user.id:
+        db.session.delete(character)
+        db.session.commit()
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': 'Character not found or unauthorized'}), 404
 
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
@@ -395,31 +403,49 @@ def handle_initiate_chat(data):
     if not character or character.user_id != current_user.id:
         return
 
-    global conversations
+    history = []
+    messages = Message.query.filter_by(character_id=character.id).order_by(Message.timestamp).all()
 
-    prep_messages = GeminiPrepMessage.query.order_by(GeminiPrepMessage.priority).all()
-    ttrpg_name = character.ttrpg_type.name
-    char_name = character.character_name
+    if messages:
+        emit('clear_chat', {'character_id': character_id})
+        for msg in messages:
+            history.append({'role': msg.role, 'parts': [msg.content]})
+            processed_response = process_bot_response(msg.content)
+            sender = 'sent' if msg.role == 'user' else 'received'
+            emit('message', {'text': processed_response, 'sender': sender, 'character_id': character_id})
+    else:
+        prep_messages = GeminiPrepMessage.query.order_by(GeminiPrepMessage.priority).all()
+        ttrpg_name = character.ttrpg_type.name
+        char_name = character.character_name
 
-    initial_prompt_parts = []
-    for prep_msg in prep_messages:
-        msg = prep_msg.message
-        msg = msg.replace('<fill selected TTRPG name>', ttrpg_name)
-        msg = msg.replace('<fill selected character name>', char_name)
-        initial_prompt_parts.append(msg)
+        initial_prompt_parts = []
+        for prep_msg in prep_messages:
+            msg = prep_msg.message
+            msg = msg.replace('<fill selected TTRPG name>', ttrpg_name)
+            msg = msg.replace('<fill selected character name>', char_name)
+            initial_prompt_parts.append(msg)
 
-    initial_prompt = "\n".join(initial_prompt_parts)
+        initial_prompt = "\n".join(initial_prompt_parts)
 
-    history = [{'role': 'user', 'parts': [initial_prompt]}]
-    model = genai.GenerativeModel(selected_model)
+        # Save the initial (user) prompt to the database
+        user_message = Message(character_id=character.id, role='user', content=initial_prompt)
+        db.session.add(user_message)
+        db.session.commit()
 
-    processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
+        history = [{'role': 'user', 'parts': [initial_prompt]}]
+        model = genai.GenerativeModel(selected_model)
 
-    if bot_response_text:
-        history.append({'role': 'model', 'parts': [bot_response_text]})
-        conversations[character_id] = history
+        processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
 
-    emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
+        if bot_response_text:
+            # Save the model's response to the database
+            model_message = Message(character_id=character.id, role='model', content=bot_response_text)
+            db.session.add(model_message)
+            db.session.commit()
+
+            history.append({'role': 'model', 'parts': [bot_response_text]})
+
+        emit('message', {'text': processed_response, 'sender': 'received', 'character_id': character_id})
 
 @socketio.on('user_ordered_list')
 def handle_user_ordered_list(data):
@@ -430,57 +456,64 @@ def handle_user_ordered_list(data):
 
     if not app.config.get('GEMINI_API_KEY'):
         logger.error("Gemini API key is not configured.")
-        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other', 'character_id': character_id})
+        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'received', 'character_id': character_id})
         return
 
-    global conversations
-    if character_id not in conversations:
-        emit('message', {'text': "Chat not initiated.", 'sender': 'other', 'character_id': character_id})
-        return
-
-    history = conversations[character_id]
-    user_message = "I have assigned the scores as follows:\n"
+    user_message_text = "I have assigned the scores as follows:\n"
     for item in ordered_list:
-        user_message += f"{item['name']}: {item['value']}\n"
-    history.append({'role': 'user', 'parts': [user_message]})
+        user_message_text += f"{item['name']}: {item['value']}\n"
+
+    # Save user message
+    user_message = Message(character_id=character_id, role='user', content=user_message_text)
+    db.session.add(user_message)
+    db.session.commit()
+
+    # Load history
+    messages = Message.query.filter_by(character_id=character_id).order_by(Message.timestamp).all()
+    history = [{'role': msg.role, 'parts': [msg.content]} for msg in messages]
 
     model = genai.GenerativeModel(selected_model)
     processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
 
     if bot_response_text:
-        history.append({'role': 'model', 'parts': [bot_response_text]})
-        conversations[character_id] = history
+        # Save model response
+        model_message = Message(character_id=character_id, role='model', content=bot_response_text)
+        db.session.add(model_message)
+        db.session.commit()
 
-    emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
+    emit('message', {'text': processed_response, 'sender': 'received', 'character_id': character_id})
 
 @socketio.on('message')
 def handle_message(data):
     """Handles a message from a client."""
-    message = data['message']
+    message_text = data['message']
     character_id = str(data['character_id'])
-    logger.info(f"Received message: {message} for character: {character_id}")
+    logger.info(f"Received message: {message_text} for character: {character_id}")
 
     if not app.config.get('GEMINI_API_KEY'):
         logger.error("Gemini API key is not configured.")
-        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other'})
+        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'received', 'character_id': character_id})
         return
 
-    global conversations
-    if character_id not in conversations:
-        emit('message', {'text': "Chat not initiated.", 'sender': 'other', 'character_id': character_id})
-        return
+    # Save user message
+    user_message = Message(character_id=character_id, role='user', content=message_text)
+    db.session.add(user_message)
+    db.session.commit()
 
-    history = conversations[character_id]
-    history.append({'role': 'user', 'parts': [message]})
+    # Load history
+    messages = Message.query.filter_by(character_id=character_id).order_by(Message.timestamp).all()
+    history = [{'role': msg.role, 'parts': [msg.content]} for msg in messages]
 
     model = genai.GenerativeModel(selected_model)
     processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
 
     if bot_response_text:
-        history.append({'role': 'model', 'parts': [bot_response_text]})
-        conversations[character_id] = history
+        # Save model response
+        model_message = Message(character_id=character_id, role='model', content=bot_response_text)
+        db.session.add(model_message)
+        db.session.commit()
 
-    emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
+    emit('message', {'text': processed_response, 'sender': 'received', 'character_id': character_id})
 
 @socketio.on('user_choice')
 def handle_user_choice(data):
@@ -491,26 +524,30 @@ def handle_user_choice(data):
 
     if not app.config.get('GEMINI_API_KEY'):
         logger.error("Gemini API key is not configured.")
-        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other', 'character_id': character_id})
+        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'received', 'character_id': character_id})
         return
 
-    global conversations
-    if character_id not in conversations:
-        emit('message', {'text': "Chat not initiated.", 'sender': 'other', 'character_id': character_id})
-        return
+    user_message_text = f"I choose: {choice}"
 
-    history = conversations[character_id]
-    user_message = f"I choose: {choice}"
-    history.append({'role': 'user', 'parts': [user_message]})
+    # Save user message
+    user_message = Message(character_id=character_id, role='user', content=user_message_text)
+    db.session.add(user_message)
+    db.session.commit()
+
+    # Load history
+    messages = Message.query.filter_by(character_id=character_id).order_by(Message.timestamp).all()
+    history = [{'role': msg.role, 'parts': [msg.content]} for msg in messages]
 
     model = genai.GenerativeModel(selected_model)
     processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
 
     if bot_response_text:
-        history.append({'role': 'model', 'parts': [bot_response_text]})
-        conversations[character_id] = history
+        # Save model response
+        model_message = Message(character_id=character_id, role='model', content=bot_response_text)
+        db.session.add(model_message)
+        db.session.commit()
 
-    emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
+    emit('message', {'text': processed_response, 'sender': 'received', 'character_id': character_id})
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
@@ -524,23 +561,27 @@ def handle_user_multi_choice(data):
 
     if not app.config.get('GEMINI_API_KEY'):
         logger.error("Gemini API key is not configured.")
-        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other', 'character_id': character_id})
+        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'received', 'character_id': character_id})
         return
 
-    global conversations
-    if character_id not in conversations:
-        emit('message', {'text': "Chat not initiated.", 'sender': 'other', 'character_id': character_id})
-        return
+    user_message_text = f"I choose the following: {', '.join(choices)}"
 
-    history = conversations[character_id]
-    user_message = f"I choose the following: {', '.join(choices)}"
-    history.append({'role': 'user', 'parts': [user_message]})
+    # Save user message
+    user_message = Message(character_id=character_id, role='user', content=user_message_text)
+    db.session.add(user_message)
+    db.session.commit()
+
+    # Load history
+    messages = Message.query.filter_by(character_id=character_id).order_by(Message.timestamp).all()
+    history = [{'role': msg.role, 'parts': [msg.content]} for msg in messages]
 
     model = genai.GenerativeModel(selected_model)
     processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
 
     if bot_response_text:
-        history.append({'role': 'model', 'parts': [bot_response_text]})
-        conversations[character_id] = history
+        # Save model response
+        model_message = Message(character_id=character_id, role='model', content=bot_response_text)
+        db.session.add(model_message)
+        db.session.commit()
 
-    emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
+    emit('message', {'text': processed_response, 'sender': 'received', 'character_id': character_id})
