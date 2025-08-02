@@ -33,3 +33,7 @@ SECRET_KEY = "ThereIsADNDAdventureRoamingAroundHereSomewhere"
 # Set this to the email address of the user who should be granted admin privileges.
 # If a user logs in with this email, they will be marked as an administrator.
 ADMIN_EMAIL = "your_admin_email@example.com"
+
+# Gemini Debugging
+# Set to True to display raw Gemini API requests and responses in the chat window.
+GEMINI_DEBUG = False

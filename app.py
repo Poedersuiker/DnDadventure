@@ -109,11 +109,10 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 app.config.from_mapping(
     SECRET_KEY='your-very-secret-key! barbarandomkeybarchar',
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
+    GEMINI_MODEL='gemini-1.5-pro-latest',
+    GEMINI_DEBUG=False
 )
 app.config.from_pyfile('config.py', silent=True)
-
-# Global variable to store the selected model
-selected_model = 'gemini-1.5-pro-latest'
 
 # Gemini API Key
 gemini_api_key = app.config.get('GEMINI_API_KEY')
@@ -218,7 +217,6 @@ def admin():
     if current_user.email != app.config.get('ADMIN_EMAIL'):
         return "Unauthorized", 401
 
-    global selected_model
     if request.method == 'POST':
         if request.form.get('form_type') == 'add_ttrpg':
             ttrpg_name = request.form.get('ttrpg_name')
@@ -234,12 +232,54 @@ def admin():
             db.session.add(new_ttrpg_type)
             db.session.commit()
         else:
-            selected_model = request.form.get('model')
+            config_path = os.path.join(app.instance_path, 'config.py')
+
+            new_model = request.form.get('model')
+            new_debug_status = 'gemini_debug' in request.form
+
+            config_lines = []
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config_lines = f.readlines()
+
+            updated_keys = {'GEMINI_MODEL', 'GEMINI_DEBUG'}
+            new_config_lines = []
+            keys_found = set()
+
+            for line in config_lines:
+                stripped_line = line.strip()
+                key_found_on_line = False
+                if not stripped_line or stripped_line.startswith('#'):
+                    new_config_lines.append(line)
+                    continue
+
+                for key in updated_keys:
+                    if stripped_line.startswith(key + ' '):
+                        if key == 'GEMINI_MODEL':
+                            new_config_lines.append(f"GEMINI_MODEL = '{new_model}'\n")
+                        elif key == 'GEMINI_DEBUG':
+                            new_config_lines.append(f"GEMINI_DEBUG = {new_debug_status}\n")
+                        keys_found.add(key)
+                        key_found_on_line = True
+                        break
+                if not key_found_on_line:
+                    new_config_lines.append(line)
+
+            if 'GEMINI_MODEL' not in keys_found:
+                new_config_lines.append(f"GEMINI_MODEL = '{new_model}'\n")
+            if 'GEMINI_DEBUG' not in keys_found:
+                new_config_lines.append(f"GEMINI_DEBUG = {new_debug_status}\n")
+
+            with open(config_path, 'w') as f:
+                f.writelines(new_config_lines)
+
         return redirect(url_for('admin'))
 
     models = [m for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
     ttrpg_types = TTRPGType.query.all()
-    return render_template('admin.html', models=models, selected_model=selected_model, ttrpg_types=ttrpg_types)
+    gemini_model = app.config.get('GEMINI_MODEL')
+    gemini_debug = app.config.get('GEMINI_DEBUG', False)
+    return render_template('admin.html', models=models, selected_model=gemini_model, gemini_debug=gemini_debug, ttrpg_types=ttrpg_types)
 
 @app.route('/admin/ttrpg_data', methods=['GET', 'POST', 'DELETE', 'PUT'])
 @login_required
@@ -337,7 +377,10 @@ def gemini_prep_data():
             return jsonify({'success': True})
         return jsonify({'success': False, 'error': 'Message not found'})
 
-def send_to_gemini_with_retry(model, history, max_retries=3):
+def send_to_gemini_with_retry(model, history, character_id, max_retries=3):
+    if app.config.get('GEMINI_DEBUG'):
+        socketio.emit('debug_message', {'type': 'request', 'data': json.dumps(history, indent=2), 'character_id': character_id})
+
     bot_response_text = None
     for attempt in range(max_retries):
         try:
@@ -353,6 +396,9 @@ def send_to_gemini_with_retry(model, history, max_retries=3):
                 bot_response_text = "".join(part.text for part in response.parts)
             else:
                 bot_response_text = response.text
+
+            if app.config.get('GEMINI_DEBUG'):
+                socketio.emit('debug_message', {'type': 'response', 'data': bot_response_text, 'character_id': character_id})
 
             logger.info(f"Gemini response (attempt {attempt+1}): {bot_response_text}")
             processed_response = process_bot_response(bot_response_text)
@@ -441,9 +487,9 @@ def handle_initiate_chat(data):
         db.session.commit()
 
         history = [{'role': 'user', 'parts': [full_initial_prompt]}]
-        model = genai.GenerativeModel(selected_model)
+        model = genai.GenerativeModel(app.config.get('GEMINI_MODEL'))
 
-        processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
+        processed_response, bot_response_text = send_to_gemini_with_retry(model, history, character_id)
 
         if bot_response_text:
             model_message = Message(character_id=character.id, role='model', content=bot_response_text)
@@ -478,8 +524,8 @@ def handle_user_ordered_list(data):
     messages = Message.query.filter_by(character_id=character_id).order_by(Message.timestamp).all()
     history = [{'role': msg.role, 'parts': [msg.content]} for msg in messages]
 
-    model = genai.GenerativeModel(selected_model)
-    processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
+    model = genai.GenerativeModel(app.config.get('GEMINI_MODEL'))
+    processed_response, bot_response_text = send_to_gemini_with_retry(model, history, character_id)
 
     if bot_response_text:
         # Save model response
@@ -510,8 +556,8 @@ def handle_message(data):
     messages = Message.query.filter_by(character_id=character_id).order_by(Message.timestamp).all()
     history = [{'role': msg.role, 'parts': [msg.content]} for msg in messages]
 
-    model = genai.GenerativeModel(selected_model)
-    processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
+    model = genai.GenerativeModel(app.config.get('GEMINI_MODEL'))
+    processed_response, bot_response_text = send_to_gemini_with_retry(model, history, character_id)
 
     if bot_response_text:
         # Save model response
@@ -544,8 +590,8 @@ def handle_user_choice(data):
     messages = Message.query.filter_by(character_id=character_id).order_by(Message.timestamp).all()
     history = [{'role': msg.role, 'parts': [msg.content]} for msg in messages]
 
-    model = genai.GenerativeModel(selected_model)
-    processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
+    model = genai.GenerativeModel(app.config.get('GEMINI_MODEL'))
+    processed_response, bot_response_text = send_to_gemini_with_retry(model, history, character_id)
 
     if bot_response_text:
         # Save model response
@@ -581,8 +627,8 @@ def handle_user_multi_choice(data):
     messages = Message.query.filter_by(character_id=character_id).order_by(Message.timestamp).all()
     history = [{'role': msg.role, 'parts': [msg.content]} for msg in messages]
 
-    model = genai.GenerativeModel(selected_model)
-    processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
+    model = genai.GenerativeModel(app.config.get('GEMINI_MODEL'))
+    processed_response, bot_response_text = send_to_gemini_with_retry(model, history, character_id)
 
     if bot_response_text:
         # Save model response

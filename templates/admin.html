@@ -55,7 +55,11 @@
                     <option value="{{ model.name }}" {% if model.name == selected_model %}selected{% endif %}>{{ model.display_name }}</option>
                 {% endfor %}
             </select>
-            <button type="submit">Save Model</button>
+            <br><br>
+            <label for="gemini_debug">Enable Gemini Debug Mode:</label>
+            <input type="checkbox" name="gemini_debug" id="gemini_debug" {% if gemini_debug %}checked{% endif %}>
+            <br><br>
+            <button type="submit">Save Settings</button>
         </form>
     </div>
 
