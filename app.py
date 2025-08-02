@@ -19,7 +19,13 @@ import google.generativeai as genai
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+class MalformedAppDataError(Exception):
+    pass
+
 def process_bot_response(bot_response):
+    if bot_response.count('[APPDATA]') != bot_response.count('[/APPDATA]'):
+        raise MalformedAppDataError("Mismatched number of [APPDATA] and [/APPDATA] tags.")
+
     appdata_pattern = re.compile(r'\[APPDATA\](.*?)\[/APPDATA\]', re.DOTALL)
     match = appdata_pattern.search(bot_response)
 
@@ -92,9 +98,9 @@ def process_bot_response(bot_response):
 
             return processed_text + html_choices
 
-    except (json.JSONDecodeError, StopIteration) as e:
+    except json.JSONDecodeError as e:
         logger.error(f"Failed to parse APPDATA json: {e}")
-        return processed_text
+        raise MalformedAppDataError(f"Failed to parse APPDATA json: {e}")
 
     return processed_text
 
@@ -323,6 +329,45 @@ def gemini_prep_data():
             return jsonify({'success': True})
         return jsonify({'success': False, 'error': 'Message not found'})
 
+def send_to_gemini_with_retry(model, history, max_retries=3):
+    bot_response_text = None
+    for attempt in range(max_retries):
+        try:
+            response = model.generate_content(history)
+
+            if not response or not (hasattr(response, 'parts') and response.parts or hasattr(response, 'text')):
+                logger.warning(f"Empty response from Gemini on attempt {attempt + 1}")
+                if attempt + 1 == max_retries:
+                    return "Sorry, I received an empty or invalid response from the AI.", None
+                continue
+
+            if hasattr(response, 'parts') and response.parts:
+                bot_response_text = "".join(part.text for part in response.parts)
+            else:
+                bot_response_text = response.text
+
+            logger.info(f"Gemini response (attempt {attempt+1}): {bot_response_text}")
+            processed_response = process_bot_response(bot_response_text)
+            return processed_response, bot_response_text
+
+        except MalformedAppDataError as e:
+            logger.warning(f"Malformed APPDATA from Gemini (attempt {attempt+1}): {e}. Retrying...")
+            if bot_response_text:
+                history.append({'role': 'model', 'parts': [bot_response_text]})
+            history.append({'role': 'user', 'parts': ["The response you just sent contained a malformed [APPDATA] block. Please correct the formatting of the JSON data and resend your message."]})
+
+            if attempt + 1 == max_retries:
+                logger.error(f"Failed to get valid response from Gemini after {max_retries} attempts.")
+                return "Sorry, I'm having trouble generating a valid response right now. Please try again later.", None
+
+        except Exception as e:
+            logger.error(f"Error calling Gemini API on attempt {attempt + 1}: {e}")
+            if attempt + 1 == max_retries:
+                return "Error: Could not connect to the bot.", None
+            time.sleep(1)
+
+    return "An unexpected error occurred.", None
+
 @socketio.on('connect')
 def handle_connect():
     """Handles a new client connection."""
@@ -366,33 +411,15 @@ def handle_initiate_chat(data):
     initial_prompt = "\n".join(initial_prompt_parts)
 
     history = [{'role': 'user', 'parts': [initial_prompt]}]
+    model = genai.GenerativeModel(selected_model)
 
-    try:
-        model = genai.GenerativeModel(selected_model)
-        response = model.generate_content(history)
+    processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
 
-        if response and response.parts:
-            bot_response = "".join(part.text for part in response.parts)
-            logger.info('Gemini initial response: ' + bot_response)
-            processed_response = process_bot_response(bot_response)
-            history.append({'role': 'model', 'parts': [bot_response]})
-            conversations[character_id] = history
-            emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
-        else:
-            try:
-                bot_response = response.text
-                logger.info('Gemini initial response (from text): ' + bot_response)
-                processed_response = process_bot_response(bot_response)
-                history.append({'role': 'model', 'parts': [bot_response]})
-                conversations[character_id] = history
-                emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
-            except (ValueError, AttributeError) as e:
-                logger.warning(f"Unexpected response format from Gemini, and no .text fallback: {e}\nResponse: {response}")
-                emit('message', {'text': "Sorry, I received an empty or invalid response from the AI.", 'sender': 'other', 'character_id': character_id})
+    if bot_response_text:
+        history.append({'role': 'model', 'parts': [bot_response_text]})
+        conversations[character_id] = history
 
-    except Exception as e:
-        logger.error(f"Error calling Gemini API: {e}")
-        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other', 'character_id': character_id})
+    emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
 
 @socketio.on('user_ordered_list')
 def handle_user_ordered_list(data):
@@ -401,7 +428,7 @@ def handle_user_ordered_list(data):
     character_id = str(data['character_id'])
     logger.info(f"Received ordered list: {ordered_list} for character: {character_id}")
 
-    if not gemini_api_key:
+    if not app.config.get('GEMINI_API_KEY'):
         logger.error("Gemini API key is not configured.")
         emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other', 'character_id': character_id})
         return
@@ -417,32 +444,14 @@ def handle_user_ordered_list(data):
         user_message += f"{item['name']}: {item['value']}\n"
     history.append({'role': 'user', 'parts': [user_message]})
 
-    try:
-        model = genai.GenerativeModel(selected_model)
-        response = model.generate_content(history)
+    model = genai.GenerativeModel(selected_model)
+    processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
 
-        if response and response.parts:
-            bot_response = "".join(part.text for part in response.parts)
-            logger.info('Gemini response after ordered list: ' + bot_response)
-            processed_response = process_bot_response(bot_response)
-            history.append({'role': 'model', 'parts': [bot_response]})
-            conversations[character_id] = history
-            emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
-        else:
-            try:
-                bot_response = response.text
-                logger.info('Gemini response after ordered list (from text): ' + bot_response)
-                processed_response = process_bot_response(bot_response)
-                history.append({'role': 'model', 'parts': [bot_response]})
-                conversations[character_id] = history
-                emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
-            except (ValueError, AttributeError) as e:
-                logger.warning(f"Unexpected response format from Gemini, and no .text fallback: {e}\nResponse: {response}")
-                emit('message', {'text': "Sorry, I received an empty or invalid response from the AI.", 'sender': 'other', 'character_id': character_id})
+    if bot_response_text:
+        history.append({'role': 'model', 'parts': [bot_response_text]})
+        conversations[character_id] = history
 
-    except Exception as e:
-        logger.error(f"Error calling Gemini API: {e}")
-        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other', 'character_id': character_id})
+    emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
 
 @socketio.on('message')
 def handle_message(data):
@@ -451,7 +460,7 @@ def handle_message(data):
     character_id = str(data['character_id'])
     logger.info(f"Received message: {message} for character: {character_id}")
 
-    if not gemini_api_key:
+    if not app.config.get('GEMINI_API_KEY'):
         logger.error("Gemini API key is not configured.")
         emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other'})
         return
@@ -464,33 +473,14 @@ def handle_message(data):
     history = conversations[character_id]
     history.append({'role': 'user', 'parts': [message]})
 
-    try:
-        model = genai.GenerativeModel(selected_model)
-        response = model.generate_content(history)
+    model = genai.GenerativeModel(selected_model)
+    processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
 
-        if response and response.parts:
-            bot_response = "".join(part.text for part in response.parts)
-            logger.info('Gemini response: ' + bot_response)
-            processed_response = process_bot_response(bot_response)
-            history.append({'role': 'model', 'parts': [bot_response]})
-            conversations[character_id] = history
-            emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
-        else:
-            # Fallback for unexpected response format, check for response.text
-            try:
-                bot_response = response.text
-                logger.info('Gemini response (from text): ' + bot_response)
-                processed_response = process_bot_response(bot_response)
-                history.append({'role': 'model', 'parts': [bot_response]})
-                conversations[character_id] = history
-                emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
-            except (ValueError, AttributeError) as e:
-                logger.warning(f"Unexpected response format from Gemini, and no .text fallback: {e}\nResponse: {response}")
-                emit('message', {'text': "Sorry, I received an empty or invalid response from the AI.", 'sender': 'other', 'character_id': character_id})
+    if bot_response_text:
+        history.append({'role': 'model', 'parts': [bot_response_text]})
+        conversations[character_id] = history
 
-    except Exception as e:
-        logger.error(f"Error calling Gemini API: {e}")
-        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other', 'character_id': character_id})
+    emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
 
 @socketio.on('user_choice')
 def handle_user_choice(data):
@@ -499,7 +489,7 @@ def handle_user_choice(data):
     character_id = str(data['character_id'])
     logger.info(f"Received choice: {choice} for character: {character_id}")
 
-    if not gemini_api_key:
+    if not app.config.get('GEMINI_API_KEY'):
         logger.error("Gemini API key is not configured.")
         emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other', 'character_id': character_id})
         return
@@ -513,32 +503,14 @@ def handle_user_choice(data):
     user_message = f"I choose: {choice}"
     history.append({'role': 'user', 'parts': [user_message]})
 
-    try:
-        model = genai.GenerativeModel(selected_model)
-        response = model.generate_content(history)
+    model = genai.GenerativeModel(selected_model)
+    processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
 
-        if response and response.parts:
-            bot_response = "".join(part.text for part in response.parts)
-            logger.info('Gemini response after choice: ' + bot_response)
-            processed_response = process_bot_response(bot_response)
-            history.append({'role': 'model', 'parts': [bot_response]})
-            conversations[character_id] = history
-            emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
-        else:
-            try:
-                bot_response = response.text
-                logger.info('Gemini response after choice (from text): ' + bot_response)
-                processed_response = process_bot_response(bot_response)
-                history.append({'role': 'model', 'parts': [bot_response]})
-                conversations[character_id] = history
-                emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
-            except (ValueError, AttributeError) as e:
-                logger.warning(f"Unexpected response format from Gemini, and no .text fallback: {e}\nResponse: {response}")
-                emit('message', {'text': "Sorry, I received an empty or invalid response from the AI.", 'sender': 'other', 'character_id': character_id})
+    if bot_response_text:
+        history.append({'role': 'model', 'parts': [bot_response_text]})
+        conversations[character_id] = history
 
-    except Exception as e:
-        logger.error(f"Error calling Gemini API: {e}")
-        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other', 'character_id': character_id})
+    emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
@@ -550,7 +522,7 @@ def handle_user_multi_choice(data):
     character_id = str(data['character_id'])
     logger.info(f"Received choices: {choices} for character: {character_id}")
 
-    if not gemini_api_key:
+    if not app.config.get('GEMINI_API_KEY'):
         logger.error("Gemini API key is not configured.")
         emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'other', 'character_id': character_id})
         return
@@ -564,29 +536,11 @@ def handle_user_multi_choice(data):
     user_message = f"I choose the following: {', '.join(choices)}"
     history.append({'role': 'user', 'parts': [user_message]})
 
-    try:
-        model = genai.GenerativeModel(selected_model)
-        response = model.generate_content(history)
+    model = genai.GenerativeModel(selected_model)
+    processed_response, bot_response_text = send_to_gemini_with_retry(model, history)
 
-        if response and response.parts:
-            bot_response = "".join(part.text for part in response.parts)
-            logger.info('Gemini response after multi-choice: ' + bot_response)
-            processed_response = process_bot_response(bot_response)
-            history.append({'role': 'model', 'parts': [bot_response]})
-            conversations[character_id] = history
-            emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
-        else:
-            try:
-                bot_response = response.text
-                logger.info('Gemini response after multi-choice (from text): ' + bot_response)
-                processed_response = process_bot_response(bot_response)
-                history.append({'role': 'model', 'parts': [bot_response]})
-                conversations[character_id] = history
-                emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
-            except (ValueError, AttributeError) as e:
-                logger.warning(f"Unexpected response format from Gemini, and no .text fallback: {e}\nResponse: {response}")
-                emit('message', {'text': "Sorry, I received an empty or invalid response from the AI.", 'sender': 'other', 'character_id': character_id})
+    if bot_response_text:
+        history.append({'role': 'model', 'parts': [bot_response_text]})
+        conversations[character_id] = history
 
-    except Exception as e:
-        logger.error(f"Error calling Gemini API: {e}")
-        emit('message', {'text': f"Error: Could not connect to the bot.", 'sender': 'other', 'character_id': character_id})
+    emit('message', {'text': processed_response, 'sender': 'other', 'character_id': character_id})
