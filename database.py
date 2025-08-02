@@ -90,9 +90,9 @@ def init_db(app):
             )
             db.session.add(choice_instruction)
 
-        if not GeminiPrepMessage.query.filter_by(priority=2).first():
+        if not GeminiPrepMessage.query.filter_by(priority=99).first():
             choice_instruction = GeminiPrepMessage(
-                priority=2,
+                priority=99,
                 message="""The player has choosen <fill selected character name> as the character name for the next player character. Start by helping the player through the character creation steps."""
             )
             db.session.add(choice_instruction)
