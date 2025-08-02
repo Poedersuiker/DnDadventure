@@ -273,6 +273,8 @@ def admin():
             with open(config_path, 'w') as f:
                 f.writelines(new_config_lines)
 
+            app.config.from_pyfile('config.py', silent=True)
+
         return redirect(url_for('admin'))
 
     models = [m for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
