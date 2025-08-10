@@ -156,12 +156,13 @@ When the player can select one or more options, up to a maximum number.
         )
         db.session.add(multi_select_instruction)
 
-    if not GeminiPrepMessage.query.filter_by(priority=98).first():
-        character_sheet_instruction = GeminiPrepMessage(
-            priority=98,
-            message="You must keep track of the character sheet and send all updates with the [CHARACTERSHEET] tag. Use the [DB.TTRPG.JSON] information as a template for the character sheet."
-        )
+        # This block is intentionally left without a check so it will always execute
+        # and update the message if it exists.
+        character_sheet_instruction = GeminiPrepMessage.query.filter_by(priority=98).first()
+        if not character_sheet_instruction:
+            character_sheet_instruction = GeminiPrepMessage(priority=98)
         db.session.add(character_sheet_instruction)
+        character_sheet_instruction.message = "You must keep track of the character sheet and send all updates with the [CHARACTERSHEET] tag. The character sheet update must only contain the keys present in the following JSON template: [DB.TTRPG.JSON]. Do not add any new keys."
 
     if not GeminiPrepMessage.query.filter_by(priority=99).first():
         choice_instruction = GeminiPrepMessage(
