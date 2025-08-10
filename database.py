@@ -35,6 +35,12 @@ class Message(db.Model):
     content = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
+class CharacterSheetHistory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    character_id = db.Column(db.Integer, db.ForeignKey('character.id'), nullable=False)
+    sheet_data = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime(timezone=True), default=datetime.datetime.utcnow)
+
 class GeminiPrepMessage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     message = db.Column(db.Text, nullable=False)

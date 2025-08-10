@@ -44,7 +44,14 @@
     <div id="character-sheet-overlay">
         <div id="character-sheet">
             <div id="close-character-sheet">X</div>
-            <!-- Character sheet content goes here -->
+            <div id="character-sheet-history-container">
+                <label for="character-sheet-history-select">History:</label>
+                <select id="character-sheet-history-select"></select>
+            </div>
+            <hr>
+            <div id="character-sheet-content">
+                <!-- Character sheet content goes here -->
+            </div>
         </div>
     </div>
     <div id="app">
@@ -347,6 +354,67 @@
             }
         };
 
+        socket.on('character_sheet_data', function(data) {
+            var characterId = document.getElementById('active-character-id').value;
+            if (data.character_id && data.character_id.toString() !== characterId) {
+                return;
+            }
+
+            const sheetContentDiv = document.getElementById('character-sheet-content');
+            sheetContentDiv.innerHTML = data.html_template;
+
+            for (const key in data.sheet_data) {
+                const element = sheetContentDiv.querySelector('#' + key);
+                if (element) {
+                    element.innerText = data.sheet_data[key];
+                }
+            }
+
+            document.getElementById('character-sheet-overlay').style.display = 'block';
+        });
+
+        socket.on('character_sheet_error', function(data) {
+            var characterId = document.getElementById('active-character-id').value;
+            if (data.character_id && data.character_id.toString() === characterId) {
+                alert('Error: ' + data.message);
+            }
+        });
+
+        let characterSheetHistory = [];
+
+        socket.on('character_sheet_history_data', function(data) {
+            var characterId = document.getElementById('active-character-id').value;
+            if (data.character_id && data.character_id.toString() !== characterId) {
+                return;
+            }
+
+            characterSheetHistory = data.history;
+            const historySelect = document.getElementById('character-sheet-history-select');
+            historySelect.innerHTML = ''; // Clear previous options
+
+            if (characterSheetHistory.length > 0) {
+                characterSheetHistory.forEach((record, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.innerText = record.timestamp;
+                    historySelect.appendChild(option);
+                });
+                historySelect.onchange = function() {
+                    const selectedIndex = this.value;
+                    const selectedRecord = characterSheetHistory[selectedIndex];
+                    const sheetContentDiv = document.getElementById('character-sheet-content');
+
+                    // The HTML template is already in the div, just need to re-populate it.
+                    for (const key in selectedRecord.sheet_data) {
+                        const element = sheetContentDiv.querySelector('#' + key);
+                        if (element) {
+                            element.innerText = selectedRecord.sheet_data[key];
+                        }
+                    }
+                };
+            }
+        });
+
         window.onload = function() {
             const urlParams = new URLSearchParams(window.location.search);
             const newCharId = urlParams.get('new_char_id');
@@ -356,7 +424,13 @@
         };
 
         document.getElementById('character-sheet-button').onclick = function() {
-            document.getElementById('character-sheet-overlay').style.display = 'block';
+            var characterId = document.getElementById('active-character-id').value;
+            if (characterId) {
+                socket.emit('get_character_sheet', { 'character_id': characterId });
+                socket.emit('get_character_sheet_history', { 'character_id': characterId });
+            } else {
+                alert('Please select a character first.');
+            }
         };
 
         document.getElementById('close-character-sheet').onclick = function() {
