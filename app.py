@@ -497,8 +497,9 @@ def handle_initiate_chat(data):
         system_instructions = []
         initial_user_prompt = ""
 
+        ttrpg_json = character.ttrpg_type.json_template
         for prep_msg in prep_messages:
-            msg = prep_msg.message.replace('[DB.TTRPG.Name]', ttrpg_name).replace('[DB.CHARACTER.NAME]', char_name)
+            msg = prep_msg.message.replace('[DB.TTRPG.Name]', ttrpg_name).replace('[DB.CHARACTER.NAME]', char_name).replace('[DB.TTRPG.JSON]', ttrpg_json)
             # Priority 2 is the initial user-facing prompt
             if prep_msg.priority == 2:
                 initial_user_prompt = msg
