@@ -365,3 +365,16 @@ body {
     box-shadow: -2px 0 5px rgba(0,0,0,0.1);
     z-index: 10;
 }
+
+.character-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.character-item a {
+    flex-grow: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
