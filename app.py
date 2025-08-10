@@ -473,7 +473,7 @@ def handle_initiate_chat(data):
         initial_user_prompt = ""
 
         for prep_msg in prep_messages:
-            msg = prep_msg.message.replace('<fill selected TTRPG name>', ttrpg_name).replace('<fill selected character name>', char_name)
+            msg = prep_msg.message.replace('[DB.TTRPG.Name]', ttrpg_name).replace('[DB.CHARACTER.NAME]', char_name)
             # Priority 2 is the initial user-facing prompt
             if prep_msg.priority == 2:
                 initial_user_prompt = msg

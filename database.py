@@ -57,7 +57,7 @@ def init_db(app):
         if not GeminiPrepMessage.query.filter_by(priority=0).first():
             choice_instruction = GeminiPrepMessage(
                 priority=0,
-                message="""You are the DM in a <fill selected TTRPG name> campaign. The user will be the player. Adhere to the ruleset of the given RPG system."""
+                message="""You are the DM in a [DB.TTRPG.Name] campaign. The user will be the player. Adhere to the ruleset of the given RPG system."""
             )
             db.session.add(choice_instruction)
         
@@ -93,7 +93,7 @@ def init_db(app):
         if not GeminiPrepMessage.query.filter_by(priority=99).first():
             choice_instruction = GeminiPrepMessage(
                 priority=99,
-                message="""The player has choosen <fill selected character name> as the character name for the next player character. Start by helping the player through the character creation steps."""
+                message="""The player has choosen [DB.CHARACTER.NAME] as the character name for the next player character. Start by helping the player through the character creation steps."""
             )
             db.session.add(choice_instruction)
 
