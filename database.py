@@ -75,38 +75,81 @@ Offer Method Choices: This is a crucial rule. When a step in the official rules 
 
         if not GeminiPrepMessage.query.filter_by(priority=1).first():
             choice_instruction = GeminiPrepMessage(
-                priority=1,
-                message="""Structured Interaction Formats
+ priority=1,
+ message="""## Structured Interaction Formats
 
-Always use the following [APPDATA] formats when requesting specific input. The titles and options in the examples below are illustrative; you will replace them with the appropriate terminology for the current TTRPG system. For example, for Cyberpunk RED, you would use "Choose your Role" instead of "Choose your Race.""""
+Always use the following [APPDATA] formats when requesting specific input. The titles and options in the examples below are illustrative; you will replace them with the appropriate terminology for the current TTRPG system. For example, for Cyberpunk RED, you would use \"Choose your Role\" instead of \"Choose your Race.\""""
             )
             db.session.add(choice_instruction)
 
         if not GeminiPrepMessage.query.filter_by(priority=2).first():
             choice_instruction = GeminiPrepMessage(
-                priority=1,
-                message="""1. For a Single Choice from a List:
+ priority=2,
+ message="""### 1. Single Choice from a List
 When the player must choose only one option.
-[APPDATA] { "SingleChoice": { "Title": "Choose your Race", "Options": { "Human": { "Name": "Human", "Description": "Versatile and adaptable, humans are found everywhere and excel in many fields." }, "Elf": { "Name": "Elf", "Description": "Graceful and long-lived, elves are attuned to magic and the natural world." } } } } [/APPDATA]"""
+[APPDATA]
+[APPDATA]
+{
+    "SingleChoice": {
+        "Title": "Choose your Race",
+        "Options": {
+            "Human": {
+                "Name": "Human",
+                "Description": "Versatile and adaptable, humans are found everywhere and excel in many fields."
+            },
+            "Elf": {
+                "Name": "Elf",
+                "Description": "Graceful and long-lived, elves are attuned to magic and the natural world."
+            }
+        }
+    }
+}
+[/APPDATA]"""
             )
             db.session.add(choice_instruction)
 
 
         if not GeminiPrepMessage.query.filter_by(priority=3).first():
             ordered_list_instruction = GeminiPrepMessage(
-                priority=3,
-                message="""2. For Assigning a List of Values:
+ priority=3,
+ message="""### 2. Assigning a List of Values
 When the player must assign a fixed set of values to a fixed set of attributes.
-[APPDATA] { "OrderedList": { "Title": "Assign Ability Scores", "Items": [ { "Name": "Strength" }, { "Name": "Dexterity" }, { "Name": "Constitution" } ], "Values": [ 15, 14, 13 ] } } [/APPDATA]"""
+[APPDATA]
+[APPDATA]
+{
+    "OrderedList": {
+        "Title": "Assign Ability Scores",
+        "Items": [
+            { "Name": "Strength" },
+            { "Name": "Dexterity" },
+            { "Name": "Constitution" }
+        ],
+        "Values": [ 15, 14, 13 ]
+    }
+}
+[/APPDATA]"""
             )
             db.session.add(ordered_list_instruction)
 
         if not GeminiPrepMessage.query.filter_by(priority=4).first():
             multi_select_instruction = GeminiPrepMessage(
-                priority=4,
-                message="""3. For Multiple Choices from a List:
+ priority=4,
+ message="""### 3. Multiple Choices from a List
 When the player can select one or more options, up to a maximum number.
-[APPDATA] { "MultiSelect": { "Title": "Choose your Skills", "MaxChoices": 2, "Options": { "Acrobatics": { "Name": "Acrobatics" }, "Athletics": { "Name": "Athletics" }, "History": { "Name": "History" } } } } [/APPDATA]"""
+[APPDATA]
+[APPDATA]
+{
+    "MultiSelect": {
+        "Title": "Choose your Skills",
+        "MaxChoices": 2,
+        "Options": {
+            "Acrobatics": { "Name": "Acrobatics" },
+            "Athletics": { "Name": "Athletics" },
+            "History": { "Name": "History" }
+        }
+    }
+}
+[/APPDATA]"""
             )
             db.session.add(multi_select_instruction)
 
