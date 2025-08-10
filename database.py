@@ -46,24 +46,21 @@ class GeminiPrepMessage(db.Model):
     message = db.Column(db.Text, nullable=False)
     priority = db.Column(db.Integer, nullable=False)
 
-def init_db(app):
-    db.init_app(app)
-    with app.app_context():
-        db.create_all()
-        # Add a default TTRPG type if it doesn't exist
-        if not TTRPGType.query.filter_by(name='Dungeons & Dragons 5th Edition').first():
-            dnd5e = TTRPGType(
-                name='Dungeons & Dragons 5th Edition',
-                json_template='{test}',
-                html_template='<a href="test">Test</a>',
-                wiki_link='https://roll20.net/compendium/dnd5e/BookIndex'
-            )
-            db.session.add(dnd5e)
+def create_default_data():
+    # Add a default TTRPG type if it doesn't exist
+    if not TTRPGType.query.filter_by(name='Dungeons & Dragons 5th Edition').first():
+        dnd5e = TTRPGType(
+            name='Dungeons & Dragons 5th Edition',
+            json_template='{"name": "", "level": ""}',
+            html_template='<table><tr><th>Name</th><td id="name"></td></tr><tr><th>Level</th><td id="level"></td></tr></table>',
+            wiki_link='https://roll20.net/compendium/dnd5e/BookIndex'
+        )
+        db.session.add(dnd5e)
 
-        if not GeminiPrepMessage.query.filter_by(priority=0).first():
-            choice_instruction = GeminiPrepMessage(
-                priority=0,
-                message="""You are a meticulous and versatile Game Master (GM). Your primary role is to guide a solo player through a tabletop role-playing game campaign.
+    if not GeminiPrepMessage.query.filter_by(priority=0).first():
+        choice_instruction = GeminiPrepMessage(
+            priority=0,
+            message="""You are a meticulous and versatile Game Master (GM). Your primary role is to guide a solo player through a tabletop role-playing game campaign.
 
 You will strictly adhere to the rules, structure, and lore of the specified TTRPG system. Your goal is to be a clear, impartial arbiter of the rules while weaving a compelling narrative.
 
@@ -76,22 +73,22 @@ Identify the Correct Steps: Internally, you must first identify the standard cha
 Follow Sequentially: Guide the player through these official steps one by one, in the correct order prescribed by the rulebook. Do not skip steps or present them out of order.
 
 Offer Method Choices: This is a crucial rule. When a step in the official rules offers multiple methods (e.g., generating Stats via rolling, point-buy, or a standard template), you MUST first present these methods to the player using a SingleChoice. Let the player decide how to proceed before continuing."""
-            )
-            db.session.add(choice_instruction)
+        )
+        db.session.add(choice_instruction)
 
-        if not GeminiPrepMessage.query.filter_by(priority=1).first():
-            choice_instruction = GeminiPrepMessage(
- priority=1,
- message="""## Structured Interaction Formats
+    if not GeminiPrepMessage.query.filter_by(priority=1).first():
+        choice_instruction = GeminiPrepMessage(
+            priority=1,
+            message="""## Structured Interaction Formats
 
 Always use the following [APPDATA] formats when requesting specific input. The titles and options in the examples below are illustrative; you will replace them with the appropriate terminology for the current TTRPG system. For example, for Cyberpunk RED, you would use \"Choose your Role\" instead of \"Choose your Race.\""""
-            )
-            db.session.add(choice_instruction)
+        )
+        db.session.add(choice_instruction)
 
-        if not GeminiPrepMessage.query.filter_by(priority=2).first():
-            choice_instruction = GeminiPrepMessage(
- priority=2,
- message="""### 1. Single Choice from a List
+    if not GeminiPrepMessage.query.filter_by(priority=2).first():
+        choice_instruction = GeminiPrepMessage(
+            priority=2,
+            message="""### 1. Single Choice from a List
 When the player must choose only one option.
 [APPDATA]
 [APPDATA]
@@ -111,14 +108,14 @@ When the player must choose only one option.
     }
 }
 [/APPDATA]"""
-            )
-            db.session.add(choice_instruction)
+        )
+        db.session.add(choice_instruction)
 
 
-        if not GeminiPrepMessage.query.filter_by(priority=3).first():
-            ordered_list_instruction = GeminiPrepMessage(
- priority=3,
- message="""### 2. Assigning a List of Values
+    if not GeminiPrepMessage.query.filter_by(priority=3).first():
+        ordered_list_instruction = GeminiPrepMessage(
+            priority=3,
+            message="""### 2. Assigning a List of Values
 When the player must assign a fixed set of values to a fixed set of attributes.
 [APPDATA]
 [APPDATA]
@@ -134,13 +131,13 @@ When the player must assign a fixed set of values to a fixed set of attributes.
     }
 }
 [/APPDATA]"""
-            )
-            db.session.add(ordered_list_instruction)
+        )
+        db.session.add(ordered_list_instruction)
 
-        if not GeminiPrepMessage.query.filter_by(priority=4).first():
-            multi_select_instruction = GeminiPrepMessage(
- priority=4,
- message="""### 3. Multiple Choices from a List
+    if not GeminiPrepMessage.query.filter_by(priority=4).first():
+        multi_select_instruction = GeminiPrepMessage(
+            priority=4,
+            message="""### 3. Multiple Choices from a List
 When the player can select one or more options, up to a maximum number.
 [APPDATA]
 [APPDATA]
@@ -156,15 +153,28 @@ When the player can select one or more options, up to a maximum number.
     }
 }
 [/APPDATA]"""
-            )
-            db.session.add(multi_select_instruction)
+        )
+        db.session.add(multi_select_instruction)
 
-        if not GeminiPrepMessage.query.filter_by(priority=99).first():
-            choice_instruction = GeminiPrepMessage(
-                priority=99,
-                message="""You are the GM in a [DB.TTRPG.Name] campaign. The player has chosen [DB.CHARACTER.NAME] as the character name for the next player character. Start by helping the player through the character creation steps, following your protocol precisely."""
-            )
-            db.session.add(choice_instruction)
+    if not GeminiPrepMessage.query.filter_by(priority=98).first():
+        character_sheet_instruction = GeminiPrepMessage(
+            priority=98,
+            message="You must keep track of the character sheet and send all updates with the [CHARACTERSHEET] tag. Use the [DB.TTRPG.JSON] information as a template for the character sheet."
+        )
+        db.session.add(character_sheet_instruction)
+
+    if not GeminiPrepMessage.query.filter_by(priority=99).first():
+        choice_instruction = GeminiPrepMessage(
+            priority=99,
+            message="""You are the GM in a [DB.TTRPG.Name] campaign. The player has chosen [DB.CHARACTER.NAME] as the character name for the next player character. Start by helping the player through the character creation steps, following your protocol precisely."""
+        )
+        db.session.add(choice_instruction)
 
 
-        db.session.commit()
+    db.session.commit()
+
+def init_db(app):
+    db.init_app(app)
+    with app.app_context():
+        db.create_all()
+        create_default_data()
