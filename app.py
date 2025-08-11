@@ -5,6 +5,7 @@ import logging
 import time
 import re
 import json
+import datetime
 from flask import Flask, render_template, redirect, url_for, session, request, jsonify
 from flask_socketio import SocketIO, emit
 from threading import Thread
@@ -234,6 +235,73 @@ def delete_character(character_id):
         db.session.commit()
         return jsonify({'success': True})
     return jsonify({'success': False, 'error': 'Character not found or unauthorized'}), 404
+
+@app.route('/recap/<int:character_id>')
+@login_required
+def get_recap(character_id):
+    character = Character.query.get(character_id)
+    if not character or character.user_id != current_user.id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    messages = Message.query.filter_by(character_id=character.id).order_by(Message.timestamp.asc()).all()
+    if not messages:
+        return jsonify({'recap': ''})
+
+    last_message_id = messages[-1].id
+    if character.recap and character.last_recap_message_id == last_message_id:
+        return jsonify({'recap': character.recap})
+
+    history_for_prompt = []
+    for msg in messages:
+        # Exclude the initial system prompt from the recap context
+        if msg.role == 'user' and "You are the DM" in msg.content:
+            continue
+        history_for_prompt.append(f"{msg.role.capitalize()}: {msg.content}")
+
+    history_str = "\n".join(history_for_prompt)
+
+    # Define sessions
+    sessions = []
+    if messages:
+        current_session = [messages[0]]
+        for i in range(1, len(messages)):
+            time_diff = messages[i].timestamp - messages[i-1].timestamp
+            if time_diff > datetime.timedelta(hours=1):
+                sessions.append(current_session)
+                current_session = [messages[i]]
+            else:
+                current_session.append(messages[i])
+        sessions.append(current_session)
+
+    # Create the prompt for Gemini
+    prompt = f"""
+Please provide a recap of the following adventure based on the message history. The user wants a two-part summary:
+1. A general overview of the entire adventure so far (one paragraph).
+2. A more detailed summary of the last two sessions. A 'session' is a period of continuous play.
+
+Here is the full message history:
+---
+{history_str}
+---
+
+Based on this, please generate the recap.
+"""
+
+    model = genai.GenerativeModel(app.config.get('GEMINI_MODEL'))
+    try:
+        response = model.generate_content(prompt)
+        recap_text = response.text
+    except Exception as e:
+        logger.error(f"Error generating recap for character {character_id}: {e}")
+        return jsonify({'error': 'Failed to generate recap'}), 500
+
+
+    # Store the recap
+    character.recap = recap_text
+    character.last_recap_message_id = last_message_id
+    db.session.commit()
+
+    return jsonify({'recap': recap_text})
 
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
@@ -479,15 +547,9 @@ def handle_initiate_chat(data):
     messages = Message.query.filter_by(character_id=character.id).order_by(Message.timestamp).all()
 
     if messages:
-        # Existing character with history
-        emit('clear_chat', {'character_id': character_id})
-        for msg in messages:
-            # The initial user prompt should not be displayed in the chat history
-            if msg.role == 'user' and "You are the DM" in msg.content:
-                continue
-            processed_response = process_bot_response(msg.content)
-            sender = 'sent' if msg.role == 'user' else 'received'
-            emit('message', {'text': processed_response, 'sender': sender, 'character_id': character_id})
+        # Existing character with history.
+        # Do nothing here. The client will fetch the recap.
+        pass
     else:
         # New character
         prep_messages = GeminiPrepMessage.query.order_by(GeminiPrepMessage.priority).all()
@@ -571,6 +633,24 @@ def handle_get_character_sheet_history(data):
             'history': history_data,
             'character_id': character_id
         })
+
+
+@socketio.on('get_message_history')
+@login_required
+def get_message_history(data):
+    character_id = data.get('character_id')
+    character = Character.query.get(character_id)
+    if character and character.user_id == current_user.id:
+        messages = Message.query.filter_by(character_id=character.id).order_by(Message.timestamp.asc()).all()
+        history_data = []
+        for msg in messages:
+            if msg.role == 'user' and "You are the DM" in msg.content:
+                continue
+            history_data.append({
+                'role': msg.role,
+                'content': process_bot_response(msg.content)
+            })
+        emit('message_history_data', {'history': history_data, 'character_id': character_id})
 
 
 @socketio.on('user_ordered_list')

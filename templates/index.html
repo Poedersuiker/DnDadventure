@@ -13,6 +13,11 @@
             white-space: pre-wrap;
             font-size: 0.8em;
         }
+        .message.recap {
+            background-color: #eef;
+            border-left: 3px solid #aac;
+            font-style: italic;
+        }
         .message.debug pre {
             white-space: pre-wrap;
             overflow-wrap: break-word;
@@ -41,6 +46,9 @@
     <div id="character-sheet-button">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-file-text"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
     </div>
+    <div id="history-button">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-clock"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+    </div>
     <div id="character-sheet-overlay">
         <div id="character-sheet">
             <div id="close-character-sheet">X</div>
@@ -52,6 +60,13 @@
             <div id="character-sheet-content">
                 <!-- Character sheet content goes here -->
             </div>
+        </div>
+    </div>
+    <div id="history-overlay">
+        <div id="history-popup">
+            <div id="close-history">X</div>
+            <h2>Message History</h2>
+            <div id="history-messages"></div>
         </div>
     </div>
     <div id="app">
@@ -328,6 +343,19 @@
             document.getElementById('messages').innerHTML = '';
             socket.emit('initiate_chat', { 'character_id': characterId });
             document.getElementById('thinking-indicator').style.display = 'block';
+
+            fetch('/recap/' + characterId)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.recap) {
+                        addMessage(data.recap, 'recap');
+                    }
+                    document.getElementById('thinking-indicator').style.display = 'none';
+                })
+                .catch(error => {
+                    console.error('Error fetching recap:', error);
+                    document.getElementById('thinking-indicator').style.display = 'none';
+                });
         }
 
         function deleteCharacter(event, characterId) {
@@ -436,6 +464,39 @@
         document.getElementById('close-character-sheet').onclick = function() {
             document.getElementById('character-sheet-overlay').style.display = 'none';
         };
+
+        document.getElementById('history-button').onclick = function() {
+            var characterId = document.getElementById('active-character-id').value;
+            if (characterId) {
+                socket.emit('get_message_history', { 'character_id': characterId });
+            } else {
+                alert('Please select a character first.');
+            }
+        };
+
+        document.getElementById('close-history').onclick = function() {
+            document.getElementById('history-overlay').style.display = 'none';
+        };
+
+        socket.on('message_history_data', function(data) {
+            var characterId = document.getElementById('active-character-id').value;
+            if (data.character_id && data.character_id.toString() !== characterId) {
+                return;
+            }
+
+            const historyMessagesDiv = document.getElementById('history-messages');
+            historyMessagesDiv.innerHTML = ''; // Clear previous history
+
+            data.history.forEach(function(msg) {
+                var messageElement = document.createElement('div');
+                var sender = msg.role === 'user' ? 'sent' : 'received';
+                messageElement.classList.add('message', sender);
+                messageElement.innerHTML = msg.content;
+                historyMessagesDiv.appendChild(messageElement);
+            });
+
+            document.getElementById('history-overlay').style.display = 'flex';
+        });
     </script>
 </body>
 </html>

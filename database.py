@@ -27,6 +27,8 @@ class Character(db.Model):
     character_name = db.Column(db.String(128), nullable=False)
     charactersheet = db.Column(db.Text, nullable=False)
     messages = db.relationship('Message', backref='character', lazy=True, cascade="all, delete-orphan")
+    recap = db.Column(db.Text, nullable=True)
+    last_recap_message_id = db.Column(db.Integer, nullable=True)
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
