@@ -646,9 +646,16 @@ def get_message_history(data):
         for msg in messages:
             if msg.role == 'user' and "You are the DM" in msg.content:
                 continue
+
+            try:
+                content = process_bot_response(msg.content)
+            except MalformedAppDataError:
+                logger.warning(f"Malformed APPDATA in history for message {msg.id}. Displaying raw content.")
+                content = msg.content.replace('\n', '<br>')
+
             history_data.append({
                 'role': msg.role,
-                'content': process_bot_response(msg.content)
+                'content': content
             })
         emit('message_history_data', {'history': history_data, 'character_id': character_id})
 

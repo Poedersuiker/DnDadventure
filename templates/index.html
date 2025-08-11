@@ -334,7 +334,7 @@
             document.getElementById('send-button').disabled = false;
         }
 
-        function selectCharacter(event, characterId) {
+        function selectCharacter(event, characterId, isNewCharacter = false) {
             if (event) {
                 event.stopPropagation();
             }
@@ -344,18 +344,20 @@
             socket.emit('initiate_chat', { 'character_id': characterId });
             document.getElementById('thinking-indicator').style.display = 'block';
 
-            fetch('/recap/' + characterId)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.recap) {
-                        addMessage(data.recap, 'recap');
-                    }
-                    document.getElementById('thinking-indicator').style.display = 'none';
-                })
-                .catch(error => {
-                    console.error('Error fetching recap:', error);
-                    document.getElementById('thinking-indicator').style.display = 'none';
-                });
+            if (!isNewCharacter) {
+                fetch('/recap/' + characterId)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.recap) {
+                            addMessage(data.recap, 'recap');
+                        }
+                        document.getElementById('thinking-indicator').style.display = 'none';
+                    })
+                    .catch(error => {
+                        console.error('Error fetching recap:', error);
+                        document.getElementById('thinking-indicator').style.display = 'none';
+                    });
+            }
         }
 
         function deleteCharacter(event, characterId) {
@@ -447,7 +449,7 @@
             const urlParams = new URLSearchParams(window.location.search);
             const newCharId = urlParams.get('new_char_id');
             if (newCharId) {
-                selectCharacter(null, newCharId);
+                selectCharacter(null, newCharId, true);
             }
         };
 
