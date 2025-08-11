@@ -146,6 +146,60 @@ class AuthTestCase(unittest.TestCase):
                     self.assertEqual(messages[1].content, 'test message')
                     self.assertEqual(messages[2].content, 'This is the corrected response.')
 
+    def test_process_bot_response_dice_roll(self):
+        bot_response = "[APPDATA]{\"DiceRoll\": {\"Title\": \"Roll for initiative!\", \"ButtonText\": \"Roll!\", \"Mechanic\": \"Classic\", \"Dice\": \"1d20\"}}[/APPDATA]"
+        processed_response = process_bot_response(bot_response)
+        self.assertIn('<div class="diceroll-container">', processed_response)
+        self.assertIn('<h3>Roll for initiative!</h3>', processed_response)
+        self.assertIn('<button onclick="rollDice(\'{&quot;Title&quot;: &quot;Roll for initiative!&quot;, &quot;ButtonText&quot;: &quot;Roll!&quot;, &quot;Mechanic&quot;: &quot;Classic&quot;, &quot;Dice&quot;: &quot;1d20&quot;}\')">Roll!</button>', processed_response)
+
+    @patch('app.dice_roller.roll')
+    @patch('app.send_to_gemini_with_retry')
+    def test_handle_dice_roll(self, mock_send_to_gemini, mock_roll):
+        from app import handle_dice_roll, Message, Character, User
+
+        mock_roll.return_value = [{'total': 12, 'rolls': [12], 'dropped': []}]
+        mock_send_to_gemini.return_value = ("Gemini says you rolled well.", "Gemini says you rolled well.")
+
+        with app.app_context():
+            user = User(google_id='dice_user', email='dice@test.com', name='Dice User')
+            db.session.add(user)
+            db.session.commit()
+
+            character = Character(user_id=user.id, ttrpg_type_id=1, character_name='Dice Character', charactersheet='{}')
+            db.session.add(character)
+            db.session.commit()
+
+            roll_params = {"Title": "Initiative", "Mechanic": "Classic", "Dice": "1d20"}
+            data = {'character_id': str(character.id), 'roll_params': roll_params}
+
+            with app.test_request_context('/socket.io'):
+                with patch('app.emit') as mock_emit:
+                    handle_dice_roll(data)
+
+                    # Check that dice_roller.roll was called correctly
+                    mock_roll.assert_called_once_with(
+                        mechanic='Classic',
+                        dice='1d20',
+                        num_rolls=1,
+                        advantage=False,
+                        disadvantage=False
+                    )
+
+                    # Check that the result is emitted to the client
+                    mock_emit.assert_any_call('dice_roll_result', {'results': [{'total': 12, 'rolls': [12], 'dropped': []}], 'character_id': str(character.id)})
+
+                    # Check that send_to_gemini_with_retry was called
+                    self.assertEqual(mock_send_to_gemini.call_count, 1)
+
+                    # Check that the final message is emitted
+                    mock_emit.assert_called_with('message', {'text': 'Gemini says you rolled well.', 'sender': 'received', 'character_id': str(character.id)})
+
+                    # Check the database state
+                    messages = Message.query.filter_by(character_id=character.id).order_by(Message.timestamp).all()
+                    self.assertEqual(len(messages), 2)
+                    self.assertEqual(messages[0].content, "I rolled for Initiative: (Total: 12, Rolls: [12])")
+                    self.assertEqual(messages[1].content, 'Gemini says you rolled well.')
 
 if __name__ == '__main__':
     unittest.main()

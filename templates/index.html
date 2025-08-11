@@ -499,6 +499,52 @@
 
             document.getElementById('history-overlay').style.display = 'block';
         });
+
+        function rollDice(diceDataString) {
+            const characterId = document.getElementById('active-character-id').value;
+            if (characterId) {
+                // The data is passed as a JSON string, so we need to parse it
+                const rollParams = JSON.parse(diceDataString);
+
+                // Disable the button to prevent multiple clicks
+                const button = event.target;
+                button.disabled = true;
+
+                socket.emit('dice_roll', { 'roll_params': rollParams, 'character_id': characterId });
+                document.getElementById('thinking-indicator').style.display = 'block';
+            }
+        }
+
+        socket.on('dice_roll_result', function(data) {
+            const characterId = document.getElementById('active-character-id').value;
+            if (data.character_id && data.character_id.toString() !== characterId) {
+                return;
+            }
+
+            let html = '<div class="dice-roll-result">';
+            data.results.forEach(result => {
+                html += `<p><strong>Total: ${result.total}</strong> (Rolls: ${result.rolls.join(', ')}`;
+                if (result.dropped && result.dropped.length > 0) {
+                    html += `, Dropped: ${result.dropped.join(', ')}`;
+                }
+                html += ')</p>';
+
+                if (result.all_rolls) {
+                    html += '<p style="font-size: 0.8em; color: #555;">(Adv/Dis rolls: ';
+                    const allRollsSummaries = result.all_rolls.map(r => {
+                        let summary = `Total: ${r.total}, Rolls: ${r.rolls}`;
+                        if (r.dropped && r.dropped.length > 0) {
+                            summary += `, Dropped: ${r.dropped}`;
+                        }
+                        return `(${summary})`;
+                    });
+                    html += `${allRollsSummaries.join(', ')})</p>`;
+                }
+            });
+            html += '</div>';
+
+            addMessage(html, 'received');
+        });
     </script>
 </body>
 </html>
