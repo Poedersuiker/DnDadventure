@@ -5,6 +5,7 @@ import logging
 import time
 import re
 import json
+import html
 import datetime
 from flask import Flask, render_template, redirect, url_for, session, request, jsonify
 from flask_socketio import SocketIO, emit
@@ -16,6 +17,7 @@ import os
 from werkzeug.middleware.proxy_fix import ProxyFix
 from database import db, User, Character, TTRPGType, GeminiPrepMessage, Message, CharacterSheetHistory
 import google.generativeai as genai
+import dice_roller
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -124,6 +126,21 @@ def process_bot_response(bot_response, character_id=None):
             html_choices += '<button onclick="confirmMultiSelect(this)">Confirm</button></div>'
 
             return processed_text + html_choices
+
+        if 'DiceRoll' in appdata:
+            dice_data = appdata['DiceRoll']
+            title = dice_data.get('Title', 'Roll Dice')
+            button_text = dice_data.get('ButtonText', 'Roll')
+
+            # Pass the whole dice_data dictionary to the onclick function
+            dice_data_str = html.escape(json.dumps(dice_data))
+            html_dice = f'''
+                <div class="diceroll-container">
+                    <h3>{title}</h3>
+                    <button onclick="rollDice('{dice_data_str}')">{button_text}</button>
+                </div>
+            '''
+            return processed_text + html_dice
 
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse APPDATA json: {e}")
@@ -697,6 +714,67 @@ def handle_user_ordered_list(data):
         db.session.commit()
 
     emit('message', {'text': processed_response, 'sender': 'received', 'character_id': character_id})
+
+@socketio.on('dice_roll')
+def handle_dice_roll(data):
+    """Handles a dice roll request from a user."""
+    character_id = str(data['character_id'])
+    roll_params = data['roll_params']
+    logger.info(f"Received dice roll request: {roll_params} for character: {character_id}")
+
+    if not app.config.get('GEMINI_API_KEY'):
+        logger.error("Gemini API key is not configured.")
+        emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'received', 'character_id': character_id})
+        return
+
+    try:
+        results = dice_roller.roll(
+            mechanic=roll_params.get('Mechanic'),
+            dice=roll_params.get('Dice'),
+            num_rolls=roll_params.get('NumRolls', 1),
+            advantage=roll_params.get('Advantage', False),
+            disadvantage=roll_params.get('Disadvantage', False)
+        )
+
+        # Emit the detailed result to the client for the "pretty visualization"
+        emit('dice_roll_result', {'results': results, 'character_id': character_id})
+
+        # Create a user-friendly summary for the chat history and Gemini
+        summary_parts = []
+        for result in results:
+            total = result['total']
+            rolls = result['rolls']
+            dropped = result.get('dropped')
+            part = f"Total: {total}, Rolls: {rolls}"
+            if dropped:
+                part += f", Dropped: {dropped}"
+            summary_parts.append(f"({part})")
+        user_message_text = f"I rolled for {roll_params.get('Title', 'dice')}: {', '.join(summary_parts)}"
+
+
+        # Save user message
+        user_message = Message(character_id=character_id, role='user', content=user_message_text)
+        db.session.add(user_message)
+        db.session.commit()
+
+        # Load history and send to Gemini
+        messages = Message.query.filter_by(character_id=character_id).order_by(Message.timestamp).all()
+        history = [{'role': msg.role, 'parts': [msg.content]} for msg in messages]
+
+        model = genai.GenerativeModel(app.config.get('GEMINI_MODEL'))
+        processed_response, bot_response_text = send_to_gemini_with_retry(model, history, character_id)
+
+        if bot_response_text:
+            # Save model response
+            model_message = Message(character_id=character_id, role='model', content=bot_response_text)
+            db.session.add(model_message)
+            db.session.commit()
+
+        emit('message', {'text': processed_response, 'sender': 'received', 'character_id': character_id})
+
+    except (ValueError, TypeError) as e:
+        logger.error(f"Error processing dice roll: {e}")
+        emit('message', {'text': f"Error: {e}", 'sender': 'received', 'character_id': character_id})
 
 @socketio.on('message')
 def handle_message(data):
