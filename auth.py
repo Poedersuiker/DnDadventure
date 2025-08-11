@@ -22,7 +22,7 @@ def init_app(app):
 
 def login():
     """Redirects to Google's authorization page."""
-    redirect_uri = url_for('authorize', _external=True)
+    redirect_uri = url_for('main.authorize', _external=True)
     nonce = secrets.token_urlsafe(16)
     session['nonce'] = nonce
     return oauth.google.authorize_redirect(redirect_uri, nonce=nonce)
