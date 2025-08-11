@@ -35,8 +35,8 @@
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-menu"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
     </div>
     <div id="menu" style="left: -200px;">
-        <a href="/">Chat</a>
-        <a href="/logout">Logout</a>
+        <a href="{{ url_for('main.index') }}">Chat</a>
+        <a href="{{ url_for('main.logout') }}">Logout</a>
     </div>
     <h1>Admin</h1>
 
@@ -132,7 +132,7 @@
             const tableBody = table.getElementsByTagName('tbody')[0];
 
             function loadTable() {
-                fetch('/admin/ttrpg_data')
+                fetch("{{ url_for('admin.ttrpg_data') }}")
                     .then(response => response.json())
                     .then(data => {
                         tableBody.innerHTML = '';
@@ -178,7 +178,7 @@
                         wiki_link: row.cells[4].innerText
                     };
 
-                    let url = '/admin/ttrpg_data';
+                    let url = "{{ url_for('admin.ttrpg_data') }}";
                     let method = 'PUT';
                     if (!isNewRow) {
                         data.id = id;
@@ -198,7 +198,7 @@
 
                 if (target.classList.contains('delete-btn')) {
                     if (confirm('Are you sure you want to delete this TTRPG type?')) {
-                        fetch('/admin/ttrpg_data', {
+                        fetch("{{ url_for('admin.ttrpg_data') }}", {
                             method: 'DELETE',
                             headers: {
                                 'Content-Type': 'application/json'
@@ -233,7 +233,7 @@
             const geminiPrepTableBody = geminiPrepTable.getElementsByTagName('tbody')[0];
 
             function loadGeminiPrepTable() {
-                fetch('/admin/gemini_prep_data')
+                fetch("{{ url_for('admin.gemini_prep_data') }}")
                     .then(response => response.json())
                     .then(data => {
                         geminiPrepTableBody.innerHTML = '';
@@ -275,7 +275,7 @@
                         priority: row.cells[2].innerText
                     };
 
-                    let url = '/admin/gemini_prep_data';
+                    let url = "{{ url_for('admin.gemini_prep_data') }}";
                     let method = 'PUT';
                     if (!isNewRow) {
                         data.id = id;
@@ -295,7 +295,7 @@
 
                 if (target.classList.contains('delete-btn')) {
                     if (confirm('Are you sure you want to delete this message?')) {
-                        fetch('/admin/gemini_prep_data', {
+                        fetch("{{ url_for('admin.gemini_prep_data') }}", {
                             method: 'DELETE',
                             headers: {
                                 'Content-Type': 'application/json'
