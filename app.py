@@ -290,7 +290,7 @@ Based on this, please generate the recap.
     model = genai.GenerativeModel(app.config.get('GEMINI_MODEL'))
     try:
         response = model.generate_content(prompt)
-        recap_text = response.text
+        recap_text = response.text.replace('\n', '<br>')
     except Exception as e:
         logger.error(f"Error generating recap for character {character_id}: {e}")
         return jsonify({'error': 'Failed to generate recap'}), 500
