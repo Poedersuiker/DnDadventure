@@ -962,42 +962,6 @@ When the player can select one or more options, up to a maximum number.
         db.session.add(multi_select_instruction)
         print("Seeded Gemini prep message priority 4.")
 
-    if not GeminiPrepMessage.query.filter_by(priority=5).first():
-        dice_roll_instruction = GeminiPrepMessage(
-            priority=5,
-            message="""### 4. Requesting a Dice Roll
-When the player needs to roll dice.
-[APPDATA]
-{
-    "DiceRoll": {
-        "Title": "Roll for Strength",
-        "ButtonText": "Roll Stat",
-        "Mechanic": "Heroic",
-        "Dice": "4d6",
-        "NumRolls": 6,
-        "Advantage": false,
-        "Disadvantage": false
-    }
-}
-[/APPDATA]
-
-**Parameters:**
-- `Title`: (Required) A descriptive title for the roll.
-- `ButtonText`: (Required) The text to display on the roll button.
-- `Mechanic`: (Required) The dice mechanic to use. Supported values are:
-    - `"Heroic"`: Rolls the specified dice, drops the lowest.
-    - `"Classic"`: Rolls the specified dice.
-    - `"High Floor"`: Rolls 2d6+6.
-    - `"Percentile"`: Rolls 1d100.
-- `Dice`: (Required for Heroic/Classic) The dice to roll (e.g., "4d6", "5d8").
-- `NumRolls`: (Optional) The number of times to perform the roll. Defaults to 1.
-- `Advantage`: (Optional) Set to `true` to roll with advantage. Defaults to `false`.
-- `Disadvantage`: (Optional) Set to `true` to roll with disadvantage. Defaults to `false`.
-"""
-        )
-        db.session.add(dice_roll_instruction)
-        print("Seeded Gemini prep message priority 5.")
-
     # This block is intentionally left without a check so it will always execute
     # and update the message if it exists.
     character_sheet_instruction = GeminiPrepMessage.query.filter_by(priority=98).first()
