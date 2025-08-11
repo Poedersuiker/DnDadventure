@@ -63,7 +63,27 @@ This project implements a Flask-based web application with Google OAuth for user
     *   Click "Create". Copy the "Client ID" and "Client Secret" into your `instance/config.py`.
     *   Ensure the "OAuth consent screen" is configured with necessary scopes (email, profile, openid are used by this app). You might need to add your Google account as a test user if the app is in "testing" mode.
 
-6.  **Run the application:**
+6.  **Initialize the Database:**
+    This application uses `Flask-Migrate` to handle database schema management.
+
+    *   **For the first time ever:**
+        ```bash
+        # Set the FLASK_APP environment variable
+        export FLASK_APP=app.py
+
+        # Apply the database migrations
+        flask db upgrade
+
+        # Seed the database with initial data
+        flask seed-data
+        ```
+    *   **For subsequent updates:** If you pull new code and there are database changes, you only need to run the `upgrade` command:
+        ```bash
+        export FLASK_APP=app.py
+        flask db upgrade
+        ```
+
+7.  **Run the application:**
     ```bash
     python app.py
     ```
@@ -72,18 +92,21 @@ This project implements a Flask-based web application with Google OAuth for user
 ### How it Works
 
 *   **`app.py`**: The main Flask application. It handles routing, database interaction (SQLAlchemy), user sessions (Flask-Login), and Google OAuth flow (Authlib).
+*   **`database.py`**: Defines the SQLAlchemy database models.
+*   **`migrations/`**: Directory containing the database migration scripts, managed by `Flask-Migrate`.
 *   **`instance/config.py`**: Stores sensitive configuration like API keys and database credentials. This file is not tracked by Git (it should be in `.gitignore`).
 *   **`instance/config.py.example`**: A template for `config.py`.
 *   **`templates/`**: Contains HTML templates for the login page (`login.html`) and the main page after login (`index.html`).
 *   **`requirements.txt`**: Lists Python dependencies.
-*   **Database**: A `User` model is defined to store user `id`, `google_id`, `email`, and `name`. The database is automatically created if it doesn't exist when the app starts.
+*   **Database**: The database schema is managed via `Flask-Migrate`. Changes to the models in `database.py` can be applied to the database by generating a new migration and running `flask db upgrade`.
 
 ### To use a different database (e.g., MariaDB/MySQL):
 
 1.  Ensure the database server is running.
 2.  Create a database and a user with permissions for that database.
-3.  Install the required Python driver: `pip install pymysql` (for MySQL/MariaDB) or `pip install psycopg2-binary` (for PostgreSQL). Uncomment the respective line in `requirements.txt`.
+3.  Install the required Python driver (`PyMySQL` is already in `requirements.txt`).
 4.  Update `instance/config.py` with:
     *   `DB_TYPE = "mysql"` (or `"postgresql"`)
     *   `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` with your database details.
-5.  Restart the Flask application. It should connect to the specified database.
+5.  Run the database migration and seeding commands as described in the "Initialize the Database" section.
+6.  Run the application. It will connect to the specified database.
