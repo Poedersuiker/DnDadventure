@@ -382,15 +382,22 @@ body {
     text-overflow: ellipsis;
 }
 
-#character-sheet-button {
+#character-sheet-button, #history-button {
     position: fixed;
     top: 10px;
-    right: 10px;
     cursor: pointer;
     z-index: 2;
 }
 
-#character-sheet-overlay {
+#character-sheet-button {
+    right: 10px;
+}
+
+#history-button {
+    right: 50px;
+}
+
+#character-sheet-overlay, #history-overlay {
     position: fixed;
     top: 0;
     left: 0;
@@ -416,7 +423,7 @@ body {
     overflow-y: auto;
 }
 
-#close-character-sheet {
+#close-character-sheet, #close-history {
     position: absolute;
     top: 10px;
     right: 10px;
@@ -424,4 +431,28 @@ body {
     color: red;
     font-size: 20px;
     font-weight: bold;
+}
+
+#history-popup {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80%;
+    max-width: 800px;
+    height: 90%;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+}
+
+#history-messages {
+    flex-grow: 1;
+    overflow-y: auto;
+    border-top: 1px solid #ccc;
+    margin-top: 10px;
+    padding-top: 10px;
 }
