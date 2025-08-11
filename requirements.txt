@@ -7,3 +7,5 @@ Authlib
 Flask-SQLAlchemy
 requests
 google-generativeai
+Flask-Migrate
+PyMySQL
