@@ -52,9 +52,9 @@ def admin():
                 for key in updated_keys:
                     if stripped_line.startswith(key + ' '):
                         if key == 'GEMINI_MODEL':
-                            new_config_lines.append(f"GEMINI_MODEL = '{new_model}'\\n")
+                            new_config_lines.append(f"GEMINI_MODEL = '{new_model}'\n")
                         elif key == 'GEMINI_DEBUG':
-                            new_config_lines.append(f"GEMINI_DEBUG = {new_debug_status}\\n")
+                            new_config_lines.append(f"GEMINI_DEBUG = {new_debug_status}\n")
                         keys_found.add(key)
                         key_found_on_line = True
                         break
@@ -62,9 +62,9 @@ def admin():
                     new_config_lines.append(line)
 
             if 'GEMINI_MODEL' not in keys_found:
-                new_config_lines.append(f"GEMINI_MODEL = '{new_model}'\\n")
+                new_config_lines.append(f"GEMINI_MODEL = '{new_model}'\n")
             if 'GEMINI_DEBUG' not in keys_found:
-                new_config_lines.append(f"GEMINI_DEBUG = {new_debug_status}\\n")
+                new_config_lines.append(f"GEMINI_DEBUG = {new_debug_status}\n")
 
             with open(config_path, 'w') as f:
                 f.writelines(new_config_lines)
