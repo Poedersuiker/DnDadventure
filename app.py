@@ -12,7 +12,7 @@ from flask_login import LoginManager, UserMixin, login_user, logout_user, curren
 import auth
 import os
 from werkzeug.middleware.proxy_fix import ProxyFix
-from database import db, init_db, User, Character, TTRPGType, GeminiPrepMessage, Message
+from database import db, init_db, User, Character, TTRPGType, GeminiPrepMessage, Message, CharacterSheetHistory
 import google.generativeai as genai
 
 # Configure logging
@@ -22,7 +22,32 @@ logger = logging.getLogger(__name__)
 class MalformedAppDataError(Exception):
     pass
 
-def process_bot_response(bot_response):
+def update_character_sheet(character_id, sheet_data):
+    character = Character.query.get(character_id)
+    if character:
+        character.charactersheet = json.dumps(sheet_data)
+        history_record = CharacterSheetHistory(
+            character_id=character_id,
+            sheet_data=json.dumps(sheet_data)
+        )
+        db.session.add(history_record)
+        db.session.commit()
+        logger.info(f"Character sheet updated for character {character_id}")
+    else:
+        logger.error(f"Character not found when trying to update sheet: {character_id}")
+
+def process_bot_response(bot_response, character_id=None):
+    charactersheet_pattern = re.compile(r'\[CHARACTERSHEET\](.*?)\[/CHARACTERSHEET\]', re.DOTALL)
+    match_cs = charactersheet_pattern.search(bot_response)
+    if match_cs and character_id:
+        cs_json_str = match_cs.group(1)
+        try:
+            cs_data = json.loads(cs_json_str)
+            update_character_sheet(character_id, cs_data)
+            bot_response = charactersheet_pattern.sub('', bot_response).strip()
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse CHARACTERSHEET json: {e}")
+
     if bot_response.count('[APPDATA]') != bot_response.count('[/APPDATA]'):
         raise MalformedAppDataError("Mismatched number of [APPDATA] and [/APPDATA] tags.")
 
@@ -403,7 +428,7 @@ def send_to_gemini_with_retry(model, history, character_id, max_retries=3):
                 socketio.emit('debug_message', {'type': 'response', 'data': bot_response_text, 'character_id': character_id})
 
             logger.info(f"Gemini response (attempt {attempt+1}): {bot_response_text}")
-            processed_response = process_bot_response(bot_response_text)
+            processed_response = process_bot_response(bot_response_text, character_id)
             return processed_response, bot_response_text
 
         except MalformedAppDataError as e:
@@ -472,8 +497,9 @@ def handle_initiate_chat(data):
         system_instructions = []
         initial_user_prompt = ""
 
+        ttrpg_json = character.ttrpg_type.json_template
         for prep_msg in prep_messages:
-            msg = prep_msg.message.replace('[DB.TTRPG.Name]', ttrpg_name).replace('[DB.CHARACTER.NAME]', char_name)
+            msg = prep_msg.message.replace('[DB.TTRPG.Name]', ttrpg_name).replace('[DB.CHARACTER.NAME]', char_name).replace('[DB.TTRPG.JSON]', ttrpg_json)
             # Priority 2 is the initial user-facing prompt
             if prep_msg.priority == 2:
                 initial_user_prompt = msg
@@ -500,6 +526,52 @@ def handle_initiate_chat(data):
 
             # We only want to display the bot's response, not the entire initial prompt
             emit('message', {'text': processed_response, 'sender': 'received', 'character_id': character_id})
+
+
+@socketio.on('get_character_sheet')
+def handle_get_character_sheet(data):
+    character_id = data.get('character_id')
+    character = Character.query.get(character_id)
+
+    if character and character.user_id == current_user.id:
+        try:
+            sheet_data = json.loads(character.charactersheet)
+            html_template = character.ttrpg_type.html_template
+
+            emit('character_sheet_data', {
+                'sheet_data': sheet_data,
+                'html_template': html_template,
+                'character_id': character_id
+            })
+        except json.JSONDecodeError:
+            logger.error(f"Could not decode character sheet JSON for character {character_id}")
+            # Optionally, emit an error to the client
+            emit('character_sheet_error', {'character_id': character_id, 'message': 'Could not load character sheet data.'})
+
+
+@socketio.on('get_character_sheet_history')
+def handle_get_character_sheet_history(data):
+    character_id = data.get('character_id')
+    character = Character.query.get(character_id)
+
+    if character and character.user_id == current_user.id:
+        history_records = CharacterSheetHistory.query.filter_by(character_id=character_id).order_by(CharacterSheetHistory.timestamp.desc()).all()
+
+        history_data = []
+        for record in history_records:
+            try:
+                history_data.append({
+                    'sheet_data': json.loads(record.sheet_data),
+                    'timestamp': record.timestamp.strftime('%Y-%m-%d %H:%M:%S') + ' UTC'
+                })
+            except json.JSONDecodeError:
+                logger.error(f"Could not decode character sheet history JSON for character {character_id}, record {record.id}")
+
+        emit('character_sheet_history_data', {
+            'history': history_data,
+            'character_id': character_id
+        })
+
 
 @socketio.on('user_ordered_list')
 def handle_user_ordered_list(data):
