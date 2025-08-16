@@ -1,9 +1,8 @@
 import logging
 import json
-from flask import request
+from flask import request, current_app
 from flask_login import current_user
 from flask_socketio import emit
-from app import socketio
 from database import db, User, Character, TTRPGType, GeminiPrepMessage, Message, CharacterSheetHistory
 import google.generativeai as genai
 import dice_roller
@@ -66,7 +65,7 @@ def register_socketio_handlers(socketio):
             db.session.commit()
 
             history = [{'role': 'user', 'parts': [full_initial_prompt]}]
-            model = genai.GenerativeModel(socketio.app.config.get('GEMINI_MODEL'))
+            model = genai.GenerativeModel(current_app.config.get('GEMINI_MODEL'))
 
             processed_response, bot_response_text = send_to_gemini_with_retry(model, history, character_id)
 
@@ -148,7 +147,7 @@ def register_socketio_handlers(socketio):
         character_id = str(data['character_id'])
         logger.info(f"Received ordered list: {ordered_list} for character: {character_id}")
 
-        if not socketio.app.config.get('GEMINI_API_KEY'):
+        if not current_app.config.get('GEMINI_API_KEY'):
             logger.error("Gemini API key is not configured.")
             emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'received', 'character_id': character_id})
             return
@@ -164,7 +163,7 @@ def register_socketio_handlers(socketio):
         messages = Message.query.filter_by(character_id=character_id).order_by(Message.timestamp).all()
         history = [{'role': msg.role, 'parts': [msg.content]} for msg in messages]
 
-        model = genai.GenerativeModel(socketio.app.config.get('GEMINI_MODEL'))
+        model = genai.GenerativeModel(current_app.config.get('GEMINI_MODEL'))
         processed_response, bot_response_text = send_to_gemini_with_retry(model, history, character_id)
 
         if bot_response_text:
@@ -180,7 +179,7 @@ def register_socketio_handlers(socketio):
         roll_params = data['roll_params']
         logger.info(f"Received dice roll request: {roll_params} for character: {character_id}")
 
-        if not socketio.app.config.get('GEMINI_API_KEY'):
+        if not current_app.config.get('GEMINI_API_KEY'):
             logger.error("Gemini API key is not configured.")
             emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'received', 'character_id': character_id})
             return
@@ -214,7 +213,7 @@ def register_socketio_handlers(socketio):
             messages = Message.query.filter_by(character_id=character_id).order_by(Message.timestamp).all()
             history = [{'role': msg.role, 'parts': [msg.content]} for msg in messages]
 
-            model = genai.GenerativeModel(socketio.app.config.get('GEMINI_MODEL'))
+            model = genai.GenerativeModel(current_app.config.get('GEMINI_MODEL'))
             processed_response, bot_response_text = send_to_gemini_with_retry(model, history, character_id)
 
             if bot_response_text:
@@ -234,7 +233,7 @@ def register_socketio_handlers(socketio):
         character_id = str(data['character_id'])
         logger.info(f"Received message: {message_text} for character: {character_id}")
 
-        if not socketio.app.config.get('GEMINI_API_KEY'):
+        if not current_app.config.get('GEMINI_API_KEY'):
             logger.error("Gemini API key is not configured.")
             emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'received', 'character_id': character_id})
             return
@@ -246,7 +245,7 @@ def register_socketio_handlers(socketio):
         messages = Message.query.filter_by(character_id=character_id).order_by(Message.timestamp).all()
         history = [{'role': msg.role, 'parts': [msg.content]} for msg in messages]
 
-        model = genai.GenerativeModel(socketio.app.config.get('GEMINI_MODEL'))
+        model = genai.GenerativeModel(current_app.config.get('GEMINI_MODEL'))
         processed_response, bot_response_text = send_to_gemini_with_retry(model, history, character_id)
 
         if bot_response_text:
@@ -262,7 +261,7 @@ def register_socketio_handlers(socketio):
         character_id = str(data['character_id'])
         logger.info(f"Received choice: {choice} for character: {character_id}")
 
-        if not socketio.app.config.get('GEMINI_API_KEY'):
+        if not current_app.config.get('GEMINI_API_KEY'):
             logger.error("Gemini API key is not configured.")
             emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'received', 'character_id': character_id})
             return
@@ -276,7 +275,7 @@ def register_socketio_handlers(socketio):
         messages = Message.query.filter_by(character_id=character_id).order_by(Message.timestamp).all()
         history = [{'role': msg.role, 'parts': [msg.content]} for msg in messages]
 
-        model = genai.GenerativeModel(socketio.app.config.get('GEMINI_MODEL'))
+        model = genai.GenerativeModel(current_app.config.get('GEMINI_MODEL'))
         processed_response, bot_response_text = send_to_gemini_with_retry(model, history, character_id)
 
         if bot_response_text:
@@ -293,7 +292,7 @@ def register_socketio_handlers(socketio):
         character_id = str(data['character_id'])
         logger.info(f"Received choices: {choices} for character: {character_id}")
 
-        if not socketio.app.config.get('GEMINI_API_KEY'):
+        if not current_app.config.get('GEMINI_API_KEY'):
             logger.error("Gemini API key is not configured.")
             emit('message', {'text': "Error: Gemini API key not configured", 'sender': 'received', 'character_id': character_id})
             return
@@ -307,7 +306,7 @@ def register_socketio_handlers(socketio):
         messages = Message.query.filter_by(character_id=character_id).order_by(Message.timestamp).all()
         history = [{'role': msg.role, 'parts': [msg.content]} for msg in messages]
 
-        model = genai.GenerativeModel(socketio.app.config.get('GEMINI_MODEL'))
+        model = genai.GenerativeModel(current_app.config.get('GEMINI_MODEL'))
         processed_response, bot_response_text = send_to_gemini_with_retry(model, history, character_id)
 
         if bot_response_text:
